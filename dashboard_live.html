@@ -339,10 +339,6 @@
         <div class="body"><div class="label">Comprometimento de renda</div>
           <div class="value" id="cComprometimento" style="color:var(--red)">—</div>
           <div class="sub" id="cComprometimentoSub"></div></div></div>
-      <div class="card"><div class="accent" style="background:var(--blue)"></div>
-        <div class="body"><div class="label">Projeção fim de ano</div>
-          <div class="value" id="cProjecao" style="color:var(--blue)">—</div>
-          <div class="sub" id="cProjecaoSub"></div></div></div>
     </div>
 
     <div class="charts-row" style="margin-top:16px;">
@@ -367,13 +363,24 @@
         </div>
       </div>
     </div>
-    <div class="chart-panel">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
-        <h2 style="margin:0;">Detalhamento mensal</h2>
-        <button class="connect-btn mobile-only" onclick="openDetalhamentoModal()">Ver completo</button>
+    <div class="charts-row" style="margin-top:16px;">
+      <div class="chart-panel">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+          <h2 style="margin:0;">Detalhamento mensal</h2>
+          <button class="connect-btn mobile-only" onclick="openDetalhamentoModal()">Ver completo</button>
+        </div>
+        <div id="detalhamentoResumo" class="mobile-only"></div>
+        <div id="tabelaMensalDesktop" class="desktop-only" style="overflow-x:auto;"></div>
       </div>
-      <div id="detalhamentoResumo" class="mobile-only"></div>
-      <div id="tabelaMensalDesktop" class="desktop-only" style="overflow-x:auto;"></div>
+      <div class="chart-panel">
+        <h2>Projeção fim de ano</h2>
+        <div id="cProjecaoSub" style="color:var(--muted);font-size:12.5px;margin-bottom:8px;"></div>
+        <div id="chartProjecao"></div>
+        <div class="legend">
+          <span><i style="background:var(--blue)"></i>Reserva real</span>
+          <span><i style="background:var(--muted)"></i>Projeção</span>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -881,15 +888,8 @@ function render(){
   document.getElementById("cComprometimento").textContent = fmtPct(comprometimento/100);
   document.getElementById("cComprometimentoSub").textContent = fmtMoney(totalParcelado) + " em parcelas este mês";
 
-  // ---- Projeção fim de ano (baseado na média do saldo real até aqui) ----
-  const receitaArr = row(48).map(v=>v||0), despesaArr = row(49).map(v=>v||0);
-  const saldosAteAgora = receitaArr.slice(0, mi+1).map((r,i) => r - despesaArr[i]);
-  const mediaSaldo = saldosAteAgora.reduce((a,b)=>a+b,0) / saldosAteAgora.length;
-  const mesesRestantes = 11 - mi;
-  const reservaAtualProj = row(53)[mi] || 0;
-  const projecaoReserva = reservaAtualProj + mediaSaldo * mesesRestantes;
-  document.getElementById("cProjecao").textContent = fmtMoney(projecaoReserva);
-  document.getElementById("cProjecaoSub").textContent = "reserva em Dez, no ritmo atual";
+  // ---- Projeção fim de ano (texto breve; o gráfico é montado em renderCharts) ----
+  document.getElementById("cProjecaoSub").textContent = `Baseado na média de saldo real de Jan a ${MONTHS[mi]}`;
 
   renderCategorias(lanc, mi);
   renderVencimentos(lanc);
@@ -1419,6 +1419,42 @@ function renderDividas(){
   </table>`;
 }
 
+function renderProjecaoChart(saldo, reserva, mi){
+  const el = document.getElementById("chartProjecao");
+  if(!el) return;
+
+  const mediaSaldo = saldo.slice(0, mi+1).reduce((a,b)=>a+b,0) / (mi+1);
+  const projetado = reserva.slice(0, mi+1);
+  for(let i = mi+1; i < 12; i++){
+    projetado.push(projetado[i-1] + mediaSaldo);
+  }
+
+  const W = 500, H = 260, PAD = 34, PADL = 52;
+  const maxV = Math.max(...reserva, ...projetado, 1) * 1.15;
+  const minV = Math.min(0, ...projetado);
+  const pts = projetado.map((v,i) => ({
+    x: PADL + i * ((W-PADL-PAD)/11),
+    y: H - PAD - ((v - minV)/(maxV - minV)) * (H-PAD*2)
+  }));
+
+  const realPts = pts.slice(0, mi+1);
+  const projPts = pts.slice(mi);
+
+  let svg = yAxis(minV, maxV, W, H, PAD, PAD, PADL);
+  svg += `<line x1="${pts[mi].x}" y1="${PAD*0.3}" x2="${pts[mi].x}" y2="${H-PAD}" stroke="#60A5FA" stroke-width="1.5" stroke-dasharray="4"/>`;
+  svg += svgLine(realPts, "#60A5FA", W, H, true);
+  svg += svgLine(projPts, "#8B8D9E", W, H, false).replace('stroke-width="2.5"','stroke-width="1.5" stroke-dasharray="5,4"');
+  pts.forEach((p,i) => {
+    const isProjected = i > mi;
+    const color = isProjected ? "#8B8D9E" : "#60A5FA";
+    const r = i === mi ? 6 : 3;
+    svg += `<circle cx="${p.x}" cy="${p.y}" r="${r}" fill="${color}"/>`;
+    const labelColor = i === mi ? "#F5F5F7" : "#8B8D9E";
+    svg += `<text x="${p.x}" y="${H-10}" font-size="10" font-weight="${i===mi?'700':'400'}" fill="${labelColor}" text-anchor="middle">${MONTHS[i]}</text>`;
+  });
+  el.innerHTML = `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;">${svg}</svg>`;
+}
+
 function renderCredito(){
   setupCardSelect();
   setupCreditLayoutToggle();
@@ -1731,6 +1767,8 @@ function renderCharts(){
   });
   document.getElementById("chartReserva").innerHTML =
     `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;">${reservaSvg}</svg>`;
+
+  renderProjecaoChart(saldo, reserva, mi);
 
   // ---- Tabela detalhamento mensal (transposta, como na planilha) ----
   const curM = mi;
