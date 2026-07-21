@@ -208,7 +208,10 @@
       <span data-view="lancamentos">Lançamentos</span>
       <span data-view="credito">Crédito</span>
     </div>
-    <button class="connect-btn" id="refreshBtn">Atualizar</button>
+    <div style="display:flex;gap:8px;">
+      <button class="connect-btn" id="switchSheetBtn" title="Escolher outra planilha">Trocar planilha</button>
+      <button class="connect-btn" id="refreshBtn">Atualizar</button>
+    </div>
   </div>
 
   <h1 id="greeting">Olá</h1>
@@ -962,6 +965,12 @@ window.onload = () => {
   document.getElementById("connectBtn").addEventListener("click", () => client.requestAccessToken({ prompt: "consent" }));
   document.getElementById("retryBtn").addEventListener("click", () => resolveWorkspace());
   document.getElementById("refreshBtn").addEventListener("click", () => { if(accessToken) loadData(); });
+  document.getElementById("switchSheetBtn").addEventListener("click", () => {
+    localStorage.removeItem("ftm_spreadsheetId");
+    SPREADSHEET_ID = null;
+    raw = null;
+    resolveWorkspace();
+  });
   setupTabs();
 
   // Renova a sessão sozinho ao abrir a página (sem pedir login de novo)
