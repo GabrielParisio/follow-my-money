@@ -57,6 +57,11 @@
   .resumo-item{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:12px;}
   .resumo-item .lbl{font-size:10px;color:var(--muted);font-weight:700;text-transform:uppercase;margin-bottom:4px;}
   .resumo-item .val{font-size:16px;font-weight:700;}
+  .chart-tooltip{
+    position:fixed;background:var(--card);border:1px solid var(--border);border-radius:8px;
+    padding:7px 11px;font-size:12px;color:var(--text);pointer-events:none;z-index:300;display:none;
+    white-space:nowrap;box-shadow:0 6px 18px rgba(0,0,0,.4);line-height:1.5;
+  }
   .toast{
     position:fixed;bottom:24px;left:50%;transform:translateX(-50%);
     background:var(--card);border:1px solid var(--border);border-radius:12px;padding:12px 20px;
@@ -210,7 +215,11 @@
   table.monthly td.current, table.monthly th.current{background:rgba(96,165,250,0.1);}
   table.monthly tbody tr:nth-child(odd) td:not(.current):not(:first-child), table.monthly tbody tr:nth-child(odd) th:not(.current):not(:first-child){background:rgba(255,255,255,0.015);}
   table.monthly tr:last-child td, table.monthly tr:last-child th{border-bottom:none;}
-  table.monthly tr.section-gap td{border-bottom:1px solid var(--border);height:6px;padding:0;}
+  table.monthly tr.section-header th, table.monthly tr.section-header td{
+    background:rgba(229,181,103,.07);color:var(--gold);font-size:10px;font-weight:700;
+    text-transform:uppercase;letter-spacing:.05em;padding:6px 10px;border-bottom:1px solid var(--border);
+  }
+  table.monthly tr.section-header:first-child th, table.monthly tr.section-header:first-child td{border-top:none;}
   table.monthly .neg{color:var(--red);}
   table.monthly .pos{color:var(--green);}
   .table-scroll{overflow-x:auto;}
@@ -650,6 +659,26 @@ async function fetchRanges(ranges){
   return data.valueRanges.map(v => v.values || []);
 }
 
+function showChartTooltip(evt, html){
+  let tip = document.getElementById("chartTooltip");
+  if(!tip){
+    tip = document.createElement("div");
+    tip.id = "chartTooltip";
+    tip.className = "chart-tooltip";
+    document.body.appendChild(tip);
+  }
+  tip.innerHTML = html;
+  tip.style.display = "block";
+  const x = evt.clientX, y = evt.clientY;
+  const tipW = tip.offsetWidth || 140;
+  tip.style.left = Math.min(x + 14, window.innerWidth - tipW - 8) + "px";
+  tip.style.top = Math.max(y - 40, 8) + "px";
+}
+function hideChartTooltip(){
+  const tip = document.getElementById("chartTooltip");
+  if(tip) tip.style.display = "none";
+}
+
 function showToast(message, type){
   const el = document.getElementById("toast");
   el.textContent = message;
@@ -870,10 +899,12 @@ function render(){
   const due = new Date(today.getFullYear(), today.getMonth() + dueMonthOffset, 5);
   document.getElementById("cFaturaSub").textContent = "Vence " + fmtDate(due);
 
-  // ---- Taxa de poupança ----
-  const taxaPoupanca = receitaReal > 0 ? (saldoReal / receitaReal * 100) : 0;
+  // ---- Taxa de poupança (acumulada no ano, Jan até o mês vigente) ----
+  const receitaYTDPoupanca = row(48).slice(0, mi+1).reduce((a,b)=>a+(b||0),0);
+  const saldoYTDPoupanca = row(48).slice(0, mi+1).reduce((a,b)=>a+(b||0),0) - row(49).slice(0, mi+1).reduce((a,b)=>a+(b||0),0);
+  const taxaPoupanca = receitaYTDPoupanca > 0 ? (saldoYTDPoupanca / receitaYTDPoupanca * 100) : 0;
   document.getElementById("cTaxaPoupanca").textContent = fmtPct(taxaPoupanca/100);
-  document.getElementById("cTaxaPoupancaSub").textContent = "do que sobrou da receita real";
+  document.getElementById("cTaxaPoupancaSub").textContent = `acumulado Jan-${MONTHS[mi]}`;
 
   // ---- Comprometimento de renda (parcelas do mês vigente: Dívidas + Crédito) ----
   const dividasParcelaMensal = getDividasParsed().reduce((s,d) => s + (d.valorParcela||0), 0);
@@ -887,9 +918,6 @@ function render(){
   const comprometimento = receitaReal > 0 ? (totalParcelado / receitaReal * 100) : 0;
   document.getElementById("cComprometimento").textContent = fmtPct(comprometimento/100);
   document.getElementById("cComprometimentoSub").textContent = fmtMoney(totalParcelado) + " em parcelas este mês";
-
-  // ---- Projeção fim de ano (texto breve; o gráfico é montado em renderCharts) ----
-  document.getElementById("cProjecaoSub").textContent = `Baseado na média de saldo real de Jan a ${MONTHS[mi]}`;
 
   renderCategorias(lanc, mi);
   renderVencimentos(lanc);
@@ -1419,7 +1447,7 @@ function renderDividas(){
   </table>`;
 }
 
-function renderProjecaoChart(saldo, reserva, mi){
+function renderProjecaoChart(saldo, reserva, meta, mi){
   const el = document.getElementById("chartProjecao");
   if(!el) return;
 
@@ -1428,22 +1456,28 @@ function renderProjecaoChart(saldo, reserva, mi){
   for(let i = mi+1; i < 12; i++){
     projetado.push(projetado[i-1] + mediaSaldo);
   }
+  const metaAno = meta[mi] || meta[0] || 0;
+  const pctAlcancado = metaAno > 0 ? (projetado[11] / metaAno * 100) : 0;
 
   const W = 500, H = 260, PAD = 34, PADL = 52;
-  const maxV = Math.max(...reserva, ...projetado, 1) * 1.15;
+  const maxV = Math.max(...reserva, ...projetado, metaAno, 1) * 1.15;
   const minV = Math.min(0, ...projetado);
   const pts = projetado.map((v,i) => ({
     x: PADL + i * ((W-PADL-PAD)/11),
     y: H - PAD - ((v - minV)/(maxV - minV)) * (H-PAD*2)
   }));
+  const metaY = H - PAD - ((metaAno - minV)/(maxV - minV)) * (H-PAD*2);
 
   const realPts = pts.slice(0, mi+1);
   const projPts = pts.slice(mi);
 
   let svg = yAxis(minV, maxV, W, H, PAD, PAD, PADL);
+  svg += `<line x1="${PADL}" y1="${metaY}" x2="${W-PAD}" y2="${metaY}" stroke="var(--muted)" stroke-width="1.5" stroke-dasharray="6,4"/>`;
+  svg += `<text x="${W-PAD}" y="${metaY-6}" font-size="10" fill="var(--muted)" text-anchor="end">Meta ${fmtMoney(metaAno)}</text>`;
   svg += `<line x1="${pts[mi].x}" y1="${PAD*0.3}" x2="${pts[mi].x}" y2="${H-PAD}" stroke="#60A5FA" stroke-width="1.5" stroke-dasharray="4"/>`;
   svg += svgLine(realPts, "#60A5FA", W, H, true);
   svg += svgLine(projPts, "#8B8D9E", W, H, false).replace('stroke-width="2.5"','stroke-width="1.5" stroke-dasharray="5,4"');
+  const groupW = (W-PADL-PAD)/11;
   pts.forEach((p,i) => {
     const isProjected = i > mi;
     const color = isProjected ? "#8B8D9E" : "#60A5FA";
@@ -1451,8 +1485,14 @@ function renderProjecaoChart(saldo, reserva, mi){
     svg += `<circle cx="${p.x}" cy="${p.y}" r="${r}" fill="${color}"/>`;
     const labelColor = i === mi ? "#F5F5F7" : "#8B8D9E";
     svg += `<text x="${p.x}" y="${H-10}" font-size="10" font-weight="${i===mi?'700':'400'}" fill="${labelColor}" text-anchor="middle">${MONTHS[i]}</text>`;
+    const tipHtml = `<b>${MONTHS_FULL[i]}</b><br>${isProjected ? "Projetado" : "Real"}: ${fmtMoney(projetado[i])}`;
+    svg += `<rect x="${p.x - groupW/2}" y="0" width="${groupW}" height="${H}" fill="transparent" style="cursor:pointer;" onmousemove="showChartTooltip(event, '${tipHtml}')" onmouseleave="hideChartTooltip()"/>`;
   });
   el.innerHTML = `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;">${svg}</svg>`;
+
+  const pctColor = pctAlcancado >= 100 ? "var(--green)" : (pctAlcancado >= 70 ? "var(--yellow)" : "var(--red)");
+  document.getElementById("cProjecaoSub").innerHTML =
+    `Baseado na média de saldo real de Jan a ${MONTHS[mi]} · <span style="color:${pctColor};font-weight:700;">${pctAlcancado.toFixed(0)}% da meta até Dez</span>`;
 }
 
 function renderCredito(){
@@ -1726,6 +1766,8 @@ function renderCharts(){
     bars += `<rect x="${x0+barW+4}" y="${H-PAD-hD}" width="${barW}" height="${hD}" rx="3" fill="var(--red)" fill-opacity="${op}"/>`;
     const labelColor = i === mi ? "#F5F5F7" : "#8B8D9E";
     bars += `<text x="${x0+barW}" y="${H-10}" font-size="10" font-weight="${i===mi?'700':'400'}" fill="${labelColor}" text-anchor="middle">${MONTHS[i]}</text>`;
+    const tipHtml = `<b>${MONTHS_FULL[i]}</b><br>Receita: ${fmtMoney(receita[i])}<br>Despesa: ${fmtMoney(despesa[i])}`.replace(/'/g,"&#39;");
+    bars += `<rect x="${gx}" y="0" width="${groupW}" height="${H}" fill="transparent" style="cursor:pointer;" onmousemove="showChartTooltip(event, '${tipHtml}')" onmouseleave="hideChartTooltip()"/>`;
   }
   document.getElementById("chartBarras").innerHTML =
     `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;">${bars}</svg>`;
@@ -1747,6 +1789,11 @@ function renderCharts(){
     const labelColor = i === mi ? "#F5F5F7" : "#8B8D9E";
     saldoSvg += `<text x="${p.x}" y="${H-10}" font-size="10" font-weight="${i===mi?'700':'400'}" fill="${labelColor}" text-anchor="middle">${MONTHS[i]}</text>`;
   });
+  const saldoGroupW = (W-PADL-PAD)/11;
+  ptsSaldo.forEach((p,i) => {
+    const tipHtml = `<b>${MONTHS_FULL[i]}</b><br>Saldo: ${fmtMoney(saldo[i])}`;
+    saldoSvg += `<rect x="${p.x - saldoGroupW/2}" y="0" width="${saldoGroupW}" height="${H}" fill="transparent" style="cursor:pointer;" onmousemove="showChartTooltip(event, '${tipHtml}')" onmouseleave="hideChartTooltip()"/>`;
+  });
   document.getElementById("chartSaldo").innerHTML =
     `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;">${saldoSvg}</svg>`;
 
@@ -1765,10 +1812,15 @@ function renderCharts(){
     const labelColor = i === mi ? "#F5F5F7" : "#8B8D9E";
     reservaSvg += `<text x="${p.x}" y="${H-10}" font-size="10" font-weight="${i===mi?'700':'400'}" fill="${labelColor}" text-anchor="middle">${MONTHS[i]}</text>`;
   });
+  const reservaGroupW = (W-PADL-PAD)/11;
+  ptsReserva.forEach((p,i) => {
+    const tipHtml = `<b>${MONTHS_FULL[i]}</b><br>Reserva: ${fmtMoney(reserva[i])}<br>Meta: ${fmtMoney(meta[i])}`;
+    reservaSvg += `<rect x="${p.x - reservaGroupW/2}" y="0" width="${reservaGroupW}" height="${H}" fill="transparent" style="cursor:pointer;" onmousemove="showChartTooltip(event, '${tipHtml}')" onmouseleave="hideChartTooltip()"/>`;
+  });
   document.getElementById("chartReserva").innerHTML =
     `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;">${reservaSvg}</svg>`;
 
-  renderProjecaoChart(saldo, reserva, mi);
+  renderProjecaoChart(saldo, reserva, meta, mi);
 
   // ---- Tabela detalhamento mensal (transposta, como na planilha) ----
   const curM = mi;
@@ -1781,15 +1833,19 @@ function renderCharts(){
     }).join("");
     return `<tr><th>${label}</th>${cells}</tr>`;
   }
+  function sectionRow(label){
+    return `<tr class="section-header"><th>${label}</th>` + MONTHS.map(()=>"<td></td>").join("") + `</tr>`;
+  }
   const tableRows = [
+    sectionRow("Previsto"),
     dataRow("Receita Prevista", row(45).map(v=>v||0)),
     dataRow("Despesa Prevista", row(46).map(v=>v||0)),
     dataRow("Saldo Previsto", row(47).map(v=>v||0), {signed:true}),
-    '<tr class="section-gap"><td></td>'+MONTHS.map(()=>"<td></td>").join("")+'</tr>',
+    sectionRow("Realizado"),
     dataRow("Receita Real", receita),
     dataRow("Despesa Real", despesa),
     dataRow("Saldo Real", saldo, {signed:true}),
-    '<tr class="section-gap"><td></td>'+MONTHS.map(()=>"<td></td>").join("")+'</tr>',
+    sectionRow("Reserva"),
     dataRow("Reserva Emergencial", reserva),
     dataRow("Meta", meta),
   ].join("");
