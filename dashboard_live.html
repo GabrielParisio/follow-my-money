@@ -389,7 +389,8 @@
         <div class="chart-panel" style="margin-top:16px;">
           <div class="label" style="color:var(--muted);font-size:11px;font-weight:700;text-transform:uppercase;">Parcelas em aberto</div>
           <div class="value" id="ccParcelasAberto" style="font-size:26px;font-weight:700;color:var(--yellow);margin:6px 0;">—</div>
-          <div class="sub" id="ccParcelasAbertoSub" style="color:var(--muted);font-size:12px;"></div>
+          <div class="sub" id="ccParcelasAbertoSub" style="color:var(--muted);font-size:12px;margin-bottom:10px;"></div>
+          <div id="ccParcelasBreakdown"></div>
         </div>
       </div>
       <div>
@@ -1109,6 +1110,31 @@ function renderCredito(){
   if(ccParcelasEl){
     ccParcelasEl.textContent = fmtMoney(totalParcelasAberto);
     ccParcelasSubEl.textContent = parcelasAberto.length + " parcela" + (parcelasAberto.length===1?"":"s") + " de " + MONTHS_FULL[state.monthIdx] + " em diante";
+  }
+
+  // Discriminação mês a mês: quantos meses ainda têm parcela, e quanto soma em cada um
+  const porMes = {};
+  parcelasAberto.forEach(c => {
+    const d = serialToDate(c[7]);
+    const key = d.getFullYear() + "-" + String(d.getMonth()).padStart(2, "0");
+    if(!porMes[key]) porMes[key] = { date: new Date(d.getFullYear(), d.getMonth(), 1), total: 0 };
+    porMes[key].total += (c[5] || c[4] || 0);
+  });
+  const mesesOrdenados = Object.values(porMes).sort((a,b) => a.date - b.date);
+  const breakdownEl = document.getElementById("ccParcelasBreakdown");
+  if(breakdownEl){
+    if(mesesOrdenados.length === 0){
+      breakdownEl.innerHTML = "";
+    } else {
+      const linhas = mesesOrdenados.map(m => `
+        <div style="display:flex;justify-content:space-between;font-size:12.5px;padding:5px 0;border-top:1px solid var(--border);">
+          <span style="color:var(--muted);">${MONTHS_FULL[m.date.getMonth()]} ${m.date.getFullYear()}</span>
+          <span style="font-weight:600;">${fmtMoney(m.total)}</span>
+        </div>`).join("");
+      breakdownEl.innerHTML = `
+        <div style="font-size:11px;color:var(--muted);margin-bottom:2px;">${mesesOrdenados.length} mês${mesesOrdenados.length===1?"":"es"} com parcela em aberto</div>
+        ${linhas}`;
+    }
   }
 
   renderCreditCategoryChart(compras, "creditCatChart");
