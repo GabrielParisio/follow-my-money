@@ -90,17 +90,25 @@
   .month-ruler{
     display:flex;gap:0;overflow-x:auto;overflow-y:hidden;padding:6px 4px 14px;margin-bottom:20px;
     -webkit-overflow-scrolling:touch;scrollbar-width:thin;cursor:grab;user-select:none;
+    -webkit-mask-image:linear-gradient(to right, transparent, black 20px, black calc(100% - 20px), transparent);
+    mask-image:linear-gradient(to right, transparent, black 20px, black calc(100% - 20px), transparent);
   }
   .month-ruler.dragging{cursor:grabbing;}
   .month-tick{
     flex:0 0 auto;width:44px;display:flex;flex-direction:column;align-items:center;gap:6px;
-    padding-top:10px;cursor:pointer;
+    padding-top:10px;padding-bottom:6px;cursor:pointer;
   }
   .month-tick .bar{width:4px;height:22px;border-radius:3px;background:#33354A;transition:all .15s ease;}
   .month-tick .lbl{font-size:11px;color:var(--muted);font-weight:600;transition:color .15s ease;}
   .month-tick.active .bar{height:32px;background:var(--gold);}
   .month-tick.active .lbl{color:var(--text);font-weight:700;}
   .month-tick:hover .bar{background:#5A5D78;}
+  @media (max-width:600px){
+    .month-tick{width:36px;}
+    .month-tick .bar{width:5px;height:26px;}
+    .month-tick.active .bar{height:36px;}
+    .month-tick .lbl{font-size:10.5px;}
+  }
   .alloc-bar{display:flex;height:28px;border-radius:8px;overflow:hidden;background:var(--border);}
   .alloc-bar div{height:100%;}
   table.lanc{width:100%;border-collapse:collapse;font-size:13px;}
@@ -696,6 +704,7 @@ function buildMonthRuler(){
       if(ruler.dataset.wasDragged === "1") return; // evita selecionar acidentalmente ao arrastar
       state.monthIdx = i;
       updateMonthRuler();
+      tick.scrollIntoView({ behavior: "smooth", inline: "center", block: "nearest" });
       render();
       if(raw) renderCharts();
       if(raw) renderLancamentos();
@@ -966,7 +975,7 @@ function lancRowHtml(it){
   const cleanCat = it.categoria || "";
   const catColor = cleanCat ? colorForCategory(cleanCat) : "var(--muted)";
   const valClass = it.tipo === "Receita" ? "receita" : (it.tipo === "Despesa" ? "despesa" : "");
-  const sign = it.tipo === "Receita" ? "+" : (it.tipo === "Despesa" ? "-" : "");
+  const sign = it.tipo === "Receita" ? "+" : "";
   const dateLabel = it.dataVenc ? fmtDate(serialToDate(it.dataVenc)) : "";
   const isPago = it.status === "✅ Pago";
   return `<tr id="lanc-row-${it.row}">
@@ -1018,6 +1027,7 @@ function openEditForm(row){
       <div class="actions">
         <button class="save-btn" onclick="saveEdit(${row})">Salvar alterações</button>
         <button class="cancel-btn" onclick="closeForm()">Cancelar</button>
+        <button class="cancel-btn" style="color:var(--red);border-color:var(--red);margin-left:auto;" onclick='deleteLancamento(${row}, ${JSON.stringify(it.desc)}); closeForm();'>Excluir</button>
       </div>
     </div>`;
   formEl.scrollIntoView({ behavior: "smooth", block: "center" });
@@ -1043,7 +1053,8 @@ function openNewForm(){
         </select>
       </div>
       <div><label>Conta</label><input id="fConta" placeholder="Ex: Banco Principal"></div>
-      <div><label>Valor</label><input id="fValor" type="number" step="0.01" placeholder="0.00"></div>
+      <div><label>Valor total</label><input id="fValor" type="number" step="0.01" placeholder="0.00"></div>
+      <div><label>Parcelas</label><input id="fParcelas" type="number" min="1" step="1" value="1"></div>
       <div class="actions">
         <button class="save-btn" onclick="saveNew()">Adicionar lançamento</button>
         <button class="cancel-btn" onclick="closeForm()">Cancelar</button>
@@ -1082,17 +1093,26 @@ async function saveNew(){
   const cat = document.getElementById("fCat").value;
   const tipo = document.getElementById("fTipo").value;
   const conta = document.getElementById("fConta").value;
-  const valor = parseFloat(document.getElementById("fValor").value) || 0;
-  if(!desc || !valor){ showToast("Preencha ao menos descrição e valor.", "error"); return; }
-  const [y, m, d] = dataStr.split("-");
-  const dataBR = `${d}/${m}/${y}`;
-  const rowValues = [dataBR, dataBR, desc, "", "", conta, cat, tipo, valor, ""];
+  const valorTotal = parseFloat(document.getElementById("fValor").value) || 0;
+  const parcelasEl = document.getElementById("fParcelas");
+  const numParcelas = Math.max(1, parseInt(parcelasEl ? parcelasEl.value : 1) || 1);
+  if(!desc || !valorTotal){ showToast("Preencha ao menos descrição e valor.", "error"); return; }
+
+  const [y, m, d] = dataStr.split("-").map(Number);
+  const valorParcela = Math.round((valorTotal / numParcelas) * 100) / 100;
+
   try{
-    await appendRow("Débito", rowValues);
+    for(let n = 0; n < numParcelas; n++){
+      const dataParcela = new Date(y, (m - 1) + n, d);
+      const dataBR = `${String(dataParcela.getDate()).padStart(2,"0")}/${String(dataParcela.getMonth()+1).padStart(2,"0")}/${dataParcela.getFullYear()}`;
+      const descParcela = numParcelas > 1 ? `${desc} (${n+1}/${numParcelas})` : desc;
+      const rowValues = [dataBR, dataBR, descParcela, "", "", conta, cat, tipo, valorParcela, ""];
+      await appendRow("Débito", rowValues);
+    }
     closeForm();
     await loadData();
     renderLancamentos();
-    showToast("Lançamento adicionado", "success");
+    showToast(numParcelas > 1 ? `${numParcelas} parcelas adicionadas` : "Lançamento adicionado", "success");
   }catch(err){
     showToast("Não foi possível adicionar: " + err.message, "error");
   }
