@@ -119,6 +119,18 @@
   table.lanc .val-col{text-align:right;font-weight:600;}
   table.lanc .val-col.receita{color:var(--green);}
   table.lanc .val-col.despesa{color:var(--red);}
+  @media (max-width:640px){
+    table.lanc thead{display:none;}
+    table.lanc, table.lanc tbody, table.lanc tr, table.lanc td{display:block;width:100%;}
+    table.lanc tr{border-bottom:1px solid var(--border);padding:10px 2px;}
+    table.lanc tr:last-child{border-bottom:none;}
+    table.lanc td{border-bottom:none;padding:3px 0;text-align:left !important;}
+    table.lanc td[data-label]:not([data-label=""])::before{
+      content:attr(data-label);display:block;font-size:10px;color:var(--muted);
+      text-transform:uppercase;font-weight:700;letter-spacing:.03em;margin-bottom:1px;
+    }
+    table.lanc td.row-actions{text-align:right !important;margin-top:4px;}
+  }
   table.lanc td.editable{cursor:pointer;}
   table.lanc td.editable:hover{background:rgba(229,181,103,.08);}
   .pill-btn{border:none;cursor:pointer;font-family:inherit;}
@@ -979,14 +991,13 @@ function lancRowHtml(it){
   const dateLabel = it.dataVenc ? fmtDate(serialToDate(it.dataVenc)) : "";
   const isPago = it.status === "✅ Pago";
   return `<tr id="lanc-row-${it.row}">
-    <td>${dateLabel}</td>
-    <td>${it.desc}</td>
-    <td><span style="display:inline-flex;align-items:center;gap:7px;"><i style="width:8px;height:8px;border-radius:50%;background:${catColor};display:inline-block;flex-shrink:0;"></i>${cleanCat}</span></td>
-    <td><button class="pill pill-btn ${isPago ? "" : "soon"}" onclick="toggleStatus(${it.row}, ${isPago})">${isPago ? "Pago" : "Pendente"}</button></td>
-    <td class="val-col ${valClass}">${sign}${fmtMoney(Math.abs(it.valor))}</td>
-    <td class="row-actions">
+    <td data-label="Data">${dateLabel}</td>
+    <td data-label="Descrição">${it.desc}</td>
+    <td data-label="Categoria"><span style="display:inline-flex;align-items:center;gap:7px;"><i style="width:8px;height:8px;border-radius:50%;background:${catColor};display:inline-block;flex-shrink:0;"></i>${cleanCat}</span></td>
+    <td data-label="Status"><button class="pill pill-btn ${isPago ? "" : "soon"}" onclick="toggleStatus(${it.row}, ${isPago})">${isPago ? "Pago" : "Pendente"}</button></td>
+    <td class="val-col ${valClass}" data-label="Valor">${sign}${fmtMoney(Math.abs(it.valor))}</td>
+    <td class="row-actions" data-label="">
       <button class="icon-btn" onclick="openEditForm(${it.row})" title="Editar">✏️</button>
-      <button class="del-btn" onclick='deleteLancamento(${it.row}, ${JSON.stringify(it.desc)})' title="Excluir">🗑️</button>
     </td>
   </tr>`;
 }
@@ -1281,17 +1292,17 @@ function renderDividas(){
   const rows = dividas.map(d => {
     const pctPago = d.numParcelas > 0 ? (d.parcelasPagas / d.numParcelas * 100) : 0;
     return `<tr>
-      <td>${d.desc}</td>
-      <td style="color:var(--muted);">${d.credor}</td>
-      <td class="val-col despesa">${fmtMoney(d.saldoDevedor)}</td>
-      <td style="text-align:right;">${fmtMoney(d.valorParcela)}/mês</td>
-      <td style="min-width:120px;">
+      <td data-label="Descrição">${d.desc}</td>
+      <td style="color:var(--muted);" data-label="Credor">${d.credor}</td>
+      <td class="val-col despesa" data-label="Saldo devedor">${fmtMoney(d.saldoDevedor)}</td>
+      <td style="text-align:right;" data-label="Parcela">${fmtMoney(d.valorParcela)}/mês</td>
+      <td style="min-width:120px;" data-label="Progresso">
         <div style="font-size:11px;color:var(--muted);margin-bottom:3px;">${d.parcelasPagas}/${d.numParcelas} parcelas</div>
         <div style="height:6px;background:var(--border);border-radius:3px;overflow:hidden;">
           <div style="height:100%;width:${Math.min(pctPago,100)}%;background:var(--blue);border-radius:3px;"></div>
         </div>
       </td>
-      <td><span class="pill">${d.status || "—"}</span></td>
+      <td data-label="Status"><span class="pill">${d.status || "—"}</span></td>
     </tr>`;
   }).join("");
   tableEl.innerHTML = `<table class="lanc">
@@ -1391,10 +1402,10 @@ function renderCredito(){
     const dateLabel = data ? fmtDate(serialToDate(data)) : "";
     const parcelaLabel = parcela ? ` <span class="pill">${parcela}</span>` : "";
     return `<tr>
-      <td style="color:var(--muted);font-size:12px;">${dateLabel}</td>
-      <td>${desc}${parcelaLabel}</td>
-      <td><span class="pill"><i style="width:8px;height:8px;border-radius:50%;background:${catColor};display:inline-block;margin-right:6px;"></i>${cleanCat}</span></td>
-      <td class="val-col despesa">${fmtMoney(valorParcela || valorTotal)}</td>
+      <td style="color:var(--muted);font-size:12px;" data-label="Data">${dateLabel}</td>
+      <td data-label="Descrição">${desc}${parcelaLabel}</td>
+      <td data-label="Categoria"><span class="pill"><i style="width:8px;height:8px;border-radius:50%;background:${catColor};display:inline-block;margin-right:6px;"></i>${cleanCat}</span></td>
+      <td class="val-col despesa" data-label="Valor">${fmtMoney(valorParcela || valorTotal)}</td>
     </tr>`;
   }).join("");
   el.innerHTML = `<table class="lanc">
