@@ -156,6 +156,16 @@
   .cc-bottom{display:flex;justify-content:space-between;}
   .cc-label{font-size:9px;color:#9A9CB0;text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px;}
   .cc-value{font-size:13px;font-weight:600;}
+  .seg-toggle{display:inline-flex;background:var(--card);border:1px solid var(--border);border-radius:10px;padding:3px;}
+  .seg-btn{background:none;border:none;color:var(--muted);font-size:12.5px;padding:6px 14px;border-radius:8px;cursor:pointer;font-weight:600;}
+  .seg-btn.active{background:var(--gold);color:#0B0C11;}
+  .credito-side{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:16px;}
+  .credito-side h3{font-size:14px;margin:0 0 12px;}
+  .credito-mini-card{border-radius:14px;padding:16px;position:relative;overflow:hidden;margin-bottom:12px;color:#fff;
+    background:linear-gradient(115deg,transparent 40%,rgba(255,255,255,.06) 50%,transparent 60%),linear-gradient(150deg,#34364a 0%,#1a1b24 45%,#0a0a0f 100%);}
+  .credito-mini-card.metal{color:#1c1d22;background:linear-gradient(115deg,transparent 42%,rgba(255,255,255,.10) 50%,transparent 58%),linear-gradient(150deg,#eceef1 0%,#c9cbd1 30%,#f2f3f5 48%,#a7a9b1 68%,#dcdde2 100%);}
+  .credito-mini-card .mini-brand{font-weight:700;font-size:13px;margin-bottom:14px;}
+  .credito-mini-card .mini-number{font-family:'Courier New',monospace;font-size:14px;letter-spacing:.1em;opacity:.85;}
   table.monthly{width:100%;border-collapse:collapse;font-size:12.5px;table-layout:fixed;}
   table.monthly th, table.monthly td{text-align:right;padding:9px 8px;border-bottom:1px solid var(--border);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
   table.monthly th:first-child, table.monthly td:first-child{
@@ -338,7 +348,14 @@
   </div>
 
   <div id="view-credito" class="view">
-    <select id="cardSelect" style="margin-bottom:14px;"></select>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:10px;">
+      <select id="cardSelect" style="margin-bottom:0;"></select>
+      <div class="seg-toggle" id="creditLayoutToggle">
+        <button class="seg-btn active" data-layout="unico">Único</button>
+        <button class="seg-btn" data-layout="ladoalado">Lado a lado</button>
+      </div>
+    </div>
+    <div id="credito-unico">
     <div class="credito-layout">
       <div>
         <div id="creditCard" class="credit-card">
@@ -381,6 +398,8 @@
         </div>
       </div>
     </div>
+    </div>
+    <div id="credito-ladoalado" class="hidden"></div>
   </div>
 
   <div id="view-soon" class="view">
@@ -413,7 +432,7 @@ const MONTHS_FULL = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julh
 
 let accessToken = null;
 let SPREADSHEET_ID = null;
-let state = { monthIdx: new Date().getMonth(), year: new Date().getFullYear(), cardIdx: 0 };
+let state = { monthIdx: new Date().getMonth(), year: new Date().getFullYear(), cardIdx: 0, creditLayout: "unico" };
 let raw = null;
 
 function fmtMoney(n){
@@ -964,8 +983,43 @@ function setupCardSelect(){
 
 const CAT_COLORS = ["#4ADE80","#F87171","#60A5FA","#FBBF24","#C084FC","#38BDF8","#FB923C","#A3E635","#F472B6","#94A3B8"];
 
+function comprasDoCartao(nomeCartao){
+  const todasCompras = (raw.compras || []).filter(r => r[2]);
+  return todasCompras.filter(c => {
+    if((c[1] || "").trim() !== nomeCartao.trim()) return false;
+    const venc = c[7];
+    if(!venc) return true;
+    const d = serialToDate(venc);
+    return d.getMonth() === state.monthIdx && d.getFullYear() === state.year;
+  });
+}
+
+function setupCreditLayoutToggle(){
+  const toggle = document.getElementById("creditLayoutToggle");
+  if(toggle.dataset.wired === "1") return;
+  toggle.dataset.wired = "1";
+  toggle.querySelectorAll(".seg-btn").forEach(btn => {
+    btn.addEventListener("click", () => {
+      toggle.querySelectorAll(".seg-btn").forEach(b => b.classList.remove("active"));
+      btn.classList.add("active");
+      state.creditLayout = btn.dataset.layout;
+      document.getElementById("cardSelect").classList.toggle("hidden", state.creditLayout === "ladoalado");
+      document.getElementById("credito-unico").classList.toggle("hidden", state.creditLayout === "ladoalado");
+      document.getElementById("credito-ladoalado").classList.toggle("hidden", state.creditLayout !== "ladoalado");
+      if(raw) renderCredito();
+    });
+  });
+}
+
 function renderCredito(){
   setupCardSelect();
+  setupCreditLayoutToggle();
+
+  if(state.creditLayout === "ladoalado"){
+    renderCreditoLadoLado();
+    return;
+  }
+
   const cartoes = (raw.cartoes || []).filter(r => r[0]);
   const idx = state.cardIdx || 0;
   const cartaoRow = cartoes[idx] || [];
@@ -980,15 +1034,7 @@ function renderCredito(){
   const isMetal = /amex|platinum|centurion/i.test(nomeCartao);
   document.getElementById("creditCard").classList.toggle("metal", isMetal);
 
-  // filtra por cartão selecionado E pelo mês/ano da régua (usando a data de vencimento da compra)
-  const todasCompras = (raw.compras || []).filter(r => r[2]);
-  const compras = todasCompras.filter(c => {
-    if((c[1] || "").trim() !== nomeCartao.trim()) return false;
-    const venc = c[7];
-    if(!venc) return true; // sem data de vencimento, não filtra por mês
-    const d = serialToDate(venc);
-    return d.getMonth() === state.monthIdx && d.getFullYear() === state.year;
-  });
+  const compras = comprasDoCartao(nomeCartao);
 
   const faturaValor = compras.reduce((sum, c) => sum + (c[5] || c[4] || 0), 0);
   document.getElementById("ccFatura").textContent = fmtMoney(faturaValor);
@@ -996,7 +1042,7 @@ function renderCredito(){
     ? compras.length + " compra" + (compras.length > 1 ? "s" : "") + " em " + MONTHS_FULL[state.monthIdx]
     : "Nenhuma compra em " + MONTHS_FULL[state.monthIdx];
 
-  renderCreditCategoryChart(compras);
+  renderCreditCategoryChart(compras, "creditCatChart");
 
   const el = document.getElementById("creditPurchases");
   if(compras.length === 0){
@@ -1022,7 +1068,45 @@ function renderCredito(){
   </table>`;
 }
 
-function renderCreditCategoryChart(compras){
+function renderCreditoLadoLado(){
+  const cartoes = (raw.cartoes || []).filter(r => r[0]);
+  const userName = (raw.nomeUsuario && raw.nomeUsuario[0] && raw.nomeUsuario[0][0]) || "—";
+  const container = document.getElementById("credito-ladoalado");
+  container.innerHTML = `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px;"></div>`;
+  const grid = container.firstElementChild;
+
+  cartoes.forEach((cartaoRow, i) => {
+    const nomeCartao = cartaoRow[0];
+    const vencimentoDia = cartaoRow[2] || "";
+    const isMetal = /amex|platinum|centurion/i.test(nomeCartao);
+    const compras = comprasDoCartao(nomeCartao);
+    const faturaValor = compras.reduce((sum, c) => sum + (c[5] || c[4] || 0), 0);
+    const chartId = "ladoCatChart" + i;
+
+    const card = document.createElement("div");
+    card.className = "credito-side";
+    card.innerHTML = `
+      <div class="credito-mini-card ${isMetal ? "metal" : ""}">
+        <div class="mini-brand">${nomeCartao}</div>
+        <div class="mini-number">•••• •••• •••• ••••</div>
+      </div>
+      <div style="display:flex;justify-content:space-between;margin-bottom:14px;font-size:12px;color:var(--muted);">
+        <span>${userName} · Vence dia ${vencimentoDia || "—"}</span>
+      </div>
+      <div style="margin-bottom:14px;">
+        <div style="font-size:10px;color:var(--muted);font-weight:700;text-transform:uppercase;">Fatura em aberto</div>
+        <div style="font-size:22px;font-weight:700;color:var(--purple);">${fmtMoney(faturaValor)}</div>
+        <div style="font-size:11px;color:var(--muted);">${compras.length} compra${compras.length===1?"":"s"} em ${MONTHS_FULL[state.monthIdx]}</div>
+      </div>
+      <h3>Gastos por categoria</h3>
+      <div id="${chartId}"></div>
+    `;
+    grid.appendChild(card);
+    renderCreditCategoryChart(compras, chartId);
+  });
+}
+
+function renderCreditCategoryChart(compras, targetId){
   const totals = {};
   compras.forEach(c => {
     const cat = (c[3] || "Outros").replace(/^[\p{Emoji_Presentation}\p{Extended_Pictographic}\uFE0F]+\s*/u, "");
@@ -1030,25 +1114,27 @@ function renderCreditCategoryChart(compras){
     totals[cat] = (totals[cat] || 0) + val;
   });
   const entries = Object.entries(totals).sort((a,b) => b[1]-a[1]);
-  const el = document.getElementById("creditCatChart");
-  if(!el) return;
+  let html;
   if(entries.length === 0){
-    el.innerHTML = '<p class="empty">Sem dados para o período</p>';
-    return;
+    html = '<p class="empty">Sem dados para o período</p>';
+  } else {
+    const max = Math.max(...entries.map(e => e[1]));
+    html = entries.map((([label, val], i) => {
+      const color = CAT_COLORS[i % CAT_COLORS.length];
+      const pct = (val / max * 100).toFixed(1);
+      return `<div style="margin-bottom:10px;">
+        <div style="display:flex;justify-content:space-between;font-size:12.5px;margin-bottom:4px;">
+          <span>${label}</span><span style="font-weight:600;">${fmtMoney(val)}</span>
+        </div>
+        <div style="height:8px;background:var(--border);border-radius:4px;overflow:hidden;">
+          <div style="height:100%;width:${pct}%;background:${color};border-radius:4px;"></div>
+        </div>
+      </div>`;
+    })).join("");
   }
-  const max = Math.max(...entries.map(e => e[1]));
-  el.innerHTML = entries.map((([label, val], i) => {
-    const color = CAT_COLORS[i % CAT_COLORS.length];
-    const pct = (val / max * 100).toFixed(1);
-    return `<div style="margin-bottom:10px;">
-      <div style="display:flex;justify-content:space-between;font-size:12.5px;margin-bottom:4px;">
-        <span>${label}</span><span style="font-weight:600;">${fmtMoney(val)}</span>
-      </div>
-      <div style="height:8px;background:var(--border);border-radius:4px;overflow:hidden;">
-        <div style="height:100%;width:${pct}%;background:${color};border-radius:4px;"></div>
-      </div>
-    </div>`;
-  })).join("");
+  const el = document.getElementById(targetId);
+  if(el) el.innerHTML = html;
+  return html;
 }
 
 // ===================== GRÁFICOS (SVG puro) =====================
