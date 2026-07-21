@@ -983,6 +983,14 @@ function setupCardSelect(){
 
 const CAT_COLORS = ["#4ADE80","#F87171","#60A5FA","#FBBF24","#C084FC","#38BDF8","#FB923C","#A3E635","#F472B6","#94A3B8"];
 
+function colorForCategory(name){
+  let hash = 0;
+  for(let i = 0; i < name.length; i++){
+    hash = (hash * 31 + name.charCodeAt(i)) | 0;
+  }
+  return CAT_COLORS[Math.abs(hash) % CAT_COLORS.length];
+}
+
 function comprasDoCartao(nomeCartao){
   const todasCompras = (raw.compras || []).filter(r => r[2]);
   return todasCompras.filter(c => {
@@ -1136,7 +1144,7 @@ function renderCreditCategoryChart(compras, targetId){
     let angle = 0;
     let slices = "";
     entries.forEach(([label, val], i) => {
-      const color = CAT_COLORS[i % CAT_COLORS.length];
+      const color = colorForCategory(label);
       const sliceDeg = (val / total) * 360;
       if(entries.length === 1){
         slices += `<circle cx="${CX}" cy="${CY}" r="${R}" fill="${color}"/>`;
@@ -1146,7 +1154,7 @@ function renderCreditCategoryChart(compras, targetId){
       angle += sliceDeg;
     });
     const legend = entries.map(([label, val], i) => {
-      const color = CAT_COLORS[i % CAT_COLORS.length];
+      const color = colorForCategory(label);
       const pct = (val / total * 100).toFixed(1);
       return `<div style="display:flex;justify-content:space-between;align-items:center;font-size:12.5px;padding:5px 0;">
         <span style="display:flex;align-items:center;gap:8px;"><i style="width:10px;height:10px;border-radius:3px;background:${color};display:inline-block;"></i>${label}</span>
