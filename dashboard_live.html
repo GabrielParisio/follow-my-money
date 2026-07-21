@@ -106,26 +106,20 @@
   .charts-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(360px,1fr));gap:16px;margin-bottom:16px;}
   .charts-row .chart-panel{margin-bottom:0;}
   .month-ruler{
-    display:flex;gap:0;overflow-x:auto;overflow-y:hidden;padding:6px 4px 14px;margin-bottom:20px;
+    display:flex;gap:8px;overflow-x:auto;overflow-y:hidden;padding:4px 4px 10px;margin-bottom:20px;
     -webkit-overflow-scrolling:touch;scrollbar-width:thin;cursor:grab;user-select:none;
     -webkit-mask-image:linear-gradient(to right, transparent, black 20px, black calc(100% - 20px), transparent);
     mask-image:linear-gradient(to right, transparent, black 20px, black calc(100% - 20px), transparent);
   }
   .month-ruler.dragging{cursor:grabbing;}
   .month-tick{
-    flex:0 0 auto;width:44px;display:flex;flex-direction:column;align-items:center;gap:6px;
-    padding-top:10px;padding-bottom:6px;cursor:pointer;
+    flex:0 0 auto;padding:9px 18px;border-radius:999px;background:var(--card);border:1px solid var(--border);
+    font-size:13px;font-weight:600;color:var(--muted);cursor:pointer;transition:all .15s ease;
   }
-  .month-tick .bar{width:4px;height:22px;border-radius:3px;background:#33354A;transition:all .15s ease;}
-  .month-tick .lbl{font-size:11px;color:var(--muted);font-weight:600;transition:color .15s ease;}
-  .month-tick.active .bar{height:32px;background:var(--gold);}
-  .month-tick.active .lbl{color:var(--text);font-weight:700;}
-  .month-tick:hover .bar{background:#5A5D78;}
+  .month-tick:hover{border-color:#5A5D78;color:var(--text);}
+  .month-tick.active{background:var(--gold);color:#0B0C11;border-color:var(--gold);}
   @media (max-width:600px){
-    .month-tick{width:36px;}
-    .month-tick .bar{width:5px;height:26px;}
-    .month-tick.active .bar{height:36px;}
-    .month-tick .lbl{font-size:10.5px;}
+    .month-tick{padding:7px 13px;font-size:11.5px;}
   }
   .alloc-bar{display:flex;height:28px;border-radius:8px;overflow:hidden;background:var(--border);}
   .alloc-bar div{height:100%;}
@@ -744,7 +738,7 @@ function buildMonthRuler(){
     const tick = document.createElement("div");
     tick.className = "month-tick" + (i === state.monthIdx ? " active" : "");
     tick.dataset.idx = i;
-    tick.innerHTML = `<div class="bar"></div><div class="lbl">${m}</div>`;
+    tick.textContent = m;
     tick.addEventListener("click", () => {
       if(ruler.dataset.wasDragged === "1") return; // evita selecionar acidentalmente ao arrastar
       state.monthIdx = i;
