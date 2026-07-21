@@ -75,6 +75,48 @@
   .legend i{width:10px;height:10px;border-radius:3px;display:inline-block;}
   .charts-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(360px,1fr));gap:16px;margin-bottom:16px;}
   .charts-row .chart-panel{margin-bottom:0;}
+  .month-ruler{
+    display:flex;gap:0;overflow-x:auto;overflow-y:hidden;padding:6px 4px 14px;margin-bottom:20px;
+    -webkit-overflow-scrolling:touch;scrollbar-width:thin;cursor:grab;user-select:none;
+  }
+  .month-ruler.dragging{cursor:grabbing;}
+  .month-tick{
+    flex:0 0 auto;width:44px;display:flex;flex-direction:column;align-items:center;gap:6px;
+    padding-top:10px;cursor:pointer;
+  }
+  .month-tick .bar{width:4px;height:22px;border-radius:3px;background:#33354A;transition:all .15s ease;}
+  .month-tick .lbl{font-size:11px;color:var(--muted);font-weight:600;transition:color .15s ease;}
+  .month-tick.active .bar{height:32px;background:var(--gold);}
+  .month-tick.active .lbl{color:var(--text);font-weight:700;}
+  .month-tick:hover .bar{background:#5A5D78;}
+  .alloc-bar{display:flex;height:28px;border-radius:8px;overflow:hidden;background:var(--border);}
+  .alloc-bar div{height:100%;}
+  table.lanc{width:100%;border-collapse:collapse;font-size:13px;}
+  table.lanc th{text-align:left;color:var(--muted);font-weight:600;font-size:10.5px;text-transform:uppercase;letter-spacing:.03em;padding:8px 10px;border-bottom:1px solid var(--border);}
+  table.lanc td{padding:9px 10px;border-bottom:1px solid var(--border);}
+  table.lanc tr:last-child td{border-bottom:none;}
+  table.lanc tr:hover td{background:rgba(255,255,255,0.02);}
+  table.lanc .val-col{text-align:right;font-weight:600;}
+  table.lanc .val-col.receita{color:var(--green);}
+  table.lanc .val-col.despesa{color:var(--red);}
+  .credito-layout{display:grid;grid-template-columns:340px 1fr;gap:16px;}
+  @media (max-width:720px){ .credito-layout{grid-template-columns:1fr;} }
+  .credit-card{
+    background:linear-gradient(135deg,#3a3d4d 0%,#1c1d27 55%,#0e0f16 100%);
+    border:1px solid #3a3d52;border-radius:18px;padding:22px;color:#fff;
+    box-shadow:0 12px 30px rgba(0,0,0,.4);position:relative;overflow:hidden;
+  }
+  .credit-card::after{
+    content:"";position:absolute;top:-40%;right:-20%;width:220px;height:220px;border-radius:50%;
+    background:radial-gradient(circle,rgba(229,181,103,.18) 0%,transparent 70%);
+  }
+  .cc-top{display:flex;justify-content:space-between;align-items:center;margin-bottom:34px;}
+  .cc-brand{font-weight:700;font-size:15px;letter-spacing:.03em;}
+  .cc-pill{font-size:10px;background:rgba(255,255,255,.12);padding:4px 10px;border-radius:999px;color:#D8D9E4;}
+  .cc-number{font-family:"Courier New",monospace;font-size:19px;letter-spacing:.12em;margin-bottom:26px;color:#E9EAF0;}
+  .cc-bottom{display:flex;justify-content:space-between;}
+  .cc-label{font-size:9px;color:#9A9CB0;text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px;}
+  .cc-value{font-size:13px;font-weight:600;}
   table.monthly{width:100%;border-collapse:collapse;font-size:12.5px;table-layout:fixed;}
   table.monthly th, table.monthly td{text-align:right;padding:9px 8px;border-bottom:1px solid var(--border);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
   table.monthly th:first-child, table.monthly td:first-child{
@@ -141,9 +183,9 @@
     <div class="tabs">
       <span class="active" data-view="mensal">Visão Mensal</span>
       <span data-view="balanco">Balanço</span>
-      <span data-view="soon">Investimentos</span>
-      <span data-view="soon">Lançamentos</span>
-      <span data-view="soon">Crédito</span>
+      <span data-view="investimentos">Investimentos</span>
+      <span data-view="lancamentos">Lançamentos</span>
+      <span data-view="credito">Crédito</span>
     </div>
     <button class="connect-btn" id="refreshBtn">Atualizar</button>
   </div>
@@ -151,9 +193,9 @@
   <h1 id="greeting">Olá</h1>
   <div class="subtitle">
     <span id="summaryLine">Aqui está o resumo</span>
-    <select id="monthSelect"></select>
     <select id="yearSelect"></select>
   </div>
+  <div id="monthRuler" class="month-ruler"></div>
 
   <div id="view-mensal" class="view active">
   <div class="cards">
@@ -220,6 +262,68 @@
     </div>
   </div>
 
+  <div id="view-investimentos" class="view">
+    <div class="cards" style="margin-bottom:16px;">
+      <div class="card"><div class="accent" style="background:var(--blue)"></div>
+        <div class="body"><div class="label">Reserva</div>
+          <div class="value" id="iReserva">—</div></div></div>
+      <div class="card"><div class="accent" style="background:var(--green)"></div>
+        <div class="body"><div class="label">Renda Fixa</div>
+          <div class="value" id="iRendaFixa">—</div></div></div>
+      <div class="card"><div class="accent" style="background:var(--purple)"></div>
+        <div class="body"><div class="label">Renda Variável</div>
+          <div class="value" id="iRendaVariavel">—</div></div></div>
+      <div class="card"><div class="accent" style="background:var(--gold)"></div>
+        <div class="body"><div class="label">Total Investido</div>
+          <div class="value" id="iTotal" style="color:var(--gold)">—</div></div></div>
+    </div>
+    <div class="chart-panel">
+      <h2>Alocação da carteira</h2>
+      <div id="allocBar" class="alloc-bar"></div>
+      <div class="legend" id="allocLegend"></div>
+    </div>
+  </div>
+
+  <div id="view-lancamentos" class="view">
+    <div class="chart-panel">
+      <h2>Lançamentos do mês</h2>
+      <div id="lancTable" style="overflow-x:auto;"></div>
+    </div>
+  </div>
+
+  <div id="view-credito" class="view">
+    <div class="credito-layout">
+      <div>
+        <div id="creditCard" class="credit-card">
+          <div class="cc-top">
+            <span class="cc-brand" id="ccBrand">CARTÃO</span>
+            <span class="cc-pill">Crédito</span>
+          </div>
+          <div class="cc-number" id="ccNumber">•••• •••• •••• ••••</div>
+          <div class="cc-bottom">
+            <div>
+              <div class="cc-label">Titular</div>
+              <div class="cc-value" id="ccHolder">—</div>
+            </div>
+            <div>
+              <div class="cc-label">Vencimento</div>
+              <div class="cc-value" id="ccExpiry">—</div>
+            </div>
+          </div>
+        </div>
+        <div class="chart-panel" style="margin-top:16px;">
+          <div class="label" style="color:var(--muted);font-size:11px;font-weight:700;text-transform:uppercase;">Fatura em aberto</div>
+          <div class="value" id="ccFatura" style="font-size:26px;font-weight:700;color:var(--purple);margin:6px 0;">—</div>
+          <div class="sub" id="ccFaturaSub" style="color:var(--muted);font-size:12px;"></div>
+        </div>
+      </div>
+      <div class="chart-panel">
+        <h2>Compras recentes</h2>
+        <div id="creditPurchases"></div>
+      </div>
+    </div>
+  </div>
+
   <div id="view-soon" class="view">
     <div class="chart-panel">
       <h2>Em construção</h2>
@@ -279,13 +383,35 @@ function initTokenClient(){
     scope: "https://www.googleapis.com/auth/spreadsheets.readonly https://www.googleapis.com/auth/drive.metadata.readonly",
     callback: (resp) => {
       if(resp.error){
-        document.getElementById("gateError").textContent = "Erro ao autenticar: " + resp.error;
+        // Silent renewal failed (sessão do Google expirou/foi revogada) — pede login manual
+        document.getElementById("gateError").textContent =
+          resp.error === "immediate_failed" || resp.error === "user_logged_out"
+            ? "" // não é um erro real pro usuário, só significa que precisa clicar de novo
+            : "Erro ao autenticar: " + resp.error;
+        showScreen("gate");
         return;
       }
       accessToken = resp.access_token;
-      resolveWorkspace();
+      localStorage.setItem("ftm_connected", "1");
+      // atalho: se já sabemos a planilha de sessões anteriores, pula a busca no Drive
+      const cachedId = localStorage.getItem("ftm_spreadsheetId");
+      if(cachedId){
+        SPREADSHEET_ID = cachedId;
+        showScreen("dash");
+        loadData().catch(() => resolveWorkspace()); // se falhar, procura de novo
+      } else {
+        resolveWorkspace();
+      }
     }
   });
+}
+
+// Tenta reconectar sem interação, usando a sessão do Google já ativa no navegador.
+// Se falhar (sessão expirada/revogada), o próprio callback acima mostra o botão de conectar.
+function trySilentReconnect(client){
+  if(localStorage.getItem("ftm_connected") === "1"){
+    client.requestAccessToken({ prompt: "" });
+  }
 }
 
 // ===================== DESCOBERTA DA PLANILHA (multi-usuário) =====================
@@ -309,6 +435,7 @@ async function resolveWorkspace(){
     }
     if(files.length === 1){
       SPREADSHEET_ID = files[0].id;
+      localStorage.setItem("ftm_spreadsheetId", SPREADSHEET_ID);
       showScreen("dash");
       loadData();
       return;
@@ -322,6 +449,7 @@ async function resolveWorkspace(){
       btn.textContent = f.name;
       btn.addEventListener("click", () => {
         SPREADSHEET_ID = f.id;
+        localStorage.setItem("ftm_spreadsheetId", SPREADSHEET_ID);
         showScreen("dash");
         loadData();
       });
@@ -343,14 +471,18 @@ async function fetchRanges(ranges){
 
 async function loadData(){
   try{
-    const [balanco, cadastro, orcadoTotal, lanc, credito] = await fetchRanges([
+    const [balanco, cadastro, orcadoTotal, lanc, credito, invest, cartoes, compras, nomeUsuario] = await fetchRanges([
       "Balanço!D44:O56",
       "Cadastro!B7:F27",
       "Cadastro!F4",
       "Lançamentos(fx)!A2:K3000",
-      "Crédito!C8:D8"
+      "Crédito!C8:D8",
+      "Investimentos!C4:C7",
+      "Cadastro!H7:K8",
+      "Crédito!B10:I30",
+      "Cadastro!T6"
     ]);
-    raw = { balanco, cadastro, orcadoTotal, lanc, credito };
+    raw = { balanco, cadastro, orcadoTotal, lanc, credito, invest, cartoes, compras, nomeUsuario };
     setupSelectors();
     render();
   }catch(err){
@@ -358,26 +490,68 @@ async function loadData(){
   }
 }
 
-function setupSelectors(){
-  const mSel = document.getElementById("monthSelect");
-  const ySel = document.getElementById("yearSelect");
-  if(mSel.options.length === 0){
-    MONTHS.forEach((m,i) => {
-      const o = document.createElement("option");
-      o.value = i; o.textContent = m;
-      mSel.appendChild(o);
+function buildMonthRuler(){
+  const ruler = document.getElementById("monthRuler");
+  if(ruler.children.length > 0) { updateMonthRuler(); return; }
+  MONTHS.forEach((m, i) => {
+    const tick = document.createElement("div");
+    tick.className = "month-tick" + (i === state.monthIdx ? " active" : "");
+    tick.dataset.idx = i;
+    tick.innerHTML = `<div class="bar"></div><div class="lbl">${m}</div>`;
+    tick.addEventListener("click", () => {
+      if(ruler.dataset.wasDragged === "1") return; // evita selecionar acidentalmente ao arrastar
+      state.monthIdx = i;
+      updateMonthRuler();
+      render();
+      if(raw) renderCharts();
     });
+    ruler.appendChild(tick);
+  });
+
+  // arrastar com o mouse pra rolar (like a native touch swipe, mas no desktop)
+  let isDown = false, startX = 0, scrollStart = 0, moved = false;
+  ruler.addEventListener("mousedown", (e) => {
+    isDown = true; moved = false;
+    ruler.classList.add("dragging");
+    startX = e.pageX; scrollStart = ruler.scrollLeft;
+  });
+  window.addEventListener("mouseup", () => {
+    isDown = false;
+    ruler.classList.remove("dragging");
+    setTimeout(() => { ruler.dataset.wasDragged = "0"; }, 0);
+  });
+  window.addEventListener("mousemove", (e) => {
+    if(!isDown) return;
+    e.preventDefault();
+    const dx = e.pageX - startX;
+    if(Math.abs(dx) > 4){ moved = true; ruler.dataset.wasDragged = "1"; }
+    ruler.scrollLeft = scrollStart - dx;
+  });
+
+  // centraliza no mês atual ao carregar
+  const activeTick = ruler.querySelector(".month-tick.active");
+  if(activeTick) activeTick.scrollIntoView({ inline: "center", block: "nearest" });
+}
+
+function updateMonthRuler(){
+  document.querySelectorAll(".month-tick").forEach(t => {
+    t.classList.toggle("active", +t.dataset.idx === state.monthIdx);
+  });
+}
+
+function setupSelectors(){
+  const ySel = document.getElementById("yearSelect");
+  if(ySel.options.length === 0){
     const years = [2024,2025,2026,2027,2028];
     years.forEach(y => {
       const o = document.createElement("option");
       o.value = y; o.textContent = y;
       ySel.appendChild(o);
     });
-    mSel.value = state.monthIdx;
     ySel.value = state.year;
-    mSel.addEventListener("change", () => { state.monthIdx = +mSel.value; render(); if(raw) renderCharts(); });
     ySel.addEventListener("change", () => { state.year = +ySel.value; render(); if(raw) renderCharts(); });
   }
+  buildMonthRuler();
 }
 
 function render(){
@@ -394,7 +568,8 @@ function render(){
   const saldoReal = row(50)[mi] || 0;
   const orcado = (orcadoTotal[0] && orcadoTotal[0][0]) || 0;
 
-  document.getElementById("greeting").textContent = greetingWord() + ", Gabriel";
+  const userName = (raw.nomeUsuario && raw.nomeUsuario[0] && raw.nomeUsuario[0][0]) || "";
+  document.getElementById("greeting").textContent = greetingWord() + (userName ? ", " + userName : "");
   document.getElementById("summaryLine").textContent = `Aqui está o resumo de ${MONTHS_FULL[mi]} · ${state.year}`;
 
   document.getElementById("cReceita").textContent = fmtMoney(receitaReal);
@@ -482,9 +657,113 @@ function setupTabs(){
       tab.classList.add("active");
       document.querySelectorAll(".view").forEach(v => v.classList.remove("active"));
       document.getElementById("view-" + tab.dataset.view).classList.add("active");
-      if(tab.dataset.view === "balanco" && raw) renderCharts();
+      if(!raw) return;
+      if(tab.dataset.view === "balanco") renderCharts();
+      if(tab.dataset.view === "investimentos") renderInvestimentos();
+      if(tab.dataset.view === "lancamentos") renderLancamentos();
+      if(tab.dataset.view === "credito") renderCredito();
     });
   });
+}
+
+// ===================== INVESTIMENTOS =====================
+function renderInvestimentos(){
+  const rows = raw.invest || [];
+  const reserva = (rows[0] && rows[0][0]) || 0;
+  const rendaFixa = (rows[1] && rows[1][0]) || 0;
+  const rendaVariavel = (rows[2] && rows[2][0]) || 0;
+  const total = (rows[3] && rows[3][0]) || (reserva + rendaFixa + rendaVariavel);
+
+  document.getElementById("iReserva").textContent = fmtMoney(reserva);
+  document.getElementById("iRendaFixa").textContent = fmtMoney(rendaFixa);
+  document.getElementById("iRendaVariavel").textContent = fmtMoney(rendaVariavel);
+  document.getElementById("iTotal").textContent = fmtMoney(total);
+
+  const parts = [
+    { label: "Reserva", value: reserva, color: "#60A5FA" },
+    { label: "Renda Fixa", value: rendaFixa, color: "#4ADE80" },
+    { label: "Renda Variável", value: rendaVariavel, color: "#C084FC" },
+  ];
+  const sum = parts.reduce((a,p) => a + p.value, 0) || 1;
+  const bar = document.getElementById("allocBar");
+  bar.innerHTML = parts.map(p => `<div style="width:${(p.value/sum*100).toFixed(1)}%;background:${p.color};"></div>`).join("");
+  const legend = document.getElementById("allocLegend");
+  legend.innerHTML = parts.map(p =>
+    `<span><i style="background:${p.color}"></i>${p.label} — ${fmtPct(p.value/sum)}</span>`
+  ).join("");
+}
+
+// ===================== LANÇAMENTOS =====================
+function renderLancamentos(){
+  const mi = state.monthIdx;
+  const items = (raw.lanc || [])
+    .filter(r => r[5] && (r[9]-1) === mi && r[10] === state.year)
+    .map(r => ({ date: r[1], desc: r[2] || "", cat: r[5], tipo: r[6], valor: r[7] || 0, status: r[8] || "" }))
+    .sort((a,b) => (a.date||0) - (b.date||0));
+
+  const el = document.getElementById("lancTable");
+  if(items.length === 0){
+    el.innerHTML = '<p class="empty">Nenhum lançamento neste mês</p>';
+    return;
+  }
+  let rows = items.map(it => {
+    const cleanCat = (it.cat||"").replace(/^[\p{Emoji_Presentation}\p{Extended_Pictographic}\uFE0F]+\s*/u, "");
+    const valClass = it.tipo === "Receita" ? "receita" : "despesa";
+    const sign = it.tipo === "Receita" ? "+" : "-";
+    const dateLabel = it.date ? fmtDate(serialToDate(it.date)) : "";
+    const statusLabel = it.status || "Pendente";
+    return `<tr>
+      <td>${dateLabel}</td>
+      <td>${it.desc}</td>
+      <td>${cleanCat}</td>
+      <td><span class="pill ${it.status === '✅ Pago' ? '' : 'soon'}">${statusLabel}</span></td>
+      <td class="val-col ${valClass}">${sign}${fmtMoney(Math.abs(it.valor))}</td>
+    </tr>`;
+  }).join("");
+  el.innerHTML = `<table class="lanc">
+    <thead><tr><th>Data</th><th>Descrição</th><th>Categoria</th><th>Status</th><th style="text-align:right;">Valor</th></tr></thead>
+    <tbody>${rows}</tbody>
+  </table>`;
+}
+
+// ===================== CRÉDITO =====================
+function renderCredito(){
+  const cartaoRow = (raw.cartoes && raw.cartoes[0]) || [];
+  const nomeCartao = cartaoRow[0] || "Cartão";
+  const vencimentoDia = cartaoRow[2] || "";
+  const userName = (raw.nomeUsuario && raw.nomeUsuario[0] && raw.nomeUsuario[0][0]) || "—";
+
+  document.getElementById("ccBrand").textContent = nomeCartao;
+  document.getElementById("ccHolder").textContent = userName;
+  document.getElementById("ccExpiry").textContent = vencimentoDia ? "Dia " + vencimentoDia : "—";
+
+  const faturaMes = (raw.credito[0] && raw.credito[0][0]) || "";
+  const faturaValor = (raw.credito[0] && raw.credito[0][1]) || 0;
+  document.getElementById("ccFatura").textContent = fmtMoney(faturaValor);
+  document.getElementById("ccFaturaSub").textContent = faturaMes ? "Fatura de " + faturaMes : "";
+
+  const compras = (raw.compras || []).filter(r => r[2]); // tem descrição
+  const el = document.getElementById("creditPurchases");
+  if(compras.length === 0){
+    el.innerHTML = '<p class="empty">Nenhuma compra registrada</p>';
+    return;
+  }
+  const rows = compras.map(c => {
+    const [data, cartao, desc, cat, valorTotal, valorParcela, parcela] = c;
+    const cleanCat = (cat||"").replace(/^[\p{Emoji_Presentation}\p{Extended_Pictographic}\uFE0F]+\s*/u, "");
+    const dateLabel = data ? fmtDate(serialToDate(data)) : "";
+    const parcelaLabel = parcela ? ` <span class="pill">${parcela}</span>` : "";
+    return `<tr>
+      <td>${dateLabel}</td>
+      <td>${desc}${parcelaLabel}</td>
+      <td>${cleanCat}</td>
+      <td class="val-col despesa">${fmtMoney(valorParcela || valorTotal)}</td>
+    </tr>`;
+  }).join("");
+  el.innerHTML = `<table class="lanc">
+    <thead><tr><th>Data</th><th>Descrição</th><th>Categoria</th><th style="text-align:right;">Valor</th></tr></thead>
+    <tbody>${rows}</tbody>
+  </table>`;
 }
 
 // ===================== GRÁFICOS (SVG puro) =====================
@@ -628,10 +907,18 @@ const LOGO_DATA_URI = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAPAAAACiCAY
 window.onload = () => {
   document.querySelectorAll(".brand-logo").forEach(img => img.src = LOGO_DATA_URI);
   const client = initTokenClient();
-  document.getElementById("connectBtn").addEventListener("click", () => client.requestAccessToken());
+  document.getElementById("connectBtn").addEventListener("click", () => client.requestAccessToken({ prompt: "consent" }));
   document.getElementById("retryBtn").addEventListener("click", () => resolveWorkspace());
   document.getElementById("refreshBtn").addEventListener("click", () => { if(accessToken) loadData(); });
   setupTabs();
+
+  // Renova a sessão sozinho ao abrir a página (sem pedir login de novo)
+  trySilentReconnect(client);
+
+  // Mantém o token vivo em segundo plano enquanto a aba fica aberta (renova a cada ~45min)
+  setInterval(() => {
+    if(localStorage.getItem("ftm_connected") === "1") client.requestAccessToken({ prompt: "" });
+  }, 45 * 60 * 1000);
 };
 </script>
 </body>
