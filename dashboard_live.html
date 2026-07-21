@@ -725,8 +725,7 @@ function renderCategorias(lanc, mi){
     return;
   }
   sorted.forEach(([name, val]) => {
-    const cleanName = name.replace(/^[\p{Emoji_Presentation}\p{Extended_Pictographic}\uFE0F]+\s*/u, "");
-    el.innerHTML += `<div class="row"><span class="name">${cleanName}</span><span class="val">${fmtMoney(val)}</span></div>`;
+    el.innerHTML += `<div class="row"><span class="name">${name}</span><span class="val">${fmtMoney(val)}</span></div>`;
   });
 }
 
@@ -840,7 +839,8 @@ function renderLancamentos(){
 }
 
 function lancRowHtml(it){
-  const cleanCat = (it.categoria||"").replace(/^[\p{Emoji_Presentation}\p{Extended_Pictographic}\uFE0F]+\s*/u, "");
+  const cleanCat = it.categoria || "";
+  const catColor = cleanCat ? colorForCategory(cleanCat) : "var(--muted)";
   const valClass = it.tipo === "Receita" ? "receita" : (it.tipo === "Despesa" ? "despesa" : "");
   const sign = it.tipo === "Receita" ? "+" : (it.tipo === "Despesa" ? "-" : "");
   const dateLabel = it.dataVenc ? fmtDate(serialToDate(it.dataVenc)) : "";
@@ -848,7 +848,7 @@ function lancRowHtml(it){
   return `<tr id="lanc-row-${it.row}">
     <td>${dateLabel}</td>
     <td>${it.desc}</td>
-    <td>${cleanCat}</td>
+    <td><span style="display:inline-flex;align-items:center;gap:7px;"><i style="width:8px;height:8px;border-radius:50%;background:${catColor};display:inline-block;flex-shrink:0;"></i>${cleanCat}</span></td>
     <td><button class="pill pill-btn ${isPago ? "" : "soon"}" onclick="toggleStatus(${it.row}, ${isPago})">${isPago ? "Pago" : "Pendente"}</button></td>
     <td class="val-col ${valClass}">${sign}${fmtMoney(Math.abs(it.valor))}</td>
     <td class="row-actions"><button class="icon-btn" onclick="openEditForm(${it.row})" title="Editar">✏️</button></td>
@@ -1061,13 +1061,14 @@ function renderCredito(){
   const sorted = [...compras].sort((a,b) => (a[0]||0) - (b[0]||0));
   const rows = sorted.map(c => {
     const [data, cartao, desc, cat, valorTotal, valorParcela, parcela] = c;
-    const cleanCat = (cat||"").replace(/^[\p{Emoji_Presentation}\p{Extended_Pictographic}\uFE0F]+\s*/u, "");
+    const cleanCat = cat || "";
+    const catColor = cleanCat ? colorForCategory(cleanCat) : "var(--muted)";
     const dateLabel = data ? fmtDate(serialToDate(data)) : "";
     const parcelaLabel = parcela ? ` <span class="pill">${parcela}</span>` : "";
     return `<tr>
       <td style="color:var(--muted);font-size:12px;">${dateLabel}</td>
       <td>${desc}${parcelaLabel}</td>
-      <td><span class="pill">${cleanCat}</span></td>
+      <td><span class="pill"><i style="width:8px;height:8px;border-radius:50%;background:${catColor};display:inline-block;margin-right:6px;"></i>${cleanCat}</span></td>
       <td class="val-col despesa">${fmtMoney(valorParcela || valorTotal)}</td>
     </tr>`;
   }).join("");
@@ -1130,7 +1131,7 @@ function pieSlicePath(cx, cy, r, startDeg, endDeg){
 function renderCreditCategoryChart(compras, targetId){
   const totals = {};
   compras.forEach(c => {
-    const cat = (c[3] || "Outros").replace(/^[\p{Emoji_Presentation}\p{Extended_Pictographic}\uFE0F]+\s*/u, "");
+    const cat = c[3] || "🤷 Outros";
     const val = c[5] || c[4] || 0;
     totals[cat] = (totals[cat] || 0) + val;
   });
