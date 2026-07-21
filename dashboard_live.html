@@ -99,6 +99,24 @@
   table.lanc .val-col{text-align:right;font-weight:600;}
   table.lanc .val-col.receita{color:var(--green);}
   table.lanc .val-col.despesa{color:var(--red);}
+  table.lanc td.editable{cursor:pointer;}
+  table.lanc td.editable:hover{background:rgba(229,181,103,.08);}
+  .pill-btn{border:none;cursor:pointer;font-family:inherit;}
+  .row-actions{white-space:nowrap;}
+  .icon-btn{background:none;border:none;color:var(--muted);cursor:pointer;font-size:13px;padding:4px 6px;}
+  .icon-btn:hover{color:var(--gold);}
+  .edit-form{
+    background:var(--card);border:1px solid var(--border);border-radius:12px;padding:16px;margin-bottom:14px;
+    display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;align-items:end;
+  }
+  .edit-form label{font-size:10.5px;color:var(--muted);font-weight:700;text-transform:uppercase;display:block;margin-bottom:4px;}
+  .edit-form input, .edit-form select{
+    width:100%;background:var(--panel);border:1px solid var(--border);color:var(--text);
+    border-radius:8px;padding:7px 9px;font-size:13px;
+  }
+  .edit-form .actions{display:flex;gap:8px;grid-column:1/-1;}
+  .save-btn{background:var(--green);color:#0B0C11;border:none;padding:8px 16px;border-radius:8px;font-weight:700;font-size:13px;cursor:pointer;}
+  .cancel-btn{background:none;border:1px solid var(--border);color:var(--muted);padding:8px 16px;border-radius:8px;font-size:13px;cursor:pointer;}
   .credito-layout{display:grid;grid-template-columns:340px 1fr;gap:16px;}
   @media (max-width:720px){ .credito-layout{grid-template-columns:1fr;} }
   .credit-card{
@@ -310,7 +328,11 @@
 
   <div id="view-lancamentos" class="view">
     <div class="chart-panel">
-      <h2>Lançamentos do mês</h2>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
+        <h2 style="margin:0;">Lançamentos do mês</h2>
+        <button class="connect-btn" id="novoLancBtn">+ Novo lançamento</button>
+      </div>
+      <div id="novoLancForm" class="hidden"></div>
       <div id="lancTable" style="overflow-x:auto;"></div>
     </div>
   </div>
@@ -411,7 +433,7 @@ function showScreen(id){
 function initTokenClient(){
   return google.accounts.oauth2.initTokenClient({
     client_id: CLIENT_ID,
-    scope: "https://www.googleapis.com/auth/spreadsheets.readonly https://www.googleapis.com/auth/drive.metadata.readonly",
+    scope: "https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/drive.metadata.readonly",
     callback: (resp) => {
       if(resp.error){
         // Silent renewal failed (sessão do Google expirou/foi revogada) — pede login manual
@@ -502,7 +524,7 @@ async function fetchRanges(ranges){
 
 async function loadData(){
   try{
-    const [balanco, cadastro, orcadoTotal, lanc, credito, invest, cartoes, compras, nomeUsuario] = await fetchRanges([
+    const [balanco, cadastro, orcadoTotal, lanc, credito, invest, cartoes, compras, nomeUsuario, debito] = await fetchRanges([
       "Balanço!D44:O56",
       "Cadastro!B7:F27",
       "Cadastro!F4",
@@ -511,14 +533,43 @@ async function loadData(){
       "Investimentos!C4:C7",
       "Cadastro!H7:K8",
       "Crédito!B10:I30",
-      "Cadastro!T6"
+      "Cadastro!T6",
+      "Débito!B6:K3000"
     ]);
-    raw = { balanco, cadastro, orcadoTotal, lanc, credito, invest, cartoes, compras, nomeUsuario };
+    raw = { balanco, cadastro, orcadoTotal, lanc, credito, invest, cartoes, compras, nomeUsuario, debito };
     setupSelectors();
     render();
   }catch(err){
     alert("Erro ao carregar dados: " + err.message);
   }
+}
+
+// ===================== ESCRITA NA PLANILHA =====================
+function dateToSerial(d){
+  const utcMidnight = Date.UTC(d.getFullYear(), d.getMonth(), d.getDate());
+  return utcMidnight / 86400000 + 25569;
+}
+
+async function writeCell(a1Range, value){
+  const url = `https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}/values/${encodeURIComponent(a1Range)}?valueInputOption=USER_ENTERED`;
+  const res = await fetch(url, {
+    method: "PUT",
+    headers: { Authorization: "Bearer " + accessToken, "Content-Type": "application/json" },
+    body: JSON.stringify({ values: [[value]] })
+  });
+  if(!res.ok) throw new Error("Falha ao salvar (" + res.status + ")");
+  return res.json();
+}
+
+async function appendRow(sheetName, rowValues){
+  const url = `https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}/values/${encodeURIComponent(sheetName + "!B:K")}:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`;
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { Authorization: "Bearer " + accessToken, "Content-Type": "application/json" },
+    body: JSON.stringify({ values: [rowValues] })
+  });
+  if(!res.ok) throw new Error("Falha ao adicionar (" + res.status + ")");
+  return res.json();
 }
 
 function buildMonthRuler(){
@@ -725,36 +776,162 @@ function renderInvestimentos(){
 }
 
 // ===================== LANÇAMENTOS =====================
+function debitoRows(){
+  // raw.debito vem de 'Débito'!B6:K3000 -> índice0=B ... índice9=K
+  // B=DataLanç C=DataVenc D=Desc E=Fixa F=(vazio) G=Conta H=Categoria I=Tipo J=Valor K=Status
+  return (raw.debito || []).map((r, i) => ({
+    row: 6 + i,
+    dataLanc: r[0], dataVenc: r[1], desc: r[2] || "", conta: r[5] || "",
+    categoria: r[6] || "", tipo: r[7] || "", valor: r[8] || 0, status: r[9] || ""
+  })).filter(it => it.desc || it.categoria);
+}
+
+function categoriaOptions(selected){
+  const cats = (raw.cadastro || []).map(r => r[0]).filter(Boolean);
+  return cats.map(c => `<option value="${c}" ${c===selected?"selected":""}>${c}</option>`).join("");
+}
+
 function renderLancamentos(){
   const mi = state.monthIdx;
-  const items = (raw.lanc || [])
-    .filter(r => r[5] && (r[9]-1) === mi && r[10] === state.year)
-    .map(r => ({ date: r[1], desc: r[2] || "", cat: r[5], tipo: r[6], valor: r[7] || 0, status: r[8] || "" }))
-    .sort((a,b) => (a.date||0) - (b.date||0));
+  const items = debitoRows()
+    .filter(it => it.dataVenc && serialToDate(it.dataVenc).getMonth() === mi && serialToDate(it.dataVenc).getFullYear() === state.year)
+    .sort((a,b) => (a.dataVenc||0) - (b.dataVenc||0));
 
   const el = document.getElementById("lancTable");
   if(items.length === 0){
     el.innerHTML = '<p class="empty">Nenhum lançamento neste mês</p>';
     return;
   }
-  let rows = items.map(it => {
-    const cleanCat = (it.cat||"").replace(/^[\p{Emoji_Presentation}\p{Extended_Pictographic}\uFE0F]+\s*/u, "");
-    const valClass = it.tipo === "Receita" ? "receita" : "despesa";
-    const sign = it.tipo === "Receita" ? "+" : "-";
-    const dateLabel = it.date ? fmtDate(serialToDate(it.date)) : "";
-    const statusLabel = it.status || "Pendente";
-    return `<tr>
-      <td>${dateLabel}</td>
-      <td>${it.desc}</td>
-      <td>${cleanCat}</td>
-      <td><span class="pill ${it.status === '✅ Pago' ? '' : 'soon'}">${statusLabel}</span></td>
-      <td class="val-col ${valClass}">${sign}${fmtMoney(Math.abs(it.valor))}</td>
-    </tr>`;
-  }).join("");
-  el.innerHTML = `<table class="lanc">
-    <thead><tr><th>Data</th><th>Descrição</th><th>Categoria</th><th>Status</th><th style="text-align:right;">Valor</th></tr></thead>
+  const rows = items.map(it => lancRowHtml(it)).join("");
+  el.innerHTML = `<table class="lanc" id="lancTableInner">
+    <thead><tr><th>Data</th><th>Descrição</th><th>Categoria</th><th>Status</th><th style="text-align:right;">Valor</th><th></th></tr></thead>
     <tbody>${rows}</tbody>
   </table>`;
+}
+
+function lancRowHtml(it){
+  const cleanCat = (it.categoria||"").replace(/^[\p{Emoji_Presentation}\p{Extended_Pictographic}\uFE0F]+\s*/u, "");
+  const valClass = it.tipo === "Receita" ? "receita" : (it.tipo === "Despesa" ? "despesa" : "");
+  const sign = it.tipo === "Receita" ? "+" : (it.tipo === "Despesa" ? "-" : "");
+  const dateLabel = it.dataVenc ? fmtDate(serialToDate(it.dataVenc)) : "";
+  const isPago = it.status === "✅ Pago";
+  return `<tr id="lanc-row-${it.row}">
+    <td>${dateLabel}</td>
+    <td>${it.desc}</td>
+    <td>${cleanCat}</td>
+    <td><button class="pill pill-btn ${isPago ? "" : "soon"}" onclick="toggleStatus(${it.row}, ${isPago})">${isPago ? "Pago" : "Pendente"}</button></td>
+    <td class="val-col ${valClass}">${sign}${fmtMoney(Math.abs(it.valor))}</td>
+    <td class="row-actions"><button class="icon-btn" onclick="openEditForm(${it.row})" title="Editar">✏️</button></td>
+  </tr>`;
+}
+
+async function toggleStatus(row, isPago){
+  try{
+    await writeCell(`Débito!K${row}`, isPago ? "" : "✅ Pago");
+    const it = debitoRows().find(x => x.row === row);
+    if(it) it.status = isPago ? "" : "✅ Pago";
+    // atualiza só a linha visual, sem recarregar tudo
+    const tr = document.getElementById("lanc-row-" + row);
+    if(tr && it){ tr.outerHTML = lancRowHtml(it); }
+  }catch(err){
+    alert("Não foi possível salvar: " + err.message);
+  }
+}
+
+function openEditForm(row){
+  const it = debitoRows().find(x => x.row === row);
+  if(!it) return;
+  const formEl = document.getElementById("novoLancForm");
+  formEl.classList.remove("hidden");
+  formEl.dataset.editingRow = row;
+  formEl.innerHTML = `
+    <div class="edit-form">
+      <div><label>Descrição</label><input id="fDesc" value="${it.desc}"></div>
+      <div><label>Categoria</label><select id="fCat">${categoriaOptions(it.categoria)}</select></div>
+      <div><label>Tipo</label>
+        <select id="fTipo">
+          <option value="Despesa" ${it.tipo==="Despesa"?"selected":""}>Despesa</option>
+          <option value="Receita" ${it.tipo==="Receita"?"selected":""}>Receita</option>
+        </select>
+      </div>
+      <div><label>Valor</label><input id="fValor" type="number" step="0.01" value="${it.valor}"></div>
+      <div class="actions">
+        <button class="save-btn" onclick="saveEdit(${row})">Salvar alterações</button>
+        <button class="cancel-btn" onclick="closeForm()">Cancelar</button>
+      </div>
+    </div>`;
+  formEl.scrollIntoView({ behavior: "smooth", block: "center" });
+}
+
+function openNewForm(){
+  const formEl = document.getElementById("novoLancForm");
+  formEl.classList.remove("hidden");
+  delete formEl.dataset.editingRow;
+  const today = new Date();
+  const todayStr = today.toISOString().slice(0,10);
+  formEl.innerHTML = `
+    <div class="edit-form">
+      <div><label>Data</label><input id="fData" type="date" value="${todayStr}"></div>
+      <div><label>Descrição</label><input id="fDesc" placeholder="Ex: Mercado"></div>
+      <div><label>Categoria</label><select id="fCat">${categoriaOptions()}</select></div>
+      <div><label>Tipo</label>
+        <select id="fTipo">
+          <option value="Despesa">Despesa</option>
+          <option value="Receita">Receita</option>
+        </select>
+      </div>
+      <div><label>Conta</label><input id="fConta" placeholder="Ex: Banco Principal"></div>
+      <div><label>Valor</label><input id="fValor" type="number" step="0.01" placeholder="0.00"></div>
+      <div class="actions">
+        <button class="save-btn" onclick="saveNew()">Adicionar lançamento</button>
+        <button class="cancel-btn" onclick="closeForm()">Cancelar</button>
+      </div>
+    </div>`;
+}
+
+function closeForm(){
+  const formEl = document.getElementById("novoLancForm");
+  formEl.classList.add("hidden");
+  formEl.innerHTML = "";
+}
+
+async function saveEdit(row){
+  const desc = document.getElementById("fDesc").value;
+  const cat = document.getElementById("fCat").value;
+  const tipo = document.getElementById("fTipo").value;
+  const valor = parseFloat(document.getElementById("fValor").value) || 0;
+  try{
+    await writeCell(`Débito!D${row}`, desc);
+    await writeCell(`Débito!H${row}`, cat);
+    await writeCell(`Débito!I${row}`, tipo);
+    await writeCell(`Débito!J${row}`, valor);
+    closeForm();
+    await loadData();
+    renderLancamentos();
+  }catch(err){
+    alert("Não foi possível salvar: " + err.message);
+  }
+}
+
+async function saveNew(){
+  const dataStr = document.getElementById("fData").value;
+  const desc = document.getElementById("fDesc").value;
+  const cat = document.getElementById("fCat").value;
+  const tipo = document.getElementById("fTipo").value;
+  const conta = document.getElementById("fConta").value;
+  const valor = parseFloat(document.getElementById("fValor").value) || 0;
+  if(!desc || !valor){ alert("Preencha ao menos descrição e valor."); return; }
+  const [y, m, d] = dataStr.split("-");
+  const dataBR = `${d}/${m}/${y}`;
+  const rowValues = [dataBR, dataBR, desc, "", "", conta, cat, tipo, valor, ""];
+  try{
+    await appendRow("Débito", rowValues);
+    closeForm();
+    await loadData();
+    renderLancamentos();
+  }catch(err){
+    alert("Não foi possível adicionar: " + err.message);
+  }
 }
 
 // ===================== CRÉDITO =====================
@@ -971,6 +1148,7 @@ window.onload = () => {
     raw = null;
     resolveWorkspace();
   });
+  document.getElementById("novoLancBtn").addEventListener("click", openNewForm);
   setupTabs();
 
   // Renova a sessão sozinho ao abrir a página (sem pedir login de novo)
