@@ -102,21 +102,23 @@
   .credito-layout{display:grid;grid-template-columns:340px 1fr;gap:16px;}
   @media (max-width:720px){ .credito-layout{grid-template-columns:1fr;} }
   .credit-card{
-    background:linear-gradient(135deg,#3a3d4d 0%,#1c1d27 55%,#0e0f16 100%);
-    border:1px solid #3a3d52;border-radius:18px;padding:22px;color:#fff;
-    box-shadow:0 12px 30px rgba(0,0,0,.4);position:relative;overflow:hidden;
+    background:
+      linear-gradient(115deg,transparent 40%,rgba(255,255,255,.06) 50%,transparent 60%),
+      linear-gradient(135deg,transparent 55%,rgba(255,255,255,.04) 62%,transparent 68%),
+      linear-gradient(150deg,#34364a 0%,#1a1b24 45%,#0a0a0f 100%);
+    border:1px solid #2c2e3d;border-radius:18px;padding:22px;color:#fff;
+    box-shadow:0 16px 40px rgba(0,0,0,.5);position:relative;overflow:hidden;
   }
   .credit-card::after{
-    content:"";position:absolute;top:-40%;right:-20%;width:220px;height:220px;border-radius:50%;
-    background:radial-gradient(circle,rgba(229,181,103,.18) 0%,transparent 70%);
-  }
-  .credit-card::before{
-    content:"";position:absolute;inset:0;pointer-events:none;
-    background:linear-gradient(115deg,transparent 40%,rgba(255,255,255,.05) 50%,transparent 60%);
+    content:"";position:absolute;top:-40%;right:-15%;width:220px;height:220px;border-radius:50%;
+    background:radial-gradient(circle,rgba(229,181,103,.14) 0%,transparent 70%);
   }
   .credit-card.metal{
-    background:linear-gradient(150deg,#e8e9ec 0%,#c7c9cf 35%,#eef0f2 55%,#aeb0b8 75%,#dcdde1 100%);
-    color:#1c1d22;border-color:#c7c9cf;box-shadow:0 12px 30px rgba(0,0,0,.25);
+    background:
+      linear-gradient(115deg,transparent 42%,rgba(255,255,255,.10) 50%,transparent 58%),
+      repeating-linear-gradient(100deg,rgba(255,255,255,.035) 0px,rgba(255,255,255,.035) 1px,transparent 1px,transparent 3px),
+      linear-gradient(150deg,#eceef1 0%,#c9cbd1 30%,#f2f3f5 48%,#a7a9b1 68%,#dcdde2 100%);
+    color:#1c1d22;border-color:#c7c9cf;box-shadow:0 16px 40px rgba(0,0,0,.35);
   }
   .credit-card.metal .cc-pill{background:rgba(0,0,0,.08);color:#4a4b52;}
   .credit-card.metal .cc-number{color:#2a2b31;}
