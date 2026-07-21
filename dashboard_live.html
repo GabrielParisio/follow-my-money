@@ -311,6 +311,7 @@
   </div>
 
   <div id="view-credito" class="view">
+    <select id="cardSelect" style="margin-bottom:14px;"></select>
     <div class="credito-layout">
       <div>
         <div id="creditCard" class="credit-card">
@@ -379,7 +380,7 @@ const MONTHS_FULL = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julh
 
 let accessToken = null;
 let SPREADSHEET_ID = null;
-let state = { monthIdx: new Date().getMonth(), year: new Date().getFullYear() };
+let state = { monthIdx: new Date().getMonth(), year: new Date().getFullYear(), cardIdx: 0 };
 let raw = null;
 
 function fmtMoney(n){
@@ -752,8 +753,23 @@ function renderLancamentos(){
 }
 
 // ===================== CRÉDITO =====================
+function setupCardSelect(){
+  const sel = document.getElementById("cardSelect");
+  if(sel.options.length > 0) return; // já montado
+  const cartoes = (raw.cartoes || []).filter(r => r[0]);
+  cartoes.forEach((c, i) => {
+    const o = document.createElement("option");
+    o.value = i; o.textContent = c[0];
+    sel.appendChild(o);
+  });
+  sel.addEventListener("change", () => { state.cardIdx = +sel.value; renderCredito(); });
+}
+
 function renderCredito(){
-  const cartaoRow = (raw.cartoes && raw.cartoes[0]) || [];
+  setupCardSelect();
+  const cartoes = (raw.cartoes || []).filter(r => r[0]);
+  const idx = state.cardIdx || 0;
+  const cartaoRow = cartoes[idx] || [];
   const nomeCartao = cartaoRow[0] || "Cartão";
   const vencimentoDia = cartaoRow[2] || "";
   const userName = (raw.nomeUsuario && raw.nomeUsuario[0] && raw.nomeUsuario[0][0]) || "—";
@@ -766,15 +782,20 @@ function renderCredito(){
   const isMetal = /amex|platinum|centurion/i.test(nomeCartao);
   document.getElementById("creditCard").classList.toggle("metal", isMetal);
 
-  const faturaMes = (raw.credito[0] && raw.credito[0][0]) || "";
-  const faturaValor = (raw.credito[0] && raw.credito[0][1]) || 0;
-  document.getElementById("ccFatura").textContent = fmtMoney(faturaValor);
-  document.getElementById("ccFaturaSub").textContent = faturaMes ? "Fatura de " + faturaMes : "";
+  // filtra as compras só desse cartão
+  const todasCompras = (raw.compras || []).filter(r => r[2]); // tem descrição
+  const compras = todasCompras.filter(c => (c[1] || "").trim() === nomeCartao.trim());
 
-  const compras = (raw.compras || []).filter(r => r[2]); // tem descrição
+  // fatura em aberto: soma das parcelas do cartão selecionado (calculado a partir das compras exibidas)
+  const faturaValor = compras.reduce((sum, c) => sum + (c[5] || c[4] || 0), 0);
+  document.getElementById("ccFatura").textContent = fmtMoney(faturaValor);
+  document.getElementById("ccFaturaSub").textContent = compras.length
+    ? compras.length + " compra" + (compras.length > 1 ? "s" : "") + " neste período"
+    : "";
+
   const el = document.getElementById("creditPurchases");
   if(compras.length === 0){
-    el.innerHTML = '<p class="empty">Nenhuma compra registrada</p>';
+    el.innerHTML = '<p class="empty">Nenhuma compra registrada neste cartão</p>';
     return;
   }
   const rows = compras.map(c => {
