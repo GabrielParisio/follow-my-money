@@ -586,6 +586,7 @@ function buildMonthRuler(){
       updateMonthRuler();
       render();
       if(raw) renderCharts();
+      if(raw) renderLancamentos();
     });
     ruler.appendChild(tick);
   });
@@ -631,7 +632,7 @@ function setupSelectors(){
       ySel.appendChild(o);
     });
     ySel.value = state.year;
-    ySel.addEventListener("change", () => { state.year = +ySel.value; render(); if(raw) renderCharts(); });
+    ySel.addEventListener("change", () => { state.year = +ySel.value; render(); if(raw) renderCharts(); if(raw) renderLancamentos(); });
   }
   buildMonthRuler();
 }
