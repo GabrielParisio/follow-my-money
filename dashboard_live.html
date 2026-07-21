@@ -1447,14 +1447,14 @@ function renderDividas(){
   </table>`;
 }
 
-function renderProjecaoChart(saldo, reserva, meta, mi){
+function renderProjecaoChart(saldoPrevisto, reserva, meta, mi){
   const el = document.getElementById("chartProjecao");
   if(!el) return;
 
-  const mediaSaldo = saldo.slice(0, mi+1).reduce((a,b)=>a+b,0) / (mi+1);
+  // Reserva real até o mês vigente, depois soma o Saldo Previsto (já calculado pela planilha) mês a mês
   const projetado = reserva.slice(0, mi+1);
   for(let i = mi+1; i < 12; i++){
-    projetado.push(projetado[i-1] + mediaSaldo);
+    projetado.push(projetado[i-1] + (saldoPrevisto[i] || 0));
   }
   const metaAno = meta[mi] || meta[0] || 0;
   const pctAlcancado = metaAno > 0 ? (projetado[11] / metaAno * 100) : 0;
@@ -1492,7 +1492,7 @@ function renderProjecaoChart(saldo, reserva, meta, mi){
 
   const pctColor = pctAlcancado >= 100 ? "var(--green)" : (pctAlcancado >= 70 ? "var(--yellow)" : "var(--red)");
   document.getElementById("cProjecaoSub").innerHTML =
-    `Baseado na média de saldo real de Jan a ${MONTHS[mi]} · <span style="color:${pctColor};font-weight:700;">${pctAlcancado.toFixed(0)}% da meta até Dez</span>`;
+    `Baseado no Saldo Previsto da planilha (Ago-Dez) · <span style="color:${pctColor};font-weight:700;">${pctAlcancado.toFixed(0)}% da meta até Dez</span>`;
 }
 
 function renderCredito(){
@@ -1742,6 +1742,7 @@ function renderCharts(){
   const receita = row(48).map(v => v||0);
   const despesa = row(49).map(v => v||0);
   const saldo = row(50).map(v => v||0);
+  const saldoPrevisto = row(47).map(v => v||0);
   const reserva = row(53).map(v => v||0);
   const meta = row(56).map(v => v||0);
   const mi = state.monthIdx;
@@ -1820,7 +1821,7 @@ function renderCharts(){
   document.getElementById("chartReserva").innerHTML =
     `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;">${reservaSvg}</svg>`;
 
-  renderProjecaoChart(saldo, reserva, meta, mi);
+  renderProjecaoChart(saldoPrevisto, reserva, meta, mi);
 
   // ---- Tabela detalhamento mensal (transposta, como na planilha) ----
   const curM = mi;
