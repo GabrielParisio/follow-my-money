@@ -57,6 +57,19 @@
   .resumo-item{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:12px;}
   .resumo-item .lbl{font-size:10px;color:var(--muted);font-weight:700;text-transform:uppercase;margin-bottom:4px;}
   .resumo-item .val{font-size:16px;font-weight:700;}
+  .alert-item{
+    display:flex;align-items:flex-start;gap:10px;padding:12px 14px;border-radius:10px;
+    margin-bottom:8px;font-size:13px;border:1px solid;
+  }
+  .alert-item.warn{background:rgba(251,191,36,.08);border-color:rgba(251,191,36,.3);color:#FDE68A;}
+  .alert-item.danger{background:rgba(248,113,113,.08);border-color:rgba(248,113,113,.3);color:#FCA5A5;}
+  .alert-item.good{background:rgba(74,222,128,.08);border-color:rgba(74,222,128,.3);color:#86EFAC;}
+  .info-icon{
+    display:inline-flex;align-items:center;justify-content:center;width:14px;height:14px;
+    border-radius:50%;background:var(--border);color:var(--muted);font-size:9px;font-weight:700;
+    cursor:help;flex-shrink:0;
+  }
+  .info-icon:hover{background:var(--gold);color:#0B0C11;}
   .chart-tooltip{
     position:fixed;background:var(--card);border:1px solid var(--border);border-radius:8px;
     padding:7px 11px;font-size:12px;color:var(--text);pointer-events:none;z-index:300;display:none;
@@ -295,6 +308,7 @@
   <div id="monthRuler" class="month-ruler"></div>
 
   <div id="view-mensal" class="view active">
+  <div id="alertasBanner" style="margin-bottom:16px;"></div>
   <div class="panels">
     <div class="panel">
       <h2>📊 Gastos por categoria</h2>
@@ -316,6 +330,14 @@
   </div>
 
   <div id="view-balanco" class="view">
+    <div class="chart-panel" style="background:linear-gradient(135deg,rgba(229,181,103,.08),rgba(229,181,103,.02));border-color:rgba(229,181,103,.25);margin-bottom:16px;">
+      <div style="display:flex;align-items:center;gap:6px;">
+        <div class="label" style="color:var(--muted);font-size:11px;font-weight:700;text-transform:uppercase;">Patrimônio líquido</div>
+        <span class="info-icon" data-tip="Tudo que você tem (Reserva + Renda Fixa + Renda Variável) menos tudo que você deve (saldo devedor das dívidas ativas).">?</span>
+      </div>
+      <div class="value" id="cPatrimonio" style="font-size:32px;font-weight:700;margin:4px 0;">—</div>
+      <div class="sub" id="cPatrimonioSub" style="color:var(--muted);font-size:12px;"></div>
+    </div>
     <div class="cards">
       <div class="card"><div class="accent" style="background:var(--green)"></div>
         <div class="body"><div class="label">Receita do mês</div>
@@ -330,7 +352,7 @@
           <div class="value" id="cSaldo">—</div>
           <div class="sub" id="cSaldoSub"></div></div></div>
       <div class="card"><div class="accent" style="background:var(--yellow)"></div>
-        <div class="body"><div class="label">% orçamento gasto</div>
+        <div class="body"><div class="label">% orçamento gasto <span class="info-icon" data-tip="Quanto da sua despesa do mês já consumiu do orçamento total definido no Cadastro.">?</span></div>
           <div class="value" id="cPct" style="color:var(--yellow)">—</div>
           <div class="sub" id="cPctSub"></div></div></div>
       <div class="card"><div class="accent" style="background:var(--purple)"></div>
@@ -341,11 +363,11 @@
 
     <div class="cards" style="margin-top:14px;">
       <div class="card"><div class="accent" style="background:var(--green)"></div>
-        <div class="body"><div class="label">Taxa de poupança</div>
+        <div class="body"><div class="label">Taxa de poupança <span class="info-icon" data-tip="Percentual da receita acumulada no ano (Jan até o mês atual) que sobrou como saldo positivo.">?</span></div>
           <div class="value" id="cTaxaPoupanca" style="color:var(--green)">—</div>
           <div class="sub" id="cTaxaPoupancaSub"></div></div></div>
       <div class="card"><div class="accent" style="background:var(--red)"></div>
-        <div class="body"><div class="label">Comprometimento de renda</div>
+        <div class="body"><div class="label">Comprometimento de renda <span class="info-icon" data-tip="Soma de todas as parcelas fixas (dívidas + compras parceladas no cartão) que vencem neste mês, dividida pela receita real.">?</span></div>
           <div class="value" id="cComprometimento" style="color:var(--red)">—</div>
           <div class="sub" id="cComprometimentoSub"></div></div></div>
     </div>
@@ -679,6 +701,24 @@ function hideChartTooltip(){
   if(tip) tip.style.display = "none";
 }
 
+document.addEventListener("mouseenter", (e) => {
+  if(e.target.classList && e.target.classList.contains("info-icon")){
+    showChartTooltip(e, e.target.dataset.tip);
+  }
+}, true);
+document.addEventListener("mouseleave", (e) => {
+  if(e.target.classList && e.target.classList.contains("info-icon")){
+    hideChartTooltip();
+  }
+}, true);
+document.addEventListener("click", (e) => {
+  if(e.target.classList && e.target.classList.contains("info-icon")){
+    const tip = document.getElementById("chartTooltip");
+    if(tip && tip.style.display === "block"){ hideChartTooltip(); }
+    else { showChartTooltip(e, e.target.dataset.tip); }
+  }
+});
+
 function showToast(message, type){
   const el = document.getElementById("toast");
   el.textContent = message;
@@ -873,9 +913,32 @@ function render(){
   document.getElementById("cSaldoSub").textContent = "Previsto " + fmtMoney(saldoPrevisto);
   const pct = orcado ? despesaReal / orcado : 0;
   document.getElementById("cPct").textContent = fmtPct(pct);
-  document.getElementById("cPctSub").textContent = "de " + fmtMoney(orcado) + " previsto";
+  const hoje = new Date();
+  const isMesAtualReal = mi === hoje.getMonth() && state.year === hoje.getFullYear();
+  if(isMesAtualReal){
+    const diasNoMes = new Date(state.year, mi+1, 0).getDate();
+    const ritmoEsperado = (hoje.getDate() / diasNoMes) * 100;
+    const pctAtual = pct * 100;
+    const corRitmo = pctAtual > ritmoEsperado + 10 ? "var(--red)" : (pctAtual > ritmoEsperado ? "var(--yellow)" : "var(--green)");
+    document.getElementById("cPctSub").innerHTML =
+      `de ${fmtMoney(orcado)} previsto <span style="color:${corRitmo};">· esperado até hoje: ${ritmoEsperado.toFixed(0)}%</span>`;
+  } else {
+    document.getElementById("cPctSub").textContent = "de " + fmtMoney(orcado) + " previsto";
+  }
 
-  // Variação vs mês anterior (além do "Previsto")
+  // Variação vs mês anterior + vs mesmo mês do ano anterior
+  const somaLanc = (targetMi, targetYear, tipo) => lanc
+    .filter(r => r[5] && r[6] === tipo && r[8] === "✅ Pago" && (r[9]-1) === targetMi && r[10] === targetYear)
+    .reduce((s,r) => s + (r[7]||0), 0);
+  const receitaAnoAnterior = somaLanc(mi, state.year-1, "Receita");
+  const despesaAnoAnterior = somaLanc(mi, state.year-1, "Despesa");
+  const yoyReceita = receitaAnoAnterior ? ((receitaReal - receitaAnoAnterior) / receitaAnoAnterior * 100) : null;
+  const yoyDespesa = despesaAnoAnterior ? ((despesaReal - despesaAnoAnterior) / despesaAnoAnterior * 100) : null;
+  const yoyReceitaHtml = yoyReceita !== null
+    ? ` · <span style="color:${yoyReceita>=0?"var(--green)":"var(--red)"};">${yoyReceita>=0?"↑":"↓"}${Math.abs(yoyReceita).toFixed(0)}% vs ${MONTHS[mi]}/${String(state.year-1).slice(2)}</span>` : "";
+  const yoyDespesaHtml = yoyDespesa !== null
+    ? ` · <span style="color:${yoyDespesa<=0?"var(--green)":"var(--red)"};">${yoyDespesa>=0?"↑":"↓"}${Math.abs(yoyDespesa).toFixed(0)}% vs ${MONTHS[mi]}/${String(state.year-1).slice(2)}</span>` : "";
+
   if(mi > 0){
     const receitaAnterior = row(48)[mi-1] || 0;
     const despesaAnterior = row(49)[mi-1] || 0;
@@ -884,12 +947,12 @@ function render(){
     const setaR = varReceita >= 0 ? "↑" : "↓";
     const setaD = varDespesa >= 0 ? "↑" : "↓";
     document.getElementById("cReceitaSub").innerHTML =
-      `Previsto ${fmtMoney(receitaPrevisto)} <span style="color:${varReceita>=0?"var(--green)":"var(--red)"};">· ${setaR}${Math.abs(varReceita).toFixed(0)}% vs ${MONTHS[mi-1]}</span>`;
+      `Previsto ${fmtMoney(receitaPrevisto)} <span style="color:${varReceita>=0?"var(--green)":"var(--red)"};">· ${setaR}${Math.abs(varReceita).toFixed(0)}% vs ${MONTHS[mi-1]}</span>${yoyReceitaHtml}`;
     document.getElementById("cDespesaSub").innerHTML =
-      `Previsto ${fmtMoney(despesaPrevisto)} <span style="color:${varDespesa<=0?"var(--green)":"var(--red)"};">· ${setaD}${Math.abs(varDespesa).toFixed(0)}% vs ${MONTHS[mi-1]}</span>`;
+      `Previsto ${fmtMoney(despesaPrevisto)} <span style="color:${varDespesa<=0?"var(--green)":"var(--red)"};">· ${setaD}${Math.abs(varDespesa).toFixed(0)}% vs ${MONTHS[mi-1]}</span>${yoyDespesaHtml}`;
   } else {
-    document.getElementById("cReceitaSub").textContent = "Previsto " + fmtMoney(receitaPrevisto);
-    document.getElementById("cDespesaSub").textContent = "Previsto " + fmtMoney(despesaPrevisto);
+    document.getElementById("cReceitaSub").innerHTML = "Previsto " + fmtMoney(receitaPrevisto) + yoyReceitaHtml;
+    document.getElementById("cDespesaSub").innerHTML = "Previsto " + fmtMoney(despesaPrevisto) + yoyDespesaHtml;
   }
 
   const faturaValor = (credito[0] && credito[0][1]) || 0;
@@ -919,9 +982,23 @@ function render(){
   document.getElementById("cComprometimento").textContent = fmtPct(comprometimento/100);
   document.getElementById("cComprometimentoSub").textContent = fmtMoney(totalParcelado) + " em parcelas este mês";
 
+  // ---- Patrimônio líquido ----
+  const investArr = raw.invest || [];
+  const totalAtivos = (investArr[0]&&investArr[0][0]||0) + (investArr[1]&&investArr[1][0]||0) + (investArr[2]&&investArr[2][0]||0);
+  const totalDividas = getDividasParsed().reduce((s,d) => s + (d.saldoDevedor||0), 0);
+  const patrimonioLiquido = totalAtivos - totalDividas;
+  const cPatrimonioEl = document.getElementById("cPatrimonio");
+  if(cPatrimonioEl){
+    cPatrimonioEl.textContent = fmtMoney(patrimonioLiquido);
+    cPatrimonioEl.style.color = patrimonioLiquido >= 0 ? "var(--text)" : "var(--red)";
+    document.getElementById("cPatrimonioSub").textContent =
+      `${fmtMoney(totalAtivos)} em ativos − ${fmtMoney(totalDividas)} em dívidas`;
+  }
+
   renderCategorias(lanc, mi);
   renderVencimentos(lanc);
   renderOrcadoReal(lanc, mi);
+  renderAlertas(lanc, mi);
   renderTopDias(mi);
 }
 
@@ -950,6 +1027,66 @@ function renderCategorias(lanc, mi){
   sorted.forEach(([name, val]) => {
     el.innerHTML += `<div class="row"><span class="name">${name}</span><span class="val">${fmtMoney(val)}</span></div>`;
   });
+}
+
+function renderAlertas(lanc, mi){
+  const el = document.getElementById("alertasBanner");
+  if(!el) return;
+  const alertas = [];
+
+  const gastoPorCategoriaMes = (targetMi, targetYear) => {
+    const map = {};
+    lanc.forEach(r => {
+      const categoria = r[5], tipo = r[6], valor = r[7], mes = r[9], ano = r[10];
+      if(!categoria || tipo !== "Despesa") return;
+      if((mes-1) !== targetMi || ano !== targetYear) return;
+      map[categoria] = (map[categoria] || 0) + (valor || 0);
+    });
+    return map;
+  };
+  const atual = gastoPorCategoriaMes(mi, state.year);
+  const anterior = mi > 0 ? gastoPorCategoriaMes(mi-1, state.year) : {};
+
+  // 1) Categoria com maior alta percentual vs mês anterior
+  let maiorAlta = null;
+  Object.entries(atual).forEach(([cat, val]) => {
+    const prev = anterior[cat] || 0;
+    if(prev > 50 && val > prev){
+      const alta = (val - prev) / prev * 100;
+      if(!maiorAlta || alta > maiorAlta.alta) maiorAlta = { cat, alta, val, prev };
+    }
+  });
+  if(maiorAlta && maiorAlta.alta >= 25){
+    const nomeCat = maiorAlta.cat.replace(/^[\p{Emoji_Presentation}\p{Extended_Pictographic}\uFE0F]+\s*/u, "");
+    alertas.push({ type: "warn", icon: "⚠️",
+      html: `<b>${nomeCat}</b> subiu ${maiorAlta.alta.toFixed(0)}% vs ${MONTHS[mi-1]} (${fmtMoney(maiorAlta.prev)} → ${fmtMoney(maiorAlta.val)})` });
+  }
+
+  // 2) Categorias estourando o orçamento
+  (raw.cadastro || []).filter(r => r[0] && r[4] > 0).forEach(r => {
+    const gasto = atual[r[0]] || 0;
+    if(gasto > r[4]){
+      const nomeCat = r[0].replace(/^[\p{Emoji_Presentation}\p{Extended_Pictographic}\uFE0F]+\s*/u, "");
+      alertas.push({ type: "danger", icon: "🚨",
+        html: `<b>${nomeCat}</b> já passou do orçamento: ${fmtMoney(gasto)} de ${fmtMoney(r[4])} previstos` });
+    }
+  });
+
+  // 3) Déficit no mês (despesa > receita)
+  const row = (n) => (raw.balanco[n-44] || []);
+  const receitaReal = row(48)[mi] || 0, despesaReal = row(49)[mi] || 0;
+  if(despesaReal > receitaReal && receitaReal > 0){
+    alertas.push({ type: "danger", icon: "📉",
+      html: `Despesa (${fmtMoney(despesaReal)}) já superou a receita (${fmtMoney(receitaReal)}) em ${MONTHS_FULL[mi]}` });
+  }
+
+  if(alertas.length === 0){
+    el.innerHTML = `<div class="alert-item good">✅ Tudo dentro do esperado em ${MONTHS_FULL[mi]} — nenhum alerta no momento.</div>`;
+  } else {
+    el.innerHTML = alertas.slice(0,4).map(a =>
+      `<div class="alert-item ${a.type}"><span>${a.icon}</span><span>${a.html}</span></div>`
+    ).join("");
+  }
 }
 
 function renderOrcadoReal(lanc, mi){
@@ -1491,8 +1628,12 @@ function renderProjecaoChart(saldoPrevisto, reserva, meta, mi){
   el.innerHTML = `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;">${svg}</svg>`;
 
   const pctColor = pctAlcancado >= 100 ? "var(--green)" : (pctAlcancado >= 70 ? "var(--yellow)" : "var(--red)");
+  const pctAtualMeta = metaAno > 0 ? (reserva[mi] / metaAno * 100) : 0;
+  const ritmoEsperadoAno = ((mi+1) / 12) * 100;
+  const corRitmoAno = pctAtualMeta >= ritmoEsperadoAno ? "var(--green)" : "var(--red)";
   document.getElementById("cProjecaoSub").innerHTML =
-    `Baseado no Saldo Previsto da planilha (Ago-Dez) · <span style="color:${pctColor};font-weight:700;">${pctAlcancado.toFixed(0)}% da meta até Dez</span>`;
+    `Baseado no Saldo Previsto da planilha (Ago-Dez) · <span style="color:${pctColor};font-weight:700;">${pctAlcancado.toFixed(0)}% da meta até Dez</span>` +
+    `<br>Hoje: ${pctAtualMeta.toFixed(0)}% da meta · <span style="color:${corRitmoAno};">esperado nessa altura do ano: ${ritmoEsperadoAno.toFixed(0)}%</span>`;
 }
 
 function renderCredito(){
