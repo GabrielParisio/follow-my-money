@@ -214,7 +214,7 @@
   table.monthly thead th{color:var(--muted);font-weight:600;font-size:10.5px;text-transform:uppercase;letter-spacing:.03em;}
   table.monthly thead th:first-child{background:var(--panel);}
   table.monthly td.current, table.monthly th.current{background:rgba(96,165,250,0.1);}
-  table.monthly tbody tr:nth-child(odd) td:not(.current), table.monthly tbody tr:nth-child(odd) th:not(.current){background:rgba(255,255,255,0.015);}
+  table.monthly tbody tr:nth-child(odd) td:not(.current):not(:first-child), table.monthly tbody tr:nth-child(odd) th:not(.current):not(:first-child){background:rgba(255,255,255,0.015);}
   table.monthly tr:last-child td, table.monthly tr:last-child th{border-bottom:none;}
   table.monthly tr.section-gap td{border-bottom:1px solid var(--border);height:6px;padding:0;}
   table.monthly .neg{color:var(--red);}
