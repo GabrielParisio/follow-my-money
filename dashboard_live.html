@@ -370,9 +370,15 @@
           <div class="sub" id="ccFaturaSub" style="color:var(--muted);font-size:12px;"></div>
         </div>
       </div>
-      <div class="chart-panel">
-        <h2>Compras recentes</h2>
-        <div id="creditPurchases"></div>
+      <div>
+        <div class="chart-panel">
+          <h2>Gastos por categoria</h2>
+          <div id="creditCatChart"></div>
+        </div>
+        <div class="chart-panel">
+          <h2>Compras do mês</h2>
+          <div id="creditPurchases"></div>
+        </div>
       </div>
     </div>
   </div>
@@ -587,6 +593,7 @@ function buildMonthRuler(){
       render();
       if(raw) renderCharts();
       if(raw) renderLancamentos();
+      if(raw) renderCredito();
     });
     ruler.appendChild(tick);
   });
@@ -632,7 +639,7 @@ function setupSelectors(){
       ySel.appendChild(o);
     });
     ySel.value = state.year;
-    ySel.addEventListener("change", () => { state.year = +ySel.value; render(); if(raw) renderCharts(); if(raw) renderLancamentos(); });
+    ySel.addEventListener("change", () => { state.year = +ySel.value; render(); if(raw) renderCharts(); if(raw) renderLancamentos(); if(raw) renderCredito(); });
   }
   buildMonthRuler();
 }
@@ -955,6 +962,8 @@ function setupCardSelect(){
   sel.addEventListener("change", () => { state.cardIdx = +sel.value; renderCredito(); });
 }
 
+const CAT_COLORS = ["#4ADE80","#F87171","#60A5FA","#FBBF24","#C084FC","#38BDF8","#FB923C","#A3E635","#F472B6","#94A3B8"];
+
 function renderCredito(){
   setupCardSelect();
   const cartoes = (raw.cartoes || []).filter(r => r[0]);
@@ -968,35 +977,42 @@ function renderCredito(){
   document.getElementById("ccHolder").textContent = userName;
   document.getElementById("ccExpiry").textContent = vencimentoDia ? "Dia " + vencimentoDia : "—";
 
-  // escolhe o acabamento (metálico ou preto fosco) com base no nome do cartão cadastrado
   const isMetal = /amex|platinum|centurion/i.test(nomeCartao);
   document.getElementById("creditCard").classList.toggle("metal", isMetal);
 
-  // filtra as compras só desse cartão
-  const todasCompras = (raw.compras || []).filter(r => r[2]); // tem descrição
-  const compras = todasCompras.filter(c => (c[1] || "").trim() === nomeCartao.trim());
+  // filtra por cartão selecionado E pelo mês/ano da régua (usando a data de vencimento da compra)
+  const todasCompras = (raw.compras || []).filter(r => r[2]);
+  const compras = todasCompras.filter(c => {
+    if((c[1] || "").trim() !== nomeCartao.trim()) return false;
+    const venc = c[7];
+    if(!venc) return true; // sem data de vencimento, não filtra por mês
+    const d = serialToDate(venc);
+    return d.getMonth() === state.monthIdx && d.getFullYear() === state.year;
+  });
 
-  // fatura em aberto: soma das parcelas do cartão selecionado (calculado a partir das compras exibidas)
   const faturaValor = compras.reduce((sum, c) => sum + (c[5] || c[4] || 0), 0);
   document.getElementById("ccFatura").textContent = fmtMoney(faturaValor);
   document.getElementById("ccFaturaSub").textContent = compras.length
-    ? compras.length + " compra" + (compras.length > 1 ? "s" : "") + " neste período"
-    : "";
+    ? compras.length + " compra" + (compras.length > 1 ? "s" : "") + " em " + MONTHS_FULL[state.monthIdx]
+    : "Nenhuma compra em " + MONTHS_FULL[state.monthIdx];
+
+  renderCreditCategoryChart(compras);
 
   const el = document.getElementById("creditPurchases");
   if(compras.length === 0){
-    el.innerHTML = '<p class="empty">Nenhuma compra registrada neste cartão</p>';
+    el.innerHTML = '<p class="empty">Nenhuma compra neste cartão em ' + MONTHS_FULL[state.monthIdx] + '</p>';
     return;
   }
-  const rows = compras.map(c => {
+  const sorted = [...compras].sort((a,b) => (a[0]||0) - (b[0]||0));
+  const rows = sorted.map(c => {
     const [data, cartao, desc, cat, valorTotal, valorParcela, parcela] = c;
     const cleanCat = (cat||"").replace(/^[\p{Emoji_Presentation}\p{Extended_Pictographic}\uFE0F]+\s*/u, "");
     const dateLabel = data ? fmtDate(serialToDate(data)) : "";
     const parcelaLabel = parcela ? ` <span class="pill">${parcela}</span>` : "";
     return `<tr>
-      <td>${dateLabel}</td>
+      <td style="color:var(--muted);font-size:12px;">${dateLabel}</td>
       <td>${desc}${parcelaLabel}</td>
-      <td>${cleanCat}</td>
+      <td><span class="pill">${cleanCat}</span></td>
       <td class="val-col despesa">${fmtMoney(valorParcela || valorTotal)}</td>
     </tr>`;
   }).join("");
@@ -1004,6 +1020,35 @@ function renderCredito(){
     <thead><tr><th>Data</th><th>Descrição</th><th>Categoria</th><th style="text-align:right;">Valor</th></tr></thead>
     <tbody>${rows}</tbody>
   </table>`;
+}
+
+function renderCreditCategoryChart(compras){
+  const totals = {};
+  compras.forEach(c => {
+    const cat = (c[3] || "Outros").replace(/^[\p{Emoji_Presentation}\p{Extended_Pictographic}\uFE0F]+\s*/u, "");
+    const val = c[5] || c[4] || 0;
+    totals[cat] = (totals[cat] || 0) + val;
+  });
+  const entries = Object.entries(totals).sort((a,b) => b[1]-a[1]);
+  const el = document.getElementById("creditCatChart");
+  if(!el) return;
+  if(entries.length === 0){
+    el.innerHTML = '<p class="empty">Sem dados para o período</p>';
+    return;
+  }
+  const max = Math.max(...entries.map(e => e[1]));
+  el.innerHTML = entries.map((([label, val], i) => {
+    const color = CAT_COLORS[i % CAT_COLORS.length];
+    const pct = (val / max * 100).toFixed(1);
+    return `<div style="margin-bottom:10px;">
+      <div style="display:flex;justify-content:space-between;font-size:12.5px;margin-bottom:4px;">
+        <span>${label}</span><span style="font-weight:600;">${fmtMoney(val)}</span>
+      </div>
+      <div style="height:8px;background:var(--border);border-radius:4px;overflow:hidden;">
+        <div style="height:100%;width:${pct}%;background:${color};border-radius:4px;"></div>
+      </div>
+    </div>`;
+  })).join("");
 }
 
 // ===================== GRÁFICOS (SVG puro) =====================
