@@ -309,6 +309,21 @@
         <div class="sub" id="cFaturaSub"></div></div></div>
   </div>
 
+  <div class="cards" style="margin-top:14px;">
+    <div class="card"><div class="accent" style="background:var(--green)"></div>
+      <div class="body"><div class="label">Taxa de poupança</div>
+        <div class="value" id="cTaxaPoupanca" style="color:var(--green)">—</div>
+        <div class="sub" id="cTaxaPoupancaSub"></div></div></div>
+    <div class="card"><div class="accent" style="background:var(--red)"></div>
+      <div class="body"><div class="label">Comprometimento de renda</div>
+        <div class="value" id="cComprometimento" style="color:var(--red)">—</div>
+        <div class="sub" id="cComprometimentoSub"></div></div></div>
+    <div class="card"><div class="accent" style="background:var(--blue)"></div>
+      <div class="body"><div class="label">Projeção fim de ano</div>
+        <div class="value" id="cProjecao" style="color:var(--blue)">—</div>
+        <div class="sub" id="cProjecaoSub"></div></div></div>
+  </div>
+
   <div class="panels">
     <div class="panel">
       <h2>📊 Gastos por categoria</h2>
@@ -817,14 +832,29 @@ function render(){
   document.getElementById("summaryLine").textContent = `Aqui está o resumo de ${MONTHS_FULL[mi]} · ${state.year}`;
 
   document.getElementById("cReceita").textContent = fmtMoney(receitaReal);
-  document.getElementById("cReceitaSub").textContent = "Previsto " + fmtMoney(receitaPrevisto);
   document.getElementById("cDespesa").textContent = fmtMoney(despesaReal);
-  document.getElementById("cDespesaSub").textContent = "Previsto " + fmtMoney(despesaPrevisto);
   document.getElementById("cSaldo").textContent = fmtMoney(saldoReal);
   document.getElementById("cSaldoSub").textContent = "Previsto " + fmtMoney(saldoPrevisto);
   const pct = orcado ? despesaReal / orcado : 0;
   document.getElementById("cPct").textContent = fmtPct(pct);
   document.getElementById("cPctSub").textContent = "de " + fmtMoney(orcado) + " previsto";
+
+  // Variação vs mês anterior (além do "Previsto")
+  if(mi > 0){
+    const receitaAnterior = row(48)[mi-1] || 0;
+    const despesaAnterior = row(49)[mi-1] || 0;
+    const varReceita = receitaAnterior ? ((receitaReal - receitaAnterior) / receitaAnterior * 100) : 0;
+    const varDespesa = despesaAnterior ? ((despesaReal - despesaAnterior) / despesaAnterior * 100) : 0;
+    const setaR = varReceita >= 0 ? "↑" : "↓";
+    const setaD = varDespesa >= 0 ? "↑" : "↓";
+    document.getElementById("cReceitaSub").innerHTML =
+      `Previsto ${fmtMoney(receitaPrevisto)} <span style="color:${varReceita>=0?"var(--green)":"var(--red)"};">· ${setaR}${Math.abs(varReceita).toFixed(0)}% vs ${MONTHS[mi-1]}</span>`;
+    document.getElementById("cDespesaSub").innerHTML =
+      `Previsto ${fmtMoney(despesaPrevisto)} <span style="color:${varDespesa<=0?"var(--green)":"var(--red)"};">· ${setaD}${Math.abs(varDespesa).toFixed(0)}% vs ${MONTHS[mi-1]}</span>`;
+  } else {
+    document.getElementById("cReceitaSub").textContent = "Previsto " + fmtMoney(receitaPrevisto);
+    document.getElementById("cDespesaSub").textContent = "Previsto " + fmtMoney(despesaPrevisto);
+  }
 
   const faturaValor = (credito[0] && credito[0][1]) || 0;
   document.getElementById("cFatura").textContent = fmtMoney(faturaValor);
@@ -832,6 +862,34 @@ function render(){
   const dueMonthOffset = today.getDate() <= 25 ? 1 : 2;
   const due = new Date(today.getFullYear(), today.getMonth() + dueMonthOffset, 5);
   document.getElementById("cFaturaSub").textContent = "Vence " + fmtDate(due);
+
+  // ---- Taxa de poupança ----
+  const taxaPoupanca = receitaReal > 0 ? (saldoReal / receitaReal * 100) : 0;
+  document.getElementById("cTaxaPoupanca").textContent = fmtPct(taxaPoupanca/100);
+  document.getElementById("cTaxaPoupancaSub").textContent = "do que sobrou da receita real";
+
+  // ---- Comprometimento de renda (parcelas do mês vigente: Dívidas + Crédito) ----
+  const dividasParcelaMensal = getDividasParsed().reduce((s,d) => s + (d.valorParcela||0), 0);
+  const inicioMesAtual = new Date(state.year, mi, 1);
+  const fimMesAtual = new Date(state.year, mi+1, 1);
+  const creditoParcelasMes = (raw.compras || [])
+    .filter(c => c[2] && c[7])
+    .filter(c => { const d = serialToDate(c[7]); return d >= inicioMesAtual && d < fimMesAtual; })
+    .reduce((s,c) => s + (c[5] || c[4] || 0), 0);
+  const totalParcelado = dividasParcelaMensal + creditoParcelasMes;
+  const comprometimento = receitaReal > 0 ? (totalParcelado / receitaReal * 100) : 0;
+  document.getElementById("cComprometimento").textContent = fmtPct(comprometimento/100);
+  document.getElementById("cComprometimentoSub").textContent = fmtMoney(totalParcelado) + " em parcelas este mês";
+
+  // ---- Projeção fim de ano (baseado na média do saldo real até aqui) ----
+  const receitaArr = row(48).map(v=>v||0), despesaArr = row(49).map(v=>v||0);
+  const saldosAteAgora = receitaArr.slice(0, mi+1).map((r,i) => r - despesaArr[i]);
+  const mediaSaldo = saldosAteAgora.reduce((a,b)=>a+b,0) / saldosAteAgora.length;
+  const mesesRestantes = 11 - mi;
+  const reservaAtualProj = row(53)[mi] || 0;
+  const projecaoReserva = reservaAtualProj + mediaSaldo * mesesRestantes;
+  document.getElementById("cProjecao").textContent = fmtMoney(projecaoReserva);
+  document.getElementById("cProjecaoSub").textContent = "reserva em Dez, no ritmo atual";
 
   renderCategorias(lanc, mi);
   renderVencimentos(lanc);
@@ -1283,18 +1341,10 @@ function mapHeaders(headerRow, keywordMap){
   return idx;
 }
 
-function renderDividas(){
+function getDividasParsed(){
   const all = raw.dividas || [];
   const headerRowIdx = all.findIndex(r => r.some(cell => /descri[cç][aã]o/i.test((cell||"").toString())));
-  const cardsEl = document.getElementById("dividasCards");
-  const tableEl = document.getElementById("dividasTable");
-
-  if(headerRowIdx < 0){
-    cardsEl.innerHTML = "";
-    tableEl.innerHTML = '<p class="empty">Não encontrei uma tabela de dívidas nessa planilha (aba "Dívidas")</p>';
-    return;
-  }
-
+  if(headerRowIdx < 0) return [];
   const header = all[headerRowIdx];
   const col = mapHeaders(header, {
     desc: /descri[cç][aã]o/i,
@@ -1307,8 +1357,7 @@ function renderDividas(){
     taxaJuros: /taxa de juros|juros/i,
     status: /status/i
   });
-
-  const dividas = all.slice(headerRowIdx + 1)
+  return all.slice(headerRowIdx + 1)
     .filter(r => r[col.desc])
     .map(r => ({
       desc: r[col.desc] || "",
@@ -1321,10 +1370,16 @@ function renderDividas(){
       taxaJuros: col.taxaJuros >= 0 ? r[col.taxaJuros] || 0 : 0,
       status: col.status >= 0 ? r[col.status] || "" : ""
     }));
+}
+
+function renderDividas(){
+  const dividas = getDividasParsed();
+  const cardsEl = document.getElementById("dividasCards");
+  const tableEl = document.getElementById("dividasTable");
 
   if(dividas.length === 0){
     cardsEl.innerHTML = "";
-    tableEl.innerHTML = '<p class="empty">Nenhuma dívida cadastrada</p>';
+    tableEl.innerHTML = '<p class="empty">Nenhuma dívida cadastrada (ou não encontrei a tabela na aba "Dívidas")</p>';
     return;
   }
 
