@@ -1107,6 +1107,18 @@ function renderCreditoLadoLado(){
   });
 }
 
+function polarPoint(cx, cy, r, angleDeg){
+  const a = (angleDeg - 90) * Math.PI / 180;
+  return { x: cx + r * Math.cos(a), y: cy + r * Math.sin(a) };
+}
+
+function pieSlicePath(cx, cy, r, startDeg, endDeg){
+  const start = polarPoint(cx, cy, r, endDeg);
+  const end = polarPoint(cx, cy, r, startDeg);
+  const largeArc = (endDeg - startDeg) > 180 ? 1 : 0;
+  return `M${cx},${cy} L${start.x.toFixed(2)},${start.y.toFixed(2)} A${r},${r} 0 ${largeArc} 0 ${end.x.toFixed(2)},${end.y.toFixed(2)} Z`;
+}
+
 function renderCreditCategoryChart(compras, targetId){
   const totals = {};
   compras.forEach(c => {
@@ -1119,19 +1131,32 @@ function renderCreditCategoryChart(compras, targetId){
   if(entries.length === 0){
     html = '<p class="empty">Sem dados para o período</p>';
   } else {
-    const max = Math.max(...entries.map(e => e[1]));
-    html = entries.map((([label, val], i) => {
+    const total = entries.reduce((s,e) => s + e[1], 0) || 1;
+    const R = 70, CX = 80, CY = 80;
+    let angle = 0;
+    let slices = "";
+    entries.forEach(([label, val], i) => {
       const color = CAT_COLORS[i % CAT_COLORS.length];
-      const pct = (val / max * 100).toFixed(1);
-      return `<div style="margin-bottom:10px;">
-        <div style="display:flex;justify-content:space-between;font-size:12.5px;margin-bottom:4px;">
-          <span>${label}</span><span style="font-weight:600;">${fmtMoney(val)}</span>
-        </div>
-        <div style="height:8px;background:var(--border);border-radius:4px;overflow:hidden;">
-          <div style="height:100%;width:${pct}%;background:${color};border-radius:4px;"></div>
-        </div>
+      const sliceDeg = (val / total) * 360;
+      if(entries.length === 1){
+        slices += `<circle cx="${CX}" cy="${CY}" r="${R}" fill="${color}"/>`;
+      } else {
+        slices += `<path d="${pieSlicePath(CX, CY, R, angle, angle + sliceDeg)}" fill="${color}" stroke="#0B0C11" stroke-width="1.5"/>`;
+      }
+      angle += sliceDeg;
+    });
+    const legend = entries.map(([label, val], i) => {
+      const color = CAT_COLORS[i % CAT_COLORS.length];
+      const pct = (val / total * 100).toFixed(1);
+      return `<div style="display:flex;justify-content:space-between;align-items:center;font-size:12.5px;padding:5px 0;">
+        <span style="display:flex;align-items:center;gap:8px;"><i style="width:10px;height:10px;border-radius:3px;background:${color};display:inline-block;"></i>${label}</span>
+        <span style="color:var(--muted);">${pct}% · ${fmtMoney(val)}</span>
       </div>`;
-    })).join("");
+    }).join("");
+    html = `<div style="display:flex;gap:20px;align-items:center;flex-wrap:wrap;">
+      <svg viewBox="0 0 160 160" style="width:150px;height:150px;flex-shrink:0;">${slices}</svg>
+      <div style="flex:1;min-width:160px;">${legend}</div>
+    </div>`;
   }
   const el = document.getElementById(targetId);
   if(el) el.innerHTML = html;
