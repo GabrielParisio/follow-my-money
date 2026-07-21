@@ -557,7 +557,7 @@ async function loadData(){
       "Crédito!C8:D8",
       "Investimentos!C4:C7",
       "Cadastro!H7:K8",
-      "Crédito!B10:I30",
+      "Crédito!B10:I5000",
       "Cadastro!T6",
       "Débito!B1:K3000"
     ]);
@@ -1003,7 +1003,8 @@ function setupCreditLayoutToggle(){
       toggle.querySelectorAll(".seg-btn").forEach(b => b.classList.remove("active"));
       btn.classList.add("active");
       state.creditLayout = btn.dataset.layout;
-      document.getElementById("cardSelect").classList.toggle("hidden", state.creditLayout === "ladoalado");
+      const cardSelectEl = document.getElementById("cardSelect");
+      cardSelectEl.style.visibility = state.creditLayout === "ladoalado" ? "hidden" : "visible";
       document.getElementById("credito-unico").classList.toggle("hidden", state.creditLayout === "ladoalado");
       document.getElementById("credito-ladoalado").classList.toggle("hidden", state.creditLayout !== "ladoalado");
       if(raw) renderCredito();
