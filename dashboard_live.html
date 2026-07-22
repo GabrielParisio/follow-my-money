@@ -26,13 +26,47 @@
     background:var(--bg);
     color:var(--text);
     font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Roboto,sans-serif;
-    padding:24px 20px 60px;
   }
-  .topbar{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:28px;}
-  .brand{font-weight:700;font-size:18px;display:flex;align-items:center;gap:9px;}
+  .app-shell{display:flex;min-height:100vh;}
+  .sidebar{
+    width:230px;flex-shrink:0;background:var(--panel);border-right:1px solid var(--border);
+    display:flex;flex-direction:column;padding:22px 16px;position:sticky;top:0;height:100vh;overflow-y:auto;
+  }
+  .main-content{flex:1;min-width:0;padding:24px 24px 60px;}
+  .brand{font-weight:700;font-size:17px;display:flex;align-items:center;gap:9px;margin-bottom:28px;padding:0 8px;}
   .brand span{color:var(--gold);}
-  .tabs{display:flex;gap:18px;font-size:13px;color:var(--muted);flex-wrap:wrap;}
-  .tabs .active{color:var(--text);font-weight:600;border-bottom:2px solid var(--green);padding-bottom:4px;}
+  .tabs{display:flex;flex-direction:column;gap:2px;font-size:13.5px;color:var(--muted);flex:1;}
+  .tabs span{padding:11px 12px;border-radius:10px;cursor:pointer;transition:background .15s ease;display:flex;align-items:center;gap:10px;}
+  .tabs span:hover{background:rgba(255,255,255,.04);color:var(--text);}
+  .tabs .active{color:var(--text);background:rgba(229,181,103,.12);border-left:3px solid var(--gold);padding-left:9px;}
+  .sidebar-footer{padding-top:14px;border-top:1px solid var(--border);margin-top:14px;}
+  .header-bar{display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:14px;margin-bottom:6px;}
+  .header-actions{display:flex;gap:10px;align-items:center;flex-wrap:wrap;}
+  .icon-round-btn{
+    position:relative;background:var(--card);border:1px solid var(--border);border-radius:50%;
+    width:38px;height:38px;font-size:15px;cursor:pointer;display:flex;align-items:center;justify-content:center;
+  }
+  .icon-round-btn:hover{border-color:var(--gold);}
+  .alert-badge{
+    position:absolute;top:-4px;right:-4px;background:var(--red);color:#fff;font-size:9.5px;font-weight:700;
+    border-radius:999px;min-width:16px;height:16px;display:flex;align-items:center;justify-content:center;padding:0 3px;
+  }
+  .sidebar-toggle-btn{
+    display:none;position:fixed;top:16px;left:16px;z-index:150;background:var(--card);border:1px solid var(--border);
+    border-radius:10px;width:38px;height:38px;font-size:16px;color:var(--text);cursor:pointer;
+  }
+  .sidebar-overlay{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:140;}
+  .sidebar-overlay.hidden{display:none;}
+  @media (max-width:860px){
+    .sidebar-toggle-btn{display:block;}
+    .sidebar{
+      position:fixed;left:0;top:0;z-index:145;transform:translateX(-100%);
+      transition:transform .25s ease;box-shadow:0 0 40px rgba(0,0,0,.5);
+    }
+    .sidebar.open{transform:translateX(0);}
+    .main-content{padding:70px 16px 50px;}
+    .brand{margin-top:6px;}
+  }
   .connect-btn{
     background:var(--card);border:1px solid var(--border);color:var(--text);
     padding:8px 16px;border-radius:10px;font-size:13px;cursor:pointer;
@@ -285,33 +319,46 @@
   <button id="retryBtn">Já copiei, tentar de novo</button>
 </div>
 
-<div id="dash" class="hidden">
-  <div class="topbar">
+<div id="dash" class="hidden app-shell">
+  <button id="sidebarToggle" class="sidebar-toggle-btn">☰</button>
+  <div id="sidebarOverlay" class="sidebar-overlay hidden"></div>
+  <aside class="sidebar" id="sidebar">
     <div class="brand">
       <img class="brand-logo" style="width:26px;height:auto;flex-shrink:0;" alt="Follow My Money">
       Follow <span>My</span> <span>Money</span>
     </div>
     <div class="tabs">
-      <span class="active" data-view="mensal">Visão Mensal</span>
-      <span data-view="balanco">Balanço</span>
-      <span data-view="investimentos">Investimentos</span>
-      <span data-view="lancamentos">Lançamentos</span>
-      <span data-view="credito">Crédito</span>
-      <span data-view="dividas">Dívidas</span>
+      <span class="active" data-view="mensal">🏠 <b>Visão Mensal</b></span>
+      <span data-view="balanco">📊 <b>Balanço</b></span>
+      <span data-view="investimentos">💰 <b>Investimentos</b></span>
+      <span data-view="lancamentos">🧾 <b>Lançamentos</b></span>
+      <span data-view="credito">💳 <b>Crédito</b></span>
+      <span data-view="dividas">📋 <b>Dívidas</b></span>
     </div>
-    <div style="display:flex;gap:8px;align-items:center;">
-      <span id="lastUpdated" style="font-size:11px;color:var(--muted);"></span>
-      <button class="connect-btn" id="switchSheetBtn" title="Escolher outra planilha">Trocar planilha</button>
-      <button class="connect-btn" id="refreshBtn">Atualizar</button>
+    <div class="sidebar-footer">
+      <button class="connect-btn" id="switchSheetBtn" title="Escolher outra planilha" style="width:100%;">Trocar planilha</button>
     </div>
-  </div>
+  </aside>
 
-  <h1 id="greeting">Olá</h1>
-  <div class="subtitle">
-    <span id="summaryLine">Aqui está o resumo</span>
-    <select id="yearSelect"></select>
-  </div>
-  <div id="monthRuler" class="month-ruler"></div>
+  <div class="main-content">
+    <div class="header-bar">
+      <div>
+        <h1 id="greeting">Olá</h1>
+        <div class="subtitle">
+          <span id="summaryLine">Aqui está o resumo</span>
+          <select id="yearSelect"></select>
+        </div>
+      </div>
+      <div class="header-actions">
+        <span id="lastUpdated" style="font-size:11px;color:var(--muted);"></span>
+        <button class="icon-round-btn" onclick="openAlertasModal()" title="Alertas">
+          🔔<span id="alertBadge" class="alert-badge hidden">0</span>
+        </button>
+        <button class="connect-btn" id="refreshBtn">Atualizar</button>
+      </div>
+    </div>
+    <div id="monthRuler" class="month-ruler"></div>
+
 
   <div id="view-mensal" class="view active">
   <div id="alertasBanner" style="margin-bottom:16px;"></div>
@@ -547,6 +594,7 @@
       <h2>Em construção</h2>
       <p class="empty">Essa aba ainda não foi conectada — em breve.</p>
     </div>
+  </div>
   </div>
 </div>
 
@@ -1211,6 +1259,11 @@ function renderAlertas(lanc, mi){
   const deletados = getDeletedAlertIds();
   const ativos = alertas.filter(a => !arquivados.includes(a.id) && !deletados.includes(a.id));
   window._alertasAtuais = ativos;
+  const badgeEl = document.getElementById("alertBadge");
+  if(badgeEl){
+    badgeEl.textContent = ativos.length;
+    badgeEl.classList.toggle("hidden", ativos.length === 0);
+  }
 
   if(ativos.length === 0){
     el.innerHTML = `<div class="alert-item good">✅ Tudo dentro do esperado em ${MONTHS_FULL[mi]} — nenhum alerta no momento.</div>`;
@@ -1322,6 +1375,7 @@ function setupTabs(){
       tab.classList.add("active");
       document.querySelectorAll(".view").forEach(v => v.classList.remove("active"));
       document.getElementById("view-" + tab.dataset.view).classList.add("active");
+      closeSidebar();
       if(!raw) return;
       if(tab.dataset.view === "balanco") renderCharts();
       if(tab.dataset.view === "investimentos") renderInvestimentos();
@@ -1330,6 +1384,25 @@ function setupTabs(){
       if(tab.dataset.view === "dividas") renderDividas();
     });
   });
+}
+
+function setupSidebarToggle(){
+  const btn = document.getElementById("sidebarToggle");
+  const sidebar = document.getElementById("sidebar");
+  const overlay = document.getElementById("sidebarOverlay");
+  if(!btn || btn.dataset.wired === "1") return;
+  btn.dataset.wired = "1";
+  btn.addEventListener("click", () => {
+    sidebar.classList.add("open");
+    overlay.classList.remove("hidden");
+  });
+  overlay.addEventListener("click", closeSidebar);
+}
+function closeSidebar(){
+  const sidebar = document.getElementById("sidebar");
+  const overlay = document.getElementById("sidebarOverlay");
+  if(sidebar) sidebar.classList.remove("open");
+  if(overlay) overlay.classList.add("hidden");
 }
 
 // ===================== INVESTIMENTOS =====================
@@ -2218,6 +2291,7 @@ window.onload = () => {
   });
   document.getElementById("novoLancBtn").addEventListener("click", openNewForm);
   setupTabs();
+  setupSidebarToggle();
 
   // Renova a sessão sozinho ao abrir a página (sem pedir login de novo)
   trySilentReconnect(client);
