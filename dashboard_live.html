@@ -309,6 +309,27 @@
 
   <div id="view-mensal" class="view active">
   <div id="alertasBanner" style="margin-bottom:16px;"></div>
+
+  <div id="alertasModal" class="modal-overlay hidden">
+    <div class="modal-box">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
+        <h2 style="margin:0;" id="alertasModalTitle">Alertas</h2>
+        <button class="icon-btn" style="font-size:20px;" onclick="closeAlertasModal()">✕</button>
+      </div>
+      <div id="alertasModalList"></div>
+      <div id="alertasArquivadosNote" style="margin-top:14px;"></div>
+    </div>
+  </div>
+
+  <div id="alertasModal" class="modal-overlay hidden">
+    <div class="modal-box">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
+        <h2 style="margin:0;">Alertas</h2>
+        <button class="icon-btn" style="font-size:20px;" onclick="closeAlertasModal()">✕</button>
+      </div>
+      <div id="alertasModalList"></div>
+    </div>
+  </div>
   <div class="panels">
     <div class="panel">
       <h2>📊 Gastos por categoria</h2>
@@ -1017,7 +1038,52 @@ function renderCategorias(lanc, mi){
   });
 }
 
+function getArchivedAlertIds(){
+  try{ return JSON.parse(localStorage.getItem("ftm_archived_alerts") || "[]"); }
+  catch(e){ return []; }
+}
+function archiveAlerta(id){
+  const arquivados = getArchivedAlertIds();
+  if(!arquivados.includes(id)) arquivados.push(id);
+  localStorage.setItem("ftm_archived_alerts", JSON.stringify(arquivados));
+  renderAlertas(window._lancAtual, window._miAtual);
+  if(!document.getElementById("alertasModal").classList.contains("hidden")) openAlertasModal();
+}
+function openAlertasModal(){
+  document.getElementById("alertasModal").classList.remove("hidden");
+  const mi = window._miAtual;
+  document.getElementById("alertasModalTitle").textContent = "Alertas de " + (MONTHS_FULL[mi] || "");
+  const alertas = window._alertasAtuais || [];
+  const listEl = document.getElementById("alertasModalList");
+  if(alertas.length === 0){
+    listEl.innerHTML = '<p class="empty">Nenhum alerta ativo no momento.</p>';
+  } else {
+  listEl.innerHTML = alertas.map(a => `
+    <div class="alert-item ${a.type}" style="justify-content:space-between;">
+      <span style="display:flex;gap:10px;"><span>${a.icon}</span><span>${a.html}</span></span>
+      <button class="icon-btn" style="flex-shrink:0;" onclick="archiveAlerta('${a.id}')" title="Arquivar">🗄️</button>
+    </div>`).join("");
+  }
+
+  const arquivadosCount = getArchivedAlertIds().length;
+  const noteEl = document.getElementById("alertasArquivadosNote");
+  if(noteEl){
+    noteEl.innerHTML = arquivadosCount > 0
+      ? `<div style="font-size:12px;color:var(--muted);">${arquivadosCount} alerta${arquivadosCount>1?"s":""} arquivado${arquivadosCount>1?"s":""} · <span class="pill" style="cursor:pointer;" onclick="restaurarAlertas()">Restaurar todos</span></div>`
+      : "";
+  }
+}
+function restaurarAlertas(){
+  localStorage.setItem("ftm_archived_alerts", "[]");
+  renderAlertas(window._lancAtual, window._miAtual);
+  openAlertasModal();
+}
+function closeAlertasModal(){
+  document.getElementById("alertasModal").classList.add("hidden");
+}
+
 function renderAlertas(lanc, mi){
+  window._lancAtual = lanc; window._miAtual = mi;
   const el = document.getElementById("alertasBanner");
   if(!el) return;
   const alertas = [];
@@ -1046,7 +1112,7 @@ function renderAlertas(lanc, mi){
   });
   if(maiorAlta && maiorAlta.alta >= 25){
     const nomeCat = maiorAlta.cat.replace(/^[\p{Emoji_Presentation}\p{Extended_Pictographic}\uFE0F]+\s*/u, "");
-    alertas.push({ type: "warn", icon: "⚠️",
+    alertas.push({ id: `alta-${maiorAlta.cat}-${mi}-${state.year}`, type: "warn", icon: "⚠️",
       html: `<b>${nomeCat}</b> subiu ${maiorAlta.alta.toFixed(0)}% vs ${MONTHS[mi-1]} (${fmtMoney(maiorAlta.prev)} → ${fmtMoney(maiorAlta.val)})` });
   }
 
@@ -1055,7 +1121,7 @@ function renderAlertas(lanc, mi){
     const gasto = atual[r[0]] || 0;
     if(gasto > r[4]){
       const nomeCat = r[0].replace(/^[\p{Emoji_Presentation}\p{Extended_Pictographic}\uFE0F]+\s*/u, "");
-      alertas.push({ type: "danger", icon: "🚨",
+      alertas.push({ id: `orcamento-${r[0]}-${mi}-${state.year}`, type: "danger", icon: "🚨",
         html: `<b>${nomeCat}</b> já passou do orçamento: ${fmtMoney(gasto)} de ${fmtMoney(r[4])} previstos` });
     }
   });
@@ -1064,16 +1130,25 @@ function renderAlertas(lanc, mi){
   const row = (n) => (raw.balanco[n-44] || []);
   const receitaReal = row(48)[mi] || 0, despesaReal = row(49)[mi] || 0;
   if(despesaReal > receitaReal && receitaReal > 0){
-    alertas.push({ type: "danger", icon: "📉",
+    alertas.push({ id: `deficit-${mi}-${state.year}`, type: "danger", icon: "📉",
       html: `Despesa (${fmtMoney(despesaReal)}) já superou a receita (${fmtMoney(receitaReal)}) em ${MONTHS_FULL[mi]}` });
   }
 
-  if(alertas.length === 0){
+  const arquivados = getArchivedAlertIds();
+  const ativos = alertas.filter(a => !arquivados.includes(a.id));
+  window._alertasAtuais = ativos;
+
+  if(ativos.length === 0){
     el.innerHTML = `<div class="alert-item good">✅ Tudo dentro do esperado em ${MONTHS_FULL[mi]} — nenhum alerta no momento.</div>`;
   } else {
-    el.innerHTML = alertas.slice(0,4).map(a =>
-      `<div class="alert-item ${a.type}"><span>${a.icon}</span><span>${a.html}</span></div>`
-    ).join("");
+    const primeiro = ativos[0];
+    el.innerHTML = `
+      <div class="alert-item ${primeiro.type}" style="justify-content:space-between;">
+        <span style="display:flex;gap:10px;"><span>${primeiro.icon}</span><span>${primeiro.html}</span></span>
+        <button class="connect-btn" style="flex-shrink:0;" onclick="openAlertasModal()">
+          Ver ${ativos.length > 1 ? "todos (" + ativos.length + ")" : "detalhes"}
+        </button>
+      </div>`;
   }
 }
 
