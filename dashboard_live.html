@@ -93,6 +93,12 @@
     border-radius:8px;padding:4px 8px;font-size:13px;
   }
   .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:14px;margin-bottom:24px;}
+  .patrimonio-card{
+    grid-column:span 2;
+    background:linear-gradient(135deg,rgba(229,181,103,.10),rgba(229,181,103,.02))!important;
+    border-color:rgba(229,181,103,.3)!important;
+  }
+  @media (max-width:480px){ .patrimonio-card{grid-column:span 1;} }
   .card{
     background:var(--card);border:1px solid var(--border);border-radius:16px;
     overflow:hidden;
@@ -347,15 +353,15 @@
   </div>
 
   <div id="view-balanco" class="view">
-    <div class="chart-panel" style="background:linear-gradient(135deg,rgba(229,181,103,.08),rgba(229,181,103,.02));border-color:rgba(229,181,103,.25);margin-bottom:16px;">
-      <div style="display:flex;align-items:center;gap:6px;">
-        <div class="label" style="color:var(--muted);font-size:11px;font-weight:700;text-transform:uppercase;">Patrimônio líquido</div>
-        <span class="info-icon" data-tip="Tudo que você tem (Reserva + Renda Fixa + Renda Variável) menos tudo que você deve (saldo devedor das dívidas ativas).">?</span>
-      </div>
-      <div class="value" id="cPatrimonio" style="font-size:32px;font-weight:700;margin:4px 0;">—</div>
-      <div class="sub" id="cPatrimonioSub" style="color:var(--muted);font-size:12px;"></div>
-    </div>
     <div class="cards">
+      <div class="card patrimonio-card">
+        <div class="accent" style="background:var(--gold)"></div>
+        <div class="body">
+          <div class="label">Patrimônio líquido <span class="info-icon" data-tip="Tudo que você tem (Reserva + Renda Fixa + Renda Variável) menos tudo que você deve (saldo devedor das dívidas ativas).">?</span></div>
+          <div class="value" id="cPatrimonio" style="font-size:24px;">—</div>
+          <div class="sub" id="cPatrimonioSub"></div>
+        </div>
+      </div>
       <div class="card"><div class="accent" style="background:var(--green)"></div>
         <div class="body"><div class="label">Receita do mês</div>
           <div class="value" id="cReceita" style="color:var(--green)">—</div>
@@ -376,9 +382,6 @@
         <div class="body"><div class="label">Fatura em aberto</div>
           <div class="value" id="cFatura" style="color:var(--purple)">—</div>
           <div class="sub" id="cFaturaSub"></div></div></div>
-    </div>
-
-    <div class="cards" style="margin-top:14px;">
       <div class="card"><div class="accent" style="background:var(--green)"></div>
         <div class="body"><div class="label">Taxa de poupança <span class="info-icon" data-tip="Percentual da receita acumulada no ano (Jan até o mês atual) que sobrou como saldo positivo.">?</span></div>
           <div class="value" id="cTaxaPoupanca" style="color:var(--green)">—</div>
@@ -1771,7 +1774,7 @@ function renderReservaCombo(saldo, saldoPrevisto, reserva, meta, mi){
     const tipHtml = `<b>${MONTHS_FULL[i]}</b><br>Reserva (${isProjected?"projetada":"real"}): ${fmtMoney(projetado[i])}<br>Saldo do mês: ${fmtMoney(saldo[i])}<br>Meta: ${fmtMoney(metaAno)}`;
     svg += `<rect x="${p.x - groupW/2}" y="0" width="${groupW}" height="${H}" fill="transparent" style="cursor:pointer;" onmousemove="showChartTooltip(event, '${tipHtml}')" onmouseleave="hideChartTooltip()"/>`;
   });
-  el.innerHTML = `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;max-height:280px;">${svg}</svg>`;
+  el.innerHTML = `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;max-height:340px;">${svg}</svg>`;
 
   const pctColor = pctAlcancado >= 100 ? "var(--green)" : (pctAlcancado >= 70 ? "var(--yellow)" : "var(--red)");
   const pctAtualMeta = metaAno > 0 ? (reserva[mi] / metaAno * 100) : 0;
@@ -2058,7 +2061,7 @@ function renderCharts(){
     bars += `<rect x="${gx}" y="0" width="${groupW}" height="${H}" fill="transparent" style="cursor:pointer;" onmousemove="showChartTooltip(event, '${tipHtml}')" onmouseleave="hideChartTooltip()"/>`;
   }
   document.getElementById("chartBarras").innerHTML =
-    `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;max-height:280px;">${bars}</svg>`;
+    `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;max-height:340px;">${bars}</svg>`;
 
   renderReservaCombo(saldo, saldoPrevisto, reserva, meta, mi);
 
@@ -2165,7 +2168,7 @@ function renderDetalheChart(){
     bars += `<text x="${x0+barW}" y="${H-10}" font-size="10" font-weight="${i===mi?'700':'400'}" fill="${labelColor}" text-anchor="middle">${MONTHS[i]}</text>`;
   }
   document.getElementById("detalheChart").innerHTML =
-    `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;max-height:280px;">${bars}</svg>
+    `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;max-height:340px;">${bars}</svg>
      <div class="legend"><span><i style="background:var(--green)"></i>Receita Real</span><span><i style="background:var(--red)"></i>Despesa Real</span></div>`;
 }
 
