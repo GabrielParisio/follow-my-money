@@ -44,7 +44,7 @@
   .tabs span:hover{background:rgba(255,255,255,.04);color:var(--text);}
   .tabs .active{color:var(--text);background:rgba(31,92,66,.35);border-left:3px solid var(--green);padding-left:9px;}
   .sidebar-footer{padding-top:14px;border-top:1px solid var(--border);margin-top:14px;}
-  .header-bar{display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:14px;margin-bottom:6px;}
+  .header-bar{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:6px;}
   .header-actions{display:flex;gap:10px;align-items:center;flex-wrap:wrap;}
   .icon-round-btn{
     position:relative;background:var(--card);border:1px solid var(--border);border-radius:50%;
@@ -54,6 +54,14 @@
   .alert-badge{
     position:absolute;top:-4px;right:-4px;background:var(--red);color:#fff;font-size:9.5px;font-weight:700;
     border-radius:999px;min-width:16px;height:16px;display:flex;align-items:center;justify-content:center;padding:0 3px;
+  }
+  .alert-badge-inline{
+    background:var(--red);color:#fff;font-size:10px;font-weight:700;
+    border-radius:999px;min-width:17px;height:17px;display:inline-flex;align-items:center;justify-content:center;padding:0 4px;
+  }
+  @media (max-width:860px){
+    .header-bar{gap:8px;margin-bottom:2px;}
+    .header-actions{gap:8px;}
   }
   .sidebar-toggle-btn{
     display:none;position:fixed;top:16px;left:16px;z-index:150;background:var(--card);border:1px solid var(--border);
@@ -340,6 +348,9 @@
       <span data-view="dividas">📋 <b>Dívidas</b></span>
     </div>
     <div class="sidebar-footer">
+      <button class="connect-btn" id="alertsBellBtn" onclick="openAlertasModal()" title="Alertas" style="width:100%;display:flex;align-items:center;justify-content:center;gap:8px;margin-bottom:8px;">
+        🔔 Alertas <span id="alertBadge" class="alert-badge-inline hidden">0</span>
+      </button>
       <button class="connect-btn" id="switchSheetBtn" title="Escolher outra planilha" style="width:100%;">Trocar planilha</button>
     </div>
   </aside>
@@ -355,9 +366,6 @@
       </div>
       <div class="header-actions">
         <span id="lastUpdated" style="font-size:11px;color:var(--muted);"></span>
-        <button class="icon-round-btn" onclick="openAlertasModal()" title="Alertas">
-          🔔<span id="alertBadge" class="alert-badge hidden">0</span>
-        </button>
         <button class="connect-btn" id="refreshBtn">Atualizar</button>
       </div>
     </div>
