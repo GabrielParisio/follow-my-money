@@ -1700,7 +1700,7 @@ function renderReservaCombo(saldo, saldoPrevisto, reserva, meta, mi){
     const tipHtml = `<b>${MONTHS_FULL[i]}</b><br>Reserva (${isProjected?"projetada":"real"}): ${fmtMoney(projetado[i])}<br>Saldo do mês: ${fmtMoney(saldo[i])}<br>Meta: ${fmtMoney(metaAno)}`;
     svg += `<rect x="${p.x - groupW/2}" y="0" width="${groupW}" height="${H}" fill="transparent" style="cursor:pointer;" onmousemove="showChartTooltip(event, '${tipHtml}')" onmouseleave="hideChartTooltip()"/>`;
   });
-  el.innerHTML = `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;">${svg}</svg>`;
+  el.innerHTML = `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;max-height:280px;">${svg}</svg>`;
 
   const pctColor = pctAlcancado >= 100 ? "var(--green)" : (pctAlcancado >= 70 ? "var(--yellow)" : "var(--red)");
   const pctAtualMeta = metaAno > 0 ? (reserva[mi] / metaAno * 100) : 0;
@@ -1987,7 +1987,7 @@ function renderCharts(){
     bars += `<rect x="${gx}" y="0" width="${groupW}" height="${H}" fill="transparent" style="cursor:pointer;" onmousemove="showChartTooltip(event, '${tipHtml}')" onmouseleave="hideChartTooltip()"/>`;
   }
   document.getElementById("chartBarras").innerHTML =
-    `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;">${bars}</svg>`;
+    `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;max-height:280px;">${bars}</svg>`;
 
   renderReservaCombo(saldo, saldoPrevisto, reserva, meta, mi);
 
@@ -2094,7 +2094,7 @@ function renderDetalheChart(){
     bars += `<text x="${x0+barW}" y="${H-10}" font-size="10" font-weight="${i===mi?'700':'400'}" fill="${labelColor}" text-anchor="middle">${MONTHS[i]}</text>`;
   }
   document.getElementById("detalheChart").innerHTML =
-    `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;">${bars}</svg>
+    `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;max-height:280px;">${bars}</svg>
      <div class="legend"><span><i style="background:var(--green)"></i>Receita Real</span><span><i style="background:var(--red)"></i>Despesa Real</span></div>`;
 }
 
