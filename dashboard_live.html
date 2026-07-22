@@ -382,36 +382,24 @@
         </div>
       </div>
       <div class="chart-panel">
-        <h2>Evolução do Saldo</h2>
-        <div id="chartSaldo"></div>
-      </div>
-      <div class="chart-panel">
-        <h2>Reserva de Emergência x Meta</h2>
-        <div id="chartReserva"></div>
-        <div class="legend">
-          <span><i style="background:var(--blue)"></i>Reserva</span>
-          <span><i style="background:var(--muted)"></i>Meta</span>
-        </div>
-      </div>
-    </div>
-    <div class="charts-row" style="margin-top:16px;">
-      <div class="chart-panel">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
-          <h2 style="margin:0;">Detalhamento mensal</h2>
-          <button class="connect-btn mobile-only" onclick="openDetalhamentoModal()">Ver completo</button>
-        </div>
-        <div id="detalhamentoResumo" class="mobile-only"></div>
-        <div id="tabelaMensalDesktop" class="desktop-only" style="overflow-x:auto;"></div>
-      </div>
-      <div class="chart-panel">
-        <h2>Projeção fim de ano</h2>
+        <h2>Reserva: evolução, meta e projeção</h2>
         <div id="cProjecaoSub" style="color:var(--muted);font-size:12.5px;margin-bottom:8px;"></div>
-        <div id="chartProjecao"></div>
+        <div id="chartReservaCombo"></div>
         <div class="legend">
           <span><i style="background:var(--blue)"></i>Reserva real</span>
           <span><i style="background:var(--muted)"></i>Projeção</span>
+          <span><i style="background:var(--green)"></i>Saldo + </span>
+          <span><i style="background:var(--red)"></i>Saldo −</span>
         </div>
       </div>
+    </div>
+    <div class="chart-panel" style="margin-top:16px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+        <h2 style="margin:0;">Detalhamento mensal</h2>
+        <button class="connect-btn mobile-only" onclick="openDetalhamentoModal()">Ver completo</button>
+      </div>
+      <div id="detalhamentoResumo" class="mobile-only"></div>
+      <div id="tabelaMensalDesktop" class="desktop-only" style="overflow-x:auto;"></div>
     </div>
   </div>
 
@@ -1584,8 +1572,8 @@ function renderDividas(){
   </table>`;
 }
 
-function renderProjecaoChart(saldoPrevisto, reserva, meta, mi){
-  const el = document.getElementById("chartProjecao");
+function renderReservaCombo(saldo, saldoPrevisto, reserva, meta, mi){
+  const el = document.getElementById("chartReservaCombo");
   if(!el) return;
 
   // Reserva real até o mês vigente, depois soma o Saldo Previsto (já calculado pela planilha) mês a mês
@@ -1604,17 +1592,29 @@ function renderProjecaoChart(saldoPrevisto, reserva, meta, mi){
     y: H - PAD - ((v - minV)/(maxV - minV)) * (H-PAD*2)
   }));
   const metaY = H - PAD - ((metaAno - minV)/(maxV - minV)) * (H-PAD*2);
-
-  const realPts = pts.slice(0, mi+1);
-  const projPts = pts.slice(mi);
+  const groupW = (W-PADL-PAD)/11;
 
   let svg = yAxis(minV, maxV, W, H, PAD, PAD, PADL);
+
+  // barras de fundo: saldo mensal (contexto de "evolução do saldo"), escala própria
+  const maxSaldoAbs = Math.max(...saldo.map(Math.abs), 1) * 1.6;
+  const barMaxH = (H - PAD*2) * 0.32;
+  const barBaseY = H - PAD;
+  saldo.forEach((v,i) => {
+    const bh = Math.abs(v) / maxSaldoAbs * barMaxH;
+    const color = v >= 0 ? "var(--green)" : "var(--red)";
+    svg += `<rect x="${pts[i].x - groupW*0.28}" y="${barBaseY - bh}" width="${groupW*0.56}" height="${bh}" rx="2" fill="${color}" fill-opacity="${i===mi?0.35:0.18}"/>`;
+  });
+
   svg += `<line x1="${PADL}" y1="${metaY}" x2="${W-PAD}" y2="${metaY}" stroke="var(--muted)" stroke-width="1.5" stroke-dasharray="6,4"/>`;
   svg += `<text x="${W-PAD}" y="${metaY-6}" font-size="10" fill="var(--muted)" text-anchor="end">Meta ${fmtMoney(metaAno)}</text>`;
   svg += `<line x1="${pts[mi].x}" y1="${PAD*0.3}" x2="${pts[mi].x}" y2="${H-PAD}" stroke="#60A5FA" stroke-width="1.5" stroke-dasharray="4"/>`;
+
+  const realPts = pts.slice(0, mi+1);
+  const projPts = pts.slice(mi);
   svg += svgLine(realPts, "#60A5FA", W, H, true);
   svg += svgLine(projPts, "#8B8D9E", W, H, false).replace('stroke-width="2.5"','stroke-width="1.5" stroke-dasharray="5,4"');
-  const groupW = (W-PADL-PAD)/11;
+
   pts.forEach((p,i) => {
     const isProjected = i > mi;
     const color = isProjected ? "#8B8D9E" : "#60A5FA";
@@ -1622,7 +1622,7 @@ function renderProjecaoChart(saldoPrevisto, reserva, meta, mi){
     svg += `<circle cx="${p.x}" cy="${p.y}" r="${r}" fill="${color}"/>`;
     const labelColor = i === mi ? "#F5F5F7" : "#8B8D9E";
     svg += `<text x="${p.x}" y="${H-10}" font-size="10" font-weight="${i===mi?'700':'400'}" fill="${labelColor}" text-anchor="middle">${MONTHS[i]}</text>`;
-    const tipHtml = `<b>${MONTHS_FULL[i]}</b><br>${isProjected ? "Projetado" : "Real"}: ${fmtMoney(projetado[i])}`;
+    const tipHtml = `<b>${MONTHS_FULL[i]}</b><br>Reserva (${isProjected?"projetada":"real"}): ${fmtMoney(projetado[i])}<br>Saldo do mês: ${fmtMoney(saldo[i])}<br>Meta: ${fmtMoney(metaAno)}`;
     svg += `<rect x="${p.x - groupW/2}" y="0" width="${groupW}" height="${H}" fill="transparent" style="cursor:pointer;" onmousemove="showChartTooltip(event, '${tipHtml}')" onmouseleave="hideChartTooltip()"/>`;
   });
   el.innerHTML = `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;">${svg}</svg>`;
@@ -1914,55 +1914,7 @@ function renderCharts(){
   document.getElementById("chartBarras").innerHTML =
     `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;">${bars}</svg>`;
 
-  // ---- Line chart: Saldo ----
-  const maxS = Math.max(...saldo.map(Math.abs), 1) * 1.2;
-  const ptsSaldo = saldo.map((v,i) => {
-    const x = PADL + i*((W-PADL-PAD)/11);
-    const y = H - PAD - ((v + maxS)/(maxS*2)) * (H-PAD*2);
-    return {x,y};
-  });
-  let saldoSvg = yAxis(-maxS, maxS, W, H, PAD, PAD, PADL);
-  saldoSvg += `<line x1="${ptsSaldo[mi].x}" y1="${PAD*0.3}" x2="${ptsSaldo[mi].x}" y2="${H-PAD}" stroke="#60A5FA" stroke-width="1.5" stroke-dasharray="4"/>`;
-  saldoSvg += svgLine(ptsSaldo, "#60A5FA", W, H, true);
-  ptsSaldo.forEach((p,i) => {
-    const r = i === mi ? 6 : 3;
-    const ring = i === mi ? `<circle cx="${p.x}" cy="${p.y}" r="10" fill="#60A5FA" opacity="0.18"/>` : "";
-    saldoSvg += ring + `<circle cx="${p.x}" cy="${p.y}" r="${r}" fill="#60A5FA"/>`;
-    const labelColor = i === mi ? "#F5F5F7" : "#8B8D9E";
-    saldoSvg += `<text x="${p.x}" y="${H-10}" font-size="10" font-weight="${i===mi?'700':'400'}" fill="${labelColor}" text-anchor="middle">${MONTHS[i]}</text>`;
-  });
-  const saldoGroupW = (W-PADL-PAD)/11;
-  ptsSaldo.forEach((p,i) => {
-    const tipHtml = `<b>${MONTHS_FULL[i]}</b><br>Saldo: ${fmtMoney(saldo[i])}`;
-    saldoSvg += `<rect x="${p.x - saldoGroupW/2}" y="0" width="${saldoGroupW}" height="${H}" fill="transparent" style="cursor:pointer;" onmousemove="showChartTooltip(event, '${tipHtml}')" onmouseleave="hideChartTooltip()"/>`;
-  });
-  document.getElementById("chartSaldo").innerHTML =
-    `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;">${saldoSvg}</svg>`;
-
-  // ---- Reserva x Meta ----
-  const maxR = Math.max(...reserva, ...meta, 1) * 1.15;
-  const ptsReserva = scalePoints(reserva, W, H, PAD, maxR).map(p => ({...p, x: p.x - PAD + PADL}));
-  const ptsMeta = scalePoints(meta, W, H, PAD, maxR).map(p => ({...p, x: p.x - PAD + PADL}));
-  let reservaSvg = yAxis(0, maxR, W, H, PAD, PAD, PADL);
-  reservaSvg += `<line x1="${ptsReserva[mi].x}" y1="${PAD*0.3}" x2="${ptsReserva[mi].x}" y2="${H-PAD}" stroke="#60A5FA" stroke-width="1.5" stroke-dasharray="4"/>`;
-  reservaSvg += svgLine(ptsReserva, "#60A5FA", W, H, true);
-  reservaSvg += svgLine(ptsMeta, "#8B8D9E", W, H, false).replace('stroke-width="2.5"','stroke-width="1.5" stroke-dasharray="5,4"');
-  ptsReserva.forEach((p,i) => {
-    const r = i === mi ? 6 : 3;
-    const ring = i === mi ? `<circle cx="${p.x}" cy="${p.y}" r="10" fill="#60A5FA" opacity="0.18"/>` : "";
-    reservaSvg += ring + `<circle cx="${p.x}" cy="${p.y}" r="${r}" fill="#60A5FA"/>`;
-    const labelColor = i === mi ? "#F5F5F7" : "#8B8D9E";
-    reservaSvg += `<text x="${p.x}" y="${H-10}" font-size="10" font-weight="${i===mi?'700':'400'}" fill="${labelColor}" text-anchor="middle">${MONTHS[i]}</text>`;
-  });
-  const reservaGroupW = (W-PADL-PAD)/11;
-  ptsReserva.forEach((p,i) => {
-    const tipHtml = `<b>${MONTHS_FULL[i]}</b><br>Reserva: ${fmtMoney(reserva[i])}<br>Meta: ${fmtMoney(meta[i])}`;
-    reservaSvg += `<rect x="${p.x - reservaGroupW/2}" y="0" width="${reservaGroupW}" height="${H}" fill="transparent" style="cursor:pointer;" onmousemove="showChartTooltip(event, '${tipHtml}')" onmouseleave="hideChartTooltip()"/>`;
-  });
-  document.getElementById("chartReserva").innerHTML =
-    `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;">${reservaSvg}</svg>`;
-
-  renderProjecaoChart(saldoPrevisto, reserva, meta, mi);
+  renderReservaCombo(saldo, saldoPrevisto, reserva, meta, mi);
 
   // ---- Tabela detalhamento mensal (transposta, como na planilha) ----
   const curM = mi;
