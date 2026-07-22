@@ -1118,11 +1118,11 @@ function render(){
   const { balanco, cadastro, orcadoTotal, lanc, credito } = raw;
   const mi = state.monthIdx;
 
-  // Balanço!D44:O56 -> row 44 is offset 0
+  // Balanço!D44:O56 -> row 44 is offset 0 (Real/Reserva/Meta ainda vêm da planilha; Previsto já migrado pro app)
   const row = (n) => balanco[n - 44] || [];
-  const receitaPrevisto = row(45)[mi] || 0;
-  const despesaPrevisto = row(46)[mi] || 0;
-  const saldoPrevisto = row(47)[mi] || 0;
+  const receitaPrevisto = calcPrevisto("Receita", mi, state.year);
+  const despesaPrevisto = calcPrevisto("Despesa", mi, state.year);
+  const saldoPrevisto = receitaPrevisto - despesaPrevisto;
   const receitaReal = row(48)[mi] || 0;
   const despesaReal = row(49)[mi] || 0;
   const saldoReal = row(50)[mi] || 0;
@@ -1885,6 +1885,17 @@ function debitoRows(){
   })).filter(it => it.desc || it.categoria);
 }
 
+// "Previsto" migrado da planilha (era =SOMASES(valor; tipo; mês; ano) em Lançamentos(fx), sem filtro de status).
+// Calculado direto da aba Débito — não depende mais do espelho Lançamentos(fx).
+function calcPrevisto(tipo, mesIdx, ano){
+  return debitoRows().reduce((s, it) => {
+    if(it.tipo !== tipo || !it.dataVenc) return s;
+    const d = serialToDate(it.dataVenc);
+    if(d.getMonth() !== mesIdx || d.getFullYear() !== ano) return s;
+    return s + (it.valor || 0);
+  }, 0);
+}
+
 function categoriaOptions(selected){
   const cats = (raw.cadastro || []).map(r => r[0]).filter(Boolean);
   return cats.map(c => `<option value="${c}" ${c===selected?"selected":""}>${c}</option>`).join("");
@@ -2039,7 +2050,7 @@ function openEditForm(row){
           <option value="Despesa" ${it.tipo==="Despesa"?"selected":""}>Despesa</option>
           <option value="Receita" ${it.tipo==="Receita"?"selected":""}>Receita</option>
           <option value="Investimento" ${it.tipo==="Investimento"?"selected":""}>Investimento</option>
-          <option value="Resgate" ${it.tipo==="Resgate"?"selected":""}>Resgate</option>
+          <option value="Resgate Investimento" ${it.tipo==="Resgate Investimento"?"selected":""}>Resgate Investimento</option>
         </select>
       </div>
       <div><label>Valor</label><input id="fValor" type="number" step="0.01" value="${it.valor}"></div>
@@ -2068,7 +2079,7 @@ function openNewForm(){
           <option value="Despesa">Despesa</option>
           <option value="Receita">Receita</option>
           <option value="Investimento">Investimento</option>
-          <option value="Resgate">Resgate</option>
+          <option value="Resgate Investimento">Resgate Investimento</option>
         </select>
       </div>
       <div><label>Conta</label><input id="fConta" placeholder="Ex: Banco Principal"></div>
@@ -2936,7 +2947,7 @@ function renderCharts(){
   const receita = row(48).map(v => v||0);
   const despesa = row(49).map(v => v||0);
   const saldo = row(50).map(v => v||0);
-  const saldoPrevisto = row(47).map(v => v||0);
+  const saldoPrevisto = [...Array(12)].map((_,i) => calcPrevisto("Receita", i, state.year) - calcPrevisto("Despesa", i, state.year));
   const reserva = row(53).map(v => v||0);
   const meta = row(56).map(v => v||0);
   const mi = state.monthIdx;
@@ -2983,11 +2994,13 @@ function renderCharts(){
   function sectionRow(label){
     return `<tr class="section-header"><th>${label}</th>` + MONTHS.map(()=>"<td></td>").join("") + `</tr>`;
   }
+  const receitaPrevistoArr = [...Array(12)].map((_,i) => calcPrevisto("Receita", i, state.year));
+  const despesaPrevistoArr = [...Array(12)].map((_,i) => calcPrevisto("Despesa", i, state.year));
   const tableRows = [
     sectionRow("Previsto"),
-    dataRow("Receita Prevista", row(45).map(v=>v||0)),
-    dataRow("Despesa Prevista", row(46).map(v=>v||0)),
-    dataRow("Saldo Previsto", row(47).map(v=>v||0), {signed:true}),
+    dataRow("Receita Prevista", receitaPrevistoArr),
+    dataRow("Despesa Prevista", despesaPrevistoArr),
+    dataRow("Saldo Previsto", receitaPrevistoArr.map((v,i) => v - despesaPrevistoArr[i]), {signed:true}),
     sectionRow("Realizado"),
     dataRow("Receita Real", receita),
     dataRow("Despesa Real", despesa),
