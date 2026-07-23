@@ -736,6 +736,7 @@
         <h2 style="margin:0;">💳 Cartões de crédito</h2>
         <button class="connect-btn" onclick="addCadastroCartao()">+ Novo cartão</button>
       </div>
+      <div id="cadCartoesOrfaos" style="margin-bottom:14px;"></div>
       <div id="cadCartoesTable" style="overflow-x:auto;"></div>
     </div>
   </div>
@@ -2598,6 +2599,7 @@ function renderCadastro(){
   if(salarioInput && document.activeElement !== salarioInput) salarioInput.value = salario || "";
   renderCadCategoriasTable();
   renderCadCartoesTable();
+  renderCartoesOrfaosAviso();
 }
 
 async function saveCadastroPerfil(){
@@ -2713,16 +2715,84 @@ function renderCadCartoesTable(){
   }
   const rows = cartoes.map(c => `
     <tr>
-      <td data-label="Nome"><input value="${c.nome}" onchange="saveCadCartaoCampo(${c.row}, 'H', this.value)" style="background:transparent;border:none;color:var(--text);width:100%;font-size:13px;"></td>
+      <td data-label="Nome"><input value="${c.nome}" onchange="renomearCartao(${c.row}, ${JSON.stringify(c.nome)}, this.value)" style="background:transparent;border:none;color:var(--text);width:100%;font-size:13px;"></td>
       <td data-label="Bandeira/tipo"><input value="${c.bandeira}" placeholder="Ex: Amex Platinum" onchange="saveCadCartaoCampo(${c.row}, 'I', this.value)" style="background:transparent;border:none;color:var(--text);width:100%;font-size:13px;"></td>
       <td data-label="Vencimento" style="text-align:right;"><input type="number" min="1" max="31" value="${c.vencimento}" onchange="saveCadCartaoCampo(${c.row}, 'J', this.value)" style="background:transparent;border:none;color:var(--text);width:60px;text-align:right;font-size:13px;"></td>
       <td><button class="icon-btn" onclick="deleteCadCartao(${c.row})" title="Remover">🗑️</button></td>
     </tr>`).join("");
   el.innerHTML = `<table class="lanc"><thead><tr><th>Nome</th><th>Bandeira/tipo</th><th style="text-align:right;">Dia venc.</th><th></th></tr></thead><tbody>${rows}</tbody></table>`;
 }
+// Crédito!B10:I -> a linha real de cada compra é 10 + índice no array bruto.
+// Atualiza todas as compras lançadas com "nomeAntigo" pra passarem a apontar pro "nomeNovo".
+async function reconectarComprasDoCartao(nomeAntigo, nomeNovo){
+  const linhasParaAtualizar = [];
+  (raw.compras || []).forEach((c, i) => {
+    if((c[1] || "").trim() === nomeAntigo.trim()) linhasParaAtualizar.push(10 + i);
+  });
+  await Promise.all(linhasParaAtualizar.map(r => writeCell(`Crédito!C${r}`, nomeNovo)));
+  return linhasParaAtualizar.length;
+}
+// Nomes de cartão que aparecem em compras lançadas mas não existem mais na lista de cartões do Cadastro
+// (normalmente porque o cartão foi renomeado antes dessa reconexão automática existir).
+function getNomesCartoesOrfaos(){
+  const atuais = new Set(getCadastroCartoesParsed().map(c => c.nome.trim()));
+  const orfaos = new Set();
+  (raw.compras || []).forEach(c => {
+    const nome = (c[1] || "").trim();
+    if(nome && !atuais.has(nome)) orfaos.add(nome);
+  });
+  return Array.from(orfaos);
+}
+function renderCartoesOrfaosAviso(){
+  const el = document.getElementById("cadCartoesOrfaos");
+  if(!el) return;
+  const orfaos = getNomesCartoesOrfaos();
+  const cartoesAtuais = getCadastroCartoesParsed();
+  if(orfaos.length === 0 || cartoesAtuais.length === 0){
+    el.innerHTML = "";
+    return;
+  }
+  el.innerHTML = `
+    <div class="alert-item warn" style="flex-direction:column;align-items:stretch;gap:10px;">
+      <div>⚠️ Achamos compras lançadas com nomes de cartão que não existem mais: <b>${orfaos.join(", ")}</b>. Isso costuma acontecer depois de renomear um cartão. Quer reconectar?</div>
+      ${orfaos.map(nomeAntigo => `
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+          <span style="font-size:12.5px;">"${nomeAntigo}" agora é:</span>
+          <select id="orfaoSelect-${normalizeCatName(nomeAntigo).replace(/\s/g,"_")}" style="flex:1;min-width:140px;">
+            ${cartoesAtuais.map(c => `<option value="${c.nome}">${c.nome}</option>`).join("")}
+          </select>
+          <button class="connect-btn" onclick="resolverCartaoOrfao(${JSON.stringify(nomeAntigo)}, 'orfaoSelect-${normalizeCatName(nomeAntigo).replace(/\s/g,"_")}')">Reconectar</button>
+        </div>`).join("")}
+    </div>`;
+}
+async function resolverCartaoOrfao(nomeAntigo, selectId){
+  const nomeNovo = document.getElementById(selectId).value;
+  try{
+    const n = await reconectarComprasDoCartao(nomeAntigo, nomeNovo);
+    await loadData();
+    renderCadastro();
+    showToast(`${n} compra${n===1?"":"s"} reconectada${n===1?"":"s"} a "${nomeNovo}"`, "success");
+  }catch(err){ showToast("Não foi possível reconectar: " + err.message, "error"); }
+}
 async function saveCadCartaoCampo(row, col, value){
   try{ await writeCell(`Cadastro!${col}${row}`, value); await loadData(); renderCadastro(); showToast("Cartão atualizado", "success"); }
   catch(err){ showToast("Não foi possível salvar: " + err.message, "error"); }
+}
+// Renomear o cartão precisa também atualizar as compras já lançadas com o nome antigo — senão elas
+// "descolam" do cartão (o nome funciona como a ligação entre a compra e o cartão na aba Crédito).
+async function renomearCartao(row, nomeAntigo, nomeNovo){
+  nomeNovo = (nomeNovo || "").trim();
+  if(!nomeNovo || nomeNovo === nomeAntigo) return;
+  try{
+    await writeCell(`Cadastro!H${row}`, nomeNovo);
+    const n = await reconectarComprasDoCartao(nomeAntigo, nomeNovo);
+    await loadData();
+    renderCadastro();
+    showToast(
+      n ? `Cartão renomeado — ${n} compra${n===1?"":"s"} reconectada${n===1?"":"s"}` : "Cartão renomeado",
+      "success"
+    );
+  }catch(err){ showToast("Não foi possível renomear: " + err.message, "error"); }
 }
 async function addCadastroCartao(){
   const cartoes = getCadastroCartoesParsed();
