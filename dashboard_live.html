@@ -1019,6 +1019,23 @@ async function writeCell(a1Range, value){
   return res.json();
 }
 
+// Escreve várias células numa ÚNICA requisição (em vez de uma por célula em paralelo), evitando
+// estourar o limite de requisições da API do Google Sheets (erro 429) quando muitas linhas mudam de uma vez.
+async function writeCellsBatch(updates){
+  if(!updates || updates.length === 0) return;
+  const url = `https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}/values:batchUpdate`;
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { Authorization: "Bearer " + accessToken, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      valueInputOption: "USER_ENTERED",
+      data: updates.map(u => ({ range: u.range, values: [[u.value]] }))
+    })
+  });
+  if(!res.ok) throw new Error("Falha ao salvar em lote (" + res.status + ")");
+  return res.json();
+}
+
 async function appendRow(sheetName, rowValues){
   const url = `https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}/values/${encodeURIComponent(sheetName + "!B:K")}:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`;
   const res = await fetch(url, {
@@ -2024,7 +2041,7 @@ async function bulkMarkLancamentos(marcarPago){
   const rows = Array.from(lancSelectedRows);
   if(rows.length === 0) return;
   try{
-    await Promise.all(rows.map(row => writeCell(`Débito!K${row}`, marcarPago ? "✅ Pago" : "")));
+    await writeCellsBatch(rows.map(row => ({ range: `Débito!K${row}`, value: marcarPago ? "✅ Pago" : "" })));
     const n = rows.length;
     lancSelectedRows.clear();
     await loadData();
@@ -2785,7 +2802,7 @@ async function reconectarComprasDoCartao(nomeAntigo, nomeNovo){
   (raw.compras || []).forEach((c, i) => {
     if((c[1] || "").trim() === nomeAntigo.trim()) linhasParaAtualizar.push(10 + i);
   });
-  await Promise.all(linhasParaAtualizar.map(r => writeCell(`Crédito!C${r}`, nomeNovo)));
+  await writeCellsBatch(linhasParaAtualizar.map(r => ({ range: `Crédito!C${r}`, value: nomeNovo })));
   return linhasParaAtualizar.length;
 }
 // Nomes de cartão que aparecem em compras lançadas mas não existem mais na lista de cartões do Cadastro
