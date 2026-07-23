@@ -3771,12 +3771,31 @@ async function handleImportFaturaCartao(file){
       const nomeCartao = MAPA_CARTOES_IMPORT[t.cartaoNumero] || ("Cartão " + (t.cartaoNumero || "?"));
       return [fmtDataBR(t.data), nomeCartao, t.descricao, "", t.valor, t.valor, "1/1", vencimento ? fmtDataBR(vencimento) : ""];
     });
+
+    // Confere se os nomes de cartão mapeados batem com algum cartão realmente cadastrado —
+    // a coluna "Cartão" da aba Crédito tem validação restrita a essa lista, então um nome
+    // fora dela gera aviso de erro na planilha depois. Melhor avisar antes de gravar.
+    const cartoesCadastrados = new Set((raw.cartoes || []).filter(r => r[0]).map(r => r[0].trim()));
+    const nomesNaoEncontrados = [...new Set(rows.map(r => r[1]).filter(nome => !cartoesCadastrados.has(nome)))];
+    if(nomesNaoEncontrados.length > 0){
+      const confirmar = confirm(
+        `Estes nomes de cartão não batem com nenhum cartão cadastrado no Cadastro:\n\n${nomesNaoEncontrados.join(", ")}\n\n` +
+        `Isso vai aparecer com aviso de erro na planilha (a coluna "Cartão" só aceita os nomes já cadastrados). ` +
+        `Quer importar mesmo assim? (Cancelar pra corrigir o cadastro primeiro)`
+      );
+      if(!confirmar){
+        statusEl.textContent = `Importação cancelada. Cadastre "${nomesNaoEncontrados.join('", "')}" na aba Cadastro → Cartões (ou ajuste o mapeamento de dígitos) e tente de novo.`;
+        return;
+      }
+    }
+
     statusEl.textContent = "Importando...";
     await appendRows("Crédito", "B:I", rows);
     await loadData();
     renderCredito();
     statusEl.textContent = `✅ ${rows.length} transação(ões) importada(s) na aba Crédito` +
       (puladasNaoCompra ? ` · ${puladasNaoCompra} ignorada(s) (saldo anterior/boleto)` : "") +
+      (nomesNaoEncontrados.length ? `\n⚠️ Nomes fora do cadastro: ${nomesNaoEncontrados.join(", ")}` : "") +
       `\n📝 A categoria ficou em branco — escolha no menu suspenso de cada linha.`;
   }catch(err){
     statusEl.textContent = "❌ Não foi possível importar: " + err.message;
