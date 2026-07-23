@@ -2348,18 +2348,22 @@ function getDividasParsed(){
       // Se não houver dados suficientes pro cálculo, cai de volta pro valor manual da planilha (compatibilidade).
       const saldoDevedorCalc = calcSaldoDevedorAmortizado(valorInicial, valorParcela, numParcelas, parcelasPagas);
       const saldoDevedor = saldoDevedorCalc !== null ? saldoDevedorCalc : saldoDevedorPlanilha;
+      const saldoDevedorAutoCalculado = saldoDevedorCalc !== null;
+      // Mesma taxa usada no cálculo do saldo devedor — deixada disponível pra corrigir o campo "Taxa de juros" da planilha
+      const taxaJurosImplicita = saldoDevedorAutoCalculado ? taxaImplicita(valorInicial, valorParcela, numParcelas) * 100 : null;
       return {
         row: headerRowIdx + 2 + i, // linha real na planilha (o range começa em B1)
         desc: r[col.desc] || "",
         credor: col.credor >= 0 ? r[col.credor] || "" : "",
         valorInicial,
         saldoDevedor,
-        saldoDevedorAutoCalculado: saldoDevedorCalc !== null,
+        saldoDevedorAutoCalculado,
         valorPago,
         numParcelas,
         valorParcela,
         parcelasPagas,
         taxaJuros: col.taxaJuros >= 0 ? r[col.taxaJuros] || 0 : 0,
+        taxaJurosImplicita,
         status: col.status >= 0 ? r[col.status] || "" : ""
       };
     })
@@ -2487,9 +2491,12 @@ function openDividaEditForm(row){
       <div><label>Nº de parcelas</label><input id="dfNumParcelas" type="number" step="1" value="${d.numParcelas}"></div>
       <div><label>Valor da parcela</label><input id="dfValorParcela" type="number" step="0.01" value="${d.valorParcela}"></div>
       <div><label>Parcelas pagas</label><input id="dfParcelasPagas" type="number" step="1" value="${d.parcelasPagas}"></div>
-      <div><label>Taxa de juros</label><input id="dfTaxaJuros" type="number" step="0.01" value="${d.taxaJuros}"></div>
+      <div>
+        <label>Taxa de juros${saldoAutoCalculado?' <span style="color:var(--muted);font-weight:400;text-transform:none;">(recalculada)</span>':''}</label>
+        <input id="dfTaxaJuros" type="number" step="0.01" value="${saldoAutoCalculado ? d.taxaJurosImplicita.toFixed(2) : d.taxaJuros}">
+      </div>
       <div><label>Status</label><input id="dfStatus" value="${d.status}" placeholder="Em aberto / Quitada..."></div>
-      ${saldoAutoCalculado ? '<div style="grid-column:1/-1;font-size:11.5px;color:var(--muted);">O saldo devedor é calculado sozinho como o valor presente das parcelas que faltam (descontando a taxa de juros implícita do financiamento) — mais preciso que só subtrair o que já foi pago, já que no início boa parte da parcela é juro. Pra mudar o saldo, ajuste "Parcelas pagas".</div>' : ''}
+      ${saldoAutoCalculado ? '<div style="grid-column:1/-1;font-size:11.5px;color:var(--muted);">O saldo devedor é calculado sozinho como o valor presente das parcelas que faltam (descontando a taxa de juros implícita do financiamento) — mais preciso que só subtrair o que já foi pago, já que no início boa parte da parcela é juro. A "Taxa de juros" acima já veio corrigida pra bater com o financiamento real — é só salvar. Pra mudar o saldo, ajuste "Parcelas pagas".</div>' : ''}
       <div class="actions">
         <button class="save-btn" onclick="saveDividaEdit(${row})">Salvar alterações</button>
         <button class="cancel-btn" onclick="closeDividaEditForm()">Cancelar</button>
