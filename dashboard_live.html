@@ -2275,9 +2275,15 @@ const BANK_DOMAINS = {
 // Chaves ordenadas da mais específica pra mais genérica, pra "banco do brasil" ganhar de um "bb" solto, por ex.
 const BANK_DOMAIN_KEYS = Object.keys(BANK_DOMAINS).sort((a,b) => b.length - a.length);
 
+// Compara por palavra, não por frase exata — "INFINITE Visa" (nome + bandeira, nessa ordem) precisa
+// bater com a chave "visa infinite" mesmo com as palavras na ordem trocada.
+function textoContemChave(texto, chave){
+  return chave.split(" ").every(palavra => texto.includes(palavra));
+}
+
 function getBankLogoUrl(nomeCartao, bandeira){
   const texto = normalizeCatName(`${nomeCartao||""} ${bandeira||""}`);
-  const chave = BANK_DOMAIN_KEYS.find(k => texto.includes(k));
+  const chave = BANK_DOMAIN_KEYS.find(k => textoContemChave(texto, k));
   // Clearbit's Logo API foi desativada em dez/2025 — usando o endpoint de favicons do Google,
   // que não precisa de conta nem chave de API.
   return chave ? `https://www.google.com/s2/favicons?domain=${BANK_DOMAINS[chave]}&sz=64` : null;
@@ -2337,7 +2343,7 @@ const CARD_STYLE_KEYS = Object.keys(CARD_STYLES_RAW).sort((a,b) => b.length - a.
 
 function getCardStyle(nomeCartao, bandeira){
   const texto = normalizeCatName(`${nomeCartao||""} ${bandeira||""}`);
-  const chave = CARD_STYLE_KEYS.find(k => texto.includes(k));
+  const chave = CARD_STYLE_KEYS.find(k => textoContemChave(texto, k));
   return chave ? CARD_STYLES_RAW[chave] : null;
 }
 
