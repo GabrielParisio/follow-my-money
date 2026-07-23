@@ -1335,34 +1335,64 @@ function renderResumo(){
   setupResumoToggle();
   const mi = state.monthIdx;
   const row = (n) => raw.balanco[n-44] || [];
+  const receitaReal = row(48)[mi] || 0;
+  const despesaReal = row(49)[mi] || 0;
   const saldoReal = row(50)[mi] || 0;
 
-  const totalAtivos = calcSaldoInvestimento("Reserva de Emergência") + calcSaldoInvestimento("Renda Fixa") + calcSaldoInvestimento("Renda Variável");
+  const reserva = calcSaldoInvestimento("Reserva de Emergência");
+  const rendaFixa = calcSaldoInvestimento("Renda Fixa");
+  const rendaVariavel = calcSaldoInvestimento("Renda Variável");
+  const totalAtivos = reserva + rendaFixa + rendaVariavel;
+
   const dividasAtivas = getDividasParsed().filter(d => !isDividaQuitada(d));
   const totalDevedor = dividasAtivas.reduce((s,d) => s + d.saldoDevedor, 0);
+  const totalParcelaMensalDividas = dividasAtivas.reduce((s,d) => s + d.valorParcela, 0);
+
   const faturaValor = (raw.credito[0] && raw.credito[0][1]) || 0;
-  const alertasAtivos = (window._alertasAtuais || []).length;
+  const numCartoes = (raw.cartoes || []).filter(r => r[0]).length;
 
-  // Único indicador que não faz parte dos 8 cards do Balanço (esses já estão em #balancoCards)
-  const alertaHtml = `
-    <div class="alert-item ${alertasAtivos > 0 ? "warn" : "good"}" style="margin-top:16px;justify-content:space-between;flex-wrap:wrap;gap:10px;">
-      <span>${alertasAtivos > 0 ? "⚠️" : "✅"} ${alertasAtivos > 0 ? `${alertasAtivos} alerta${alertasAtivos===1?"":"s"} ativo${alertasAtivos===1?"":"s"}` : "Nenhum alerta ativo no momento"}</span>
-      ${alertasAtivos > 0 ? `<button class="connect-btn" onclick="openAlertasModal()">Ver detalhes</button>` : ""}
-    </div>`;
+  // Cards de atalho pras outras abas — altura fixa (mesmo padrão do resto do app), só cresce na horizontal.
+  const irPara = (view) => `document.querySelector('.tabs [data-view="${view}"]').click()`;
+  const atalhosHtml = `<div class="cards" style="margin-top:16px;">
+    <div class="card panel-clickable" onclick='${irPara("mensal")}'>
+      <div class="accent" style="background:var(--blue)"></div>
+      <div class="body">
+        <div class="label">🏠 Visão Mensal</div>
+        <div class="value" style="font-size:17px;color:${saldoReal>=0?"var(--green)":"var(--red)"}">${fmtMoney(saldoReal)}</div>
+        <div class="sub">Receita ${fmtMoney(receitaReal)} · Despesa ${fmtMoney(despesaReal)}</div>
+        <div class="sub" style="margin-top:4px;color:var(--gold);">ver mais →</div>
+      </div>
+    </div>
+    <div class="card panel-clickable" onclick='${irPara("investimentos")}'>
+      <div class="accent" style="background:var(--gold)"></div>
+      <div class="body">
+        <div class="label">💰 Investimentos</div>
+        <div class="value" style="font-size:17px;color:var(--gold)">${fmtMoney(totalAtivos)}</div>
+        <div class="sub">Reserva ${fmtMoney(reserva)} · R.Fixa ${fmtMoney(rendaFixa)}</div>
+        <div class="sub" style="margin-top:4px;color:var(--gold);">ver mais →</div>
+      </div>
+    </div>
+    <div class="card panel-clickable" onclick='${irPara("credito")}'>
+      <div class="accent" style="background:var(--purple)"></div>
+      <div class="body">
+        <div class="label">💳 Crédito</div>
+        <div class="value" style="font-size:17px;color:var(--purple)">${fmtMoney(faturaValor)}</div>
+        <div class="sub">${numCartoes} cartão${numCartoes===1?"":"ões"} cadastrado${numCartoes===1?"":"s"}</div>
+        <div class="sub" style="margin-top:4px;color:var(--gold);">ver mais →</div>
+      </div>
+    </div>
+    <div class="card panel-clickable" onclick='${irPara("dividas")}'>
+      <div class="accent" style="background:var(--red)"></div>
+      <div class="body">
+        <div class="label">📋 Dívidas</div>
+        <div class="value" style="font-size:17px;color:var(--red)">${fmtMoney(totalDevedor)}</div>
+        <div class="sub">${dividasAtivas.length} ativa${dividasAtivas.length===1?"":"s"} · ${fmtMoney(totalParcelaMensalDividas)}/mês</div>
+        <div class="sub" style="margin-top:4px;color:var(--gold);">ver mais →</div>
+      </div>
+    </div>
+  </div>`;
 
-  const atalhos = [
-    { view: "mensal", label: "🏠 Visão Mensal", desc: `Saldo do mês: ${fmtMoney(saldoReal)}` },
-    { view: "investimentos", label: "💰 Investimentos", desc: `Total investido: ${fmtMoney(totalAtivos)}` },
-    { view: "credito", label: "💳 Crédito", desc: `Fatura em aberto: ${fmtMoney(faturaValor)}` },
-    { view: "dividas", label: "📋 Dívidas", desc: `Saldo devedor: ${fmtMoney(totalDevedor)}` },
-  ];
-  const atalhosHtml = `<div class="panels" style="margin-top:16px;">${atalhos.map(a => `
-    <div class="panel panel-clickable" onclick='document.querySelector(".tabs [data-view=\\"${a.view}\\"]").click()'>
-      <h2 style="margin:0 0 6px;">${a.label}</h2>
-      <p style="color:var(--muted);font-size:13px;margin:0;">${a.desc} · ver mais →</p>
-    </div>`).join("")}</div>`;
-
-  document.getElementById("resumoExtra").innerHTML = alertaHtml + atalhosHtml;
+  document.getElementById("resumoExtra").innerHTML = atalhosHtml;
 
   // Modo Detalhado = os gráficos e tabelas que antes viviam sozinhos na aba Balanço
   const detalhadoEl = document.getElementById("resumoDetalhado");
@@ -3625,12 +3655,13 @@ function fmtDataBR(d){
 }
 
 // Mapeia os últimos dígitos do cartão (como aparecem no CSV da fatura) pro nome do cartão cadastrado.
-// Se cadastrar um cartão novo ou os dígitos mudarem, é só me pedir pra atualizar essa lista.
+// Precisa bater EXATAMENTE com o nome que está no Cadastro, senão o Sheets rejeita a célula
+// (a coluna "Cartão" da aba Crédito tem validação de dados restrita à lista de cartões cadastrados).
 const MAPA_CARTOES_IMPORT = {
-  "8428": "INFINITE",
-  "5162": "INFINITE",
-  "89921": "AMEX TPC",
-  "32107": "AMEX TPC",
+  "8428": "BRADESCO INFINITE",
+  "5162": "BRADESCO INFINITE",
+  "89921": "AMEX THE PLATINUM CARD",
+  "32107": "AMEX THE PLATINUM CARD",
 };
 
 // ---- Parser CSV genérico (separador configurável, respeita aspas) ----
