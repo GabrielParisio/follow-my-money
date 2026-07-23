@@ -2446,6 +2446,7 @@ function renderDividas(){
       <td style="color:var(--muted);" data-label="Credor">${d.credor}</td>
       <td class="val-col despesa" data-label="Saldo devedor">${d.saldoDevedorAutoCalculado ? "≈ " : ""}${fmtMoney(d.saldoDevedor)}</td>
       <td style="text-align:right;" data-label="Parcela">${fmtMoney(d.valorParcela)}/mês</td>
+      <td style="text-align:right;" data-label="Juros">${d.saldoDevedorAutoCalculado ? d.taxaJurosImplicita.toFixed(2).replace(".",",") + "%/mês" : "—"}</td>
       <td style="min-width:140px;" data-label="Progresso">
         <div style="font-size:11px;color:var(--muted);margin-bottom:3px;">${d.parcelasPagas}/${d.numParcelas} parcelas · ${fmtMoney(d.valorPago)} de ${fmtMoney(d.valorInicial)}</div>
         <div style="height:6px;background:var(--border);border-radius:3px;overflow:hidden;">
@@ -2458,7 +2459,7 @@ function renderDividas(){
     </tr>`;
   }).join("");
   tableEl.innerHTML = toggleHtml + `<table class="lanc">
-    <thead><tr><th>Descrição</th><th>Credor</th><th>Saldo devedor</th><th style="text-align:right;">Parcela</th><th>Progresso</th><th>Status</th><th></th></tr></thead>
+    <thead><tr><th>Descrição</th><th>Credor</th><th>Saldo devedor</th><th style="text-align:right;">Parcela</th><th style="text-align:right;">Juros</th><th>Progresso</th><th>Status</th><th></th></tr></thead>
     <tbody>${rows}</tbody>
   </table>`;
   setupDividasFiltroToggle();
