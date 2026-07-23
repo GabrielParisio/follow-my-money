@@ -1186,14 +1186,11 @@ async function salvarEAtualizar(acaoAsync, aposCarregar, mensagemSucesso, mensag
 
 async function deleteLancamento(row, desc){
   if(!confirm(`Excluir "${desc}"? Essa ação não pode ser desfeita.`)) return;
-  try{
-    await clearRange(`Débito!B${row}:K${row}`);
-    const tr = document.getElementById("lanc-row-" + row);
-    if(tr) tr.remove();
-    showToast("Lançamento excluído", "success");
-  }catch(err){
-    showToast("Não foi possível excluir: " + err.message, "error");
-  }
+  await salvarEAtualizar(
+    () => clearRange(`Débito!B${row}:K${row}`),
+    [renderLancamentos, renderCredito, refreshCalendarIfOpen],
+    "Lançamento excluído"
+  );
 }
 
 function buildMonthRuler(){
@@ -2247,6 +2244,7 @@ async function toggleStatus(row, isPago){
     if(tr && it){ tr.outerHTML = lancRowHtml(it); }
     await loadData();
     renderLancamentos();
+    renderCredito();
     refreshCalendarIfOpen();
   }catch(err){
     showToast("Não foi possível salvar: " + err.message, "error");
@@ -2259,6 +2257,7 @@ async function toggleStatusFromCalendar(row, isPago){
     await writeCell(`Débito!K${row}`, isPago ? "" : "✅ Pago");
     await loadData();
     renderCalendar();
+    renderCredito();
     showToast(isPago ? "Marcado como pendente" : "Marcado como pago", "success");
   }catch(err){
     showToast("Não foi possível salvar: " + err.message, "error");
@@ -2354,6 +2353,7 @@ async function saveEdit(row){
     closeForm();
     await loadData();
     renderLancamentos();
+    renderCredito();
     showToast("Lançamento atualizado", "success");
   }catch(err){
     showToast("Não foi possível salvar: " + err.message, "error");
@@ -2385,6 +2385,7 @@ async function saveNew(){
     closeForm();
     await loadData();
     renderLancamentos();
+    renderCredito();
     showToast(numParcelas > 1 ? `${numParcelas} parcelas adicionadas` : "Lançamento adicionado", "success");
   }catch(err){
     showToast("Não foi possível adicionar: " + err.message, "error");
