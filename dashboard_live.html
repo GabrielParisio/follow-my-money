@@ -4364,7 +4364,8 @@ function parseFaturaPDFTexto(texto){
 
     const [, dataStr, descricaoBruta, valorStr] = matchTransacao;
     // Remove os campos de moeda/cotação que sobraram colados na descrição
-    const descricao = descricaoBruta.replace(/USD\s*[\d.,]+/gi, "").replace(/R\$\s*[\d.,-]+/gi, "").trim();
+    const descricao = descricaoBruta.replace(/USD\s*[\d.,]+/gi, "").replace(/R\$\s*[\d.,-]+/gi, "").trim()
+      .replace(/^[-–—]+\s*/, ""); // remove travessão/traço solto que o OCR às vezes lê antes da descrição
     if(!descricao) continue;
     if(/SALDO ANTERIOR/i.test(descricao) || /PAG(AMENTO)?\s*BOLETO/i.test(descricao)) continue;
 
