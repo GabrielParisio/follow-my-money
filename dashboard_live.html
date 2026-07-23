@@ -3060,7 +3060,7 @@ function renderCadCartoesTable(){
       <td data-label="Nome"><input value="${c.nome}" onchange='renomearCartao(${c.row}, ${JSON.stringify(c.nome)}, this.value)' style="background:transparent;border:none;color:var(--text);width:100%;font-size:13px;"></td>
       <td data-label="Banco"><input value="${c.bandeira}" placeholder="Ex: Bradesco" onchange="saveCadCartaoCampo(${c.row}, 'I', this.value)" style="background:transparent;border:none;color:var(--text);width:100%;font-size:13px;"></td>
       <td data-label="Vencimento" style="text-align:right;"><input type="number" min="1" max="31" value="${c.vencimento}" onchange="saveCadCartaoCampo(${c.row}, 'J', this.value)" style="background:transparent;border:none;color:var(--text);width:60px;text-align:right;font-size:13px;"></td>
-      <td data-label="Últimos 4 dígitos" style="text-align:right;"><input value="${c.ultimosDigitos}" maxlength="4" placeholder="0000" onchange="saveCadCartaoCampo(${c.row}, 'K', this.value)" style="background:transparent;border:none;color:var(--text);width:60px;text-align:right;font-size:13px;"></td>
+      <td data-label="Últimos 4 dígitos" style="text-align:right;"><input value="${c.ultimosDigitos}" placeholder="Ex: 8428, 5162" onchange="saveCadCartaoCampo(${c.row}, 'K', this.value)" style="background:transparent;border:none;color:var(--text);width:110px;text-align:right;font-size:13px;"></td>
       <td><button class="icon-btn" onclick="deleteCadCartao(${c.row})" title="Remover">🗑️</button></td>
     </tr>`).join("");
   el.innerHTML = `<table class="lanc"><thead><tr><th>Nome</th><th>Banco</th><th style="text-align:right;">Dia venc.</th><th style="text-align:right;">Últ. 4 dígitos</th><th></th></tr></thead><tbody>${rows}</tbody></table>`;
@@ -3159,7 +3159,7 @@ function addCadastroCartao(){
       </div>
       <div><label>Modelo</label><input id="novoCartaoModelo" placeholder="Ex: Ultravioleta, Infinite, The Platinum Card..."></div>
       <div><label>Dia de vencimento</label><input id="novoCartaoVencimento" type="number" min="1" max="31" value="10"></div>
-      <div><label>Últimos 4 dígitos</label><input id="novoCartaoDigitos" maxlength="4" placeholder="0000"></div>
+      <div><label>Últimos 4 dígitos</label><input id="novoCartaoDigitos" placeholder="Ex: 8428, 5162 (se tiver mais de um cartão físico)"></div>
       <div class="actions">
         <button class="save-btn" onclick="saveCadastroCartaoNovo(${nextRow})">Adicionar</button>
         <button class="cancel-btn" onclick="closeCadastroCartaoNovoForm()">Cancelar</button>
@@ -3954,12 +3954,17 @@ const MAPA_CARTOES_IMPORT = {
 };
 
 // Acha o nome do cartão a partir dos últimos dígitos — usado quando o OCR/CSV não consegue ler
-// o nome do cartão diretamente (só o número mascarado). Prioridade: cartão cadastrado no Cadastro
-// (campo "Últimos 4 dígitos") > mapa fixo antigo > "Cartão ?" como último recurso.
+// o nome do cartão diretamente (só o número mascarado). Um cadastro pode ter mais de um número
+// físico associado (ex: "8428, 5162" pro mesmo cartão) — separa por vírgula, espaço ou ponto-e-vírgula.
+// Prioridade: cartão cadastrado no Cadastro (campo "Últimos 4 dígitos") > mapa fixo antigo > "Cartão ?".
 function getNomeCartaoPorDigitos(digitos){
   if(!digitos) return "Cartão ?";
   const digitosLimpos = digitos.toString().slice(-4); // só os últimos 4, mesmo se vier um número maior
-  const cartaoCadastrado = getCadastroCartoesParsed().find(c => c.ultimosDigitos && c.ultimosDigitos.toString().slice(-4) === digitosLimpos);
+  const cartaoCadastrado = getCadastroCartoesParsed().find(c => {
+    if(!c.ultimosDigitos) return false;
+    const numeros = c.ultimosDigitos.toString().split(/[,;\s]+/).map(n => n.trim()).filter(Boolean);
+    return numeros.some(n => n.slice(-4) === digitosLimpos);
+  });
   if(cartaoCadastrado) return cartaoCadastrado.nome;
   if(MAPA_CARTOES_IMPORT[digitos]) return MAPA_CARTOES_IMPORT[digitos];
   return "Cartão ?";
@@ -4339,24 +4344,46 @@ async function handleImportFaturaPDF(file){
 }
 
 // Tela de conferência: nada é gravado na planilha até o usuário clicar em "Importar selecionadas"
+function cartaoOptionsPreview(selecionado){
+  const cartoes = getCadastroCartoesParsed();
+  const semSelecao = !selecionado || selecionado === "Cartão ?";
+  const blank = `<option value="" ${semSelecao?"selected":""}>— Escolher cartão —</option>`;
+  return blank + cartoes.map(c => `<option value="${c.nome}" ${c.nome===selecionado?"selected":""}>${c.nome}</option>`).join("");
+}
 function abrirPreviaImportacaoPdf(transacoes){
   window._pdfPreviaTransacoes = transacoes;
   const corpo = document.getElementById("pdfPreviewBody");
-  corpo.innerHTML = transacoes.map((t, i) => {
+  const cartoesCadastrados = getCadastroCartoesParsed();
+  const bulkHtml = cartoesCadastrados.length > 0 ? `
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding-bottom:12px;margin-bottom:8px;border-bottom:1px solid var(--border);">
+      <span style="font-size:12px;color:var(--muted);">Aplicar cartão a todas:</span>
+      <select id="pdfPreviaCartaoBulk" style="background:var(--panel);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:5px 8px;font-size:12.5px;">${cartaoOptionsPreview(null)}</select>
+      <button class="connect-btn" onclick="aplicarCartaoATodasPrevia()">Aplicar</button>
+    </div>` : "";
+  const linhasHtml = transacoes.map((t, i) => {
     const nomeCartao = getNomeCartaoPorDigitos(t.cartaoNumero);
     return `
-    <label style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border);cursor:pointer;">
+    <div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border);">
       <input type="checkbox" checked data-idx="${i}" class="pdf-previa-check">
       <span style="flex:1;min-width:0;">
         <div style="display:flex;justify-content:space-between;gap:8px;">
           <span>${t.descricao}</span>
           <span class="val-col despesa">${fmtMoney(t.valor)}</span>
         </div>
-        <div style="font-size:11px;color:var(--muted);">${fmtDataBR(t.data)} · ${nomeCartao}</div>
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-top:4px;">
+          <span style="font-size:11px;color:var(--muted);">${fmtDataBR(t.data)}</span>
+          <select data-idx="${i}" class="pdf-previa-cartao" style="background:transparent;border:none;color:${nomeCartao==="Cartão ?"?"var(--red)":"var(--text)"};font-size:12px;text-align:right;max-width:60%;">${cartaoOptionsPreview(nomeCartao)}</select>
+        </div>
       </span>
-    </label>`;
+    </div>`;
   }).join("");
+  corpo.innerHTML = bulkHtml + linhasHtml;
   document.getElementById("pdfPreviewModal").classList.remove("hidden");
+}
+function aplicarCartaoATodasPrevia(){
+  const valor = document.getElementById("pdfPreviaCartaoBulk").value;
+  if(!valor) return;
+  document.querySelectorAll(".pdf-previa-cartao").forEach(sel => { sel.value = valor; });
 }
 function closePdfPreviewModal(){
   document.getElementById("pdfPreviewModal").classList.add("hidden");
@@ -4365,13 +4392,14 @@ function closePdfPreviewModal(){
 }
 async function confirmarImportacaoPdf(){
   const transacoes = window._pdfPreviaTransacoes || [];
-  const selecionadas = Array.from(document.querySelectorAll(".pdf-previa-check"))
-    .filter(cb => cb.checked)
-    .map(cb => transacoes[+cb.dataset.idx]);
-  if(selecionadas.length === 0){ showToast("Nenhuma transação selecionada", "error"); return; }
+  const checks = Array.from(document.querySelectorAll(".pdf-previa-check")).filter(cb => cb.checked);
+  if(checks.length === 0){ showToast("Nenhuma transação selecionada", "error"); return; }
 
-  const rows = selecionadas.map(t => {
-    const nomeCartao = getNomeCartaoPorDigitos(t.cartaoNumero);
+  const rows = checks.map(cb => {
+    const idx = +cb.dataset.idx;
+    const t = transacoes[idx];
+    const selectCartao = document.querySelector(`.pdf-previa-cartao[data-idx="${idx}"]`);
+    const nomeCartao = (selectCartao && selectCartao.value) || getNomeCartaoPorDigitos(t.cartaoNumero);
     return [fmtDataBR(t.data), nomeCartao, t.descricao, sugerirCategoria(t.descricao) || "", t.valor, t.valor, "1/1", ""];
   });
 
