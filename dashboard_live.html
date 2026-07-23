@@ -737,6 +737,7 @@
         <button class="connect-btn" onclick="addCadastroCartao()">+ Novo cartão</button>
       </div>
       <div id="cadCartoesOrfaos" style="margin-bottom:14px;"></div>
+      <div id="cadCartaoNovoForm" class="hidden" style="margin-bottom:14px;"></div>
       <div id="cadCartoesTable" style="overflow-x:auto;"></div>
     </div>
   </div>
@@ -2305,7 +2306,8 @@ const CARD_STYLES_RAW = {
   // Referência real enviada pelo usuário: preto fosco, minimalista, com traços diagonais brilhantes discretos
   "bradesco visa infinite": { background: "linear-gradient(125deg, #050505 0%, #1c1c1c 40%, #2e2e2e 48%, #0a0a0a 55%, #000 100%)" },
   // Referência real enviada pelo usuário: vermelho intenso em degradê, brilhante, linha diagonal fina
-  "bradesco principal": { background: "linear-gradient(150deg, #ff2d4d 0%, #c8102e 45%, #7a0018 100%)" },
+  // Vermelho bordô (não o vermelho vivo do cartão classic/varejo — Principal é o segmento alta renda)
+  "bradesco principal": { background: "linear-gradient(150deg, #6b0f1f 0%, #4a0a15 50%, #26050a 100%)" },
   "bradesco": { background: "linear-gradient(135deg, #cc092f 0%, #8b0000 100%)" },
   "ourocard": { background: "linear-gradient(135deg, #003399 0%, #001a4d 100%)" },
   "banco do brasil": { background: "linear-gradient(135deg, #003399 0%, #001a4d 100%)" },
@@ -2327,6 +2329,9 @@ const CARD_STYLES_RAW = {
   // Referência real enviada pelo usuário: prata/cinza metálico, acabamento fosco com textura gravada
   "american express": { background: "linear-gradient(150deg, #d6d8db 0%, #aeb1b6 25%, #eceef0 50%, #9a9da3 75%, #c9ccd0 100%)", light: true },
   "amex": { background: "linear-gradient(150deg, #d6d8db 0%, #aeb1b6 25%, #eceef0 50%, #9a9da3 75%, #c9ccd0 100%)", light: true },
+  // Referência real enviada pelo usuário: preto texturizado (fosco), bem próximo do estilo C6/XP mas
+  // levemente mais acinzentado, combina com o logo colorido (Mastercard) + "amazon prime" em azul
+  "amazon prime": { background: "linear-gradient(140deg, #232323 0%, #0f0f0f 55%, #1a1a1a 100%)" },
 };
 const CARD_STYLE_KEYS = Object.keys(CARD_STYLES_RAW).sort((a,b) => b.length - a.length);
 
@@ -2867,16 +2872,56 @@ async function renomearCartao(row, nomeAntigo, nomeNovo){
     );
   }catch(err){ showToast("Não foi possível renomear: " + err.message, "error"); }
 }
-async function addCadastroCartao(){
+// Bancos e bandeiras conhecidos — usados no formulário de "+ Novo cartão" pra guiar o cadastro.
+// "Genérico" cobre qualquer banco/bandeira que ainda não esteja na nossa base de estilos visuais.
+const BANCOS_CONHECIDOS = [
+  "Nubank", "Itaú", "Bradesco", "Santander", "Banco do Brasil", "Caixa", "Inter", "C6 Bank",
+  "BTG Pactual", "XP", "PicPay", "Will Bank", "Next", "Original", "Safra", "Banco Pan",
+  "Porto Seguro", "Neon", "Mercado Pago", "Sicoob", "Sicredi", "Digio", "Agibank",
+  "American Express", "Amazon", "Genérico"
+];
+const BANDEIRAS_CONHECIDAS = ["Visa", "Mastercard", "American Express", "Elo", "Hipercard", "Diners Club", "Amazon", "Genérico"];
+
+function addCadastroCartao(){
   const cartoes = getCadastroCartoesParsed();
   const maxRow = 20; // limite do range Cadastro!H7:K20
   const nextRow = cartoes.length ? Math.max(...cartoes.map(c=>c.row))+1 : 7;
   if(nextRow > maxRow){ showToast("Limite de cartões atingido — me chama que eu amplio o espaço na planilha.", "error"); return; }
-  const nome = prompt("Nome do novo cartão (ex: Nubank Ultravioleta):");
-  if(!nome) return;
+  const formEl = document.getElementById("cadCartaoNovoForm");
+  formEl.classList.remove("hidden");
+  formEl.innerHTML = `
+    <div class="edit-form" style="margin-bottom:0;">
+      <div><label>Banco</label>
+        <select id="novoCartaoBanco">${BANCOS_CONHECIDOS.map(b => `<option value="${b}">${b}</option>`).join("")}</select>
+      </div>
+      <div><label>Bandeira</label>
+        <select id="novoCartaoBandeira">${BANDEIRAS_CONHECIDAS.map(b => `<option value="${b}">${b}</option>`).join("")}</select>
+      </div>
+      <div><label>Modelo</label><input id="novoCartaoModelo" placeholder="Ex: Ultravioleta, Infinite, Platinum..."></div>
+      <div><label>Dia de vencimento</label><input id="novoCartaoVencimento" type="number" min="1" max="31" value="10"></div>
+      <div class="actions">
+        <button class="save-btn" onclick="saveCadastroCartaoNovo(${nextRow})">Adicionar</button>
+        <button class="cancel-btn" onclick="closeCadastroCartaoNovoForm()">Cancelar</button>
+      </div>
+    </div>`;
+  formEl.scrollIntoView({ behavior: "smooth", block: "center" });
+}
+function closeCadastroCartaoNovoForm(){
+  const formEl = document.getElementById("cadCartaoNovoForm");
+  formEl.classList.add("hidden");
+  formEl.innerHTML = "";
+}
+async function saveCadastroCartaoNovo(row){
+  const banco = document.getElementById("novoCartaoBanco").value;
+  const bandeira = document.getElementById("novoCartaoBandeira").value;
+  const modelo = document.getElementById("novoCartaoModelo").value.trim();
+  const nome = (banco === "Genérico" ? (modelo || "Cartão") : `${banco}${modelo ? " " + modelo : ""}`).trim();
+  const vencimento = parseInt(document.getElementById("novoCartaoVencimento").value, 10) || 10;
   try{
-    await writeCell(`Cadastro!H${nextRow}`, nome);
-    await writeCell(`Cadastro!J${nextRow}`, 10);
+    await writeCell(`Cadastro!H${row}`, nome);
+    await writeCell(`Cadastro!I${row}`, bandeira === "Genérico" ? "" : bandeira);
+    await writeCell(`Cadastro!J${row}`, vencimento);
+    closeCadastroCartaoNovoForm();
     await loadData();
     renderCadastro();
     showToast("Cartão adicionado", "success");
