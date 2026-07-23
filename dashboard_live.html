@@ -3728,6 +3728,12 @@ function fmtDataBR(d){
   return `${String(d.getDate()).padStart(2,"0")}/${String(d.getMonth()+1).padStart(2,"0")}/${d.getFullYear()}`;
 }
 
+// Chave usada pelos dois importadores (fatura e extrato) pra detectar se uma transação já existe
+// na planilha — mesma data + descrição + valor não é importada de novo.
+function chaveTransacaoImport(dataBR, desc, valor){
+  return `${dataBR}|${(desc||"").trim().toLowerCase()}|${Number(valor).toFixed(2)}`;
+}
+
 // Mapeia os últimos dígitos do cartão (como aparecem no CSV da fatura) pro nome do cartão cadastrado.
 // Precisa bater EXATAMENTE com o nome que está no Cadastro, senão o Sheets rejeita a célula
 // (a coluna "Cartão" da aba Crédito tem validação de dados restrita à lista de cartões cadastrados).
@@ -3846,11 +3852,24 @@ async function handleImportFaturaCartao(file){
       return [fmtDataBR(t.data), nomeCartao, t.descricao, "", t.valor, t.valor, "1/1", vencimento ? fmtDataBR(vencimento) : ""];
     });
 
+    // Não importa de novo uma transação que já existe (mesma data + descrição + valor) — evita duplicidade
+    // quando o mesmo CSV é importado mais de uma vez, ou quando o período se sobrepõe com um import anterior.
+    const chave = chaveTransacaoImport;
+    const chavesExistentes = new Set(
+      (raw.compras || []).filter(c => c[0] && c[2]).map(c => chave(fmtDataBR(serialToDate(c[0])), c[2], c[4] || 0))
+    );
+    const rowsSemDuplicar = rows.filter(r => !chavesExistentes.has(chave(r[0], r[2], r[4])));
+    const duplicadas = rows.length - rowsSemDuplicar.length;
+    if(rowsSemDuplicar.length === 0){
+      statusEl.textContent = `Todas as ${rows.length} transação(ões) desse CSV já estavam importadas — nada novo pra adicionar.`;
+      return;
+    }
+
     // Confere se os nomes de cartão mapeados batem com algum cartão realmente cadastrado —
     // a coluna "Cartão" da aba Crédito tem validação restrita a essa lista, então um nome
     // fora dela gera aviso de erro na planilha depois. Melhor avisar antes de gravar.
     const cartoesCadastrados = new Set((raw.cartoes || []).filter(r => r[0]).map(r => r[0].trim()));
-    const nomesNaoEncontrados = [...new Set(rows.map(r => r[1]).filter(nome => !cartoesCadastrados.has(nome)))];
+    const nomesNaoEncontrados = [...new Set(rowsSemDuplicar.map(r => r[1]).filter(nome => !cartoesCadastrados.has(nome)))];
     if(nomesNaoEncontrados.length > 0){
       const confirmar = confirm(
         `Estes nomes de cartão não batem com nenhum cartão cadastrado no Cadastro:\n\n${nomesNaoEncontrados.join(", ")}\n\n` +
@@ -3864,10 +3883,11 @@ async function handleImportFaturaCartao(file){
     }
 
     statusEl.textContent = "Importando...";
-    await appendRows("Crédito", "B:I", rows);
+    await appendRows("Crédito", "B:I", rowsSemDuplicar);
     await loadData();
     renderCredito();
-    statusEl.textContent = `✅ ${rows.length} transação(ões) importada(s) na aba Crédito` +
+    statusEl.textContent = `✅ ${rowsSemDuplicar.length} transação(ões) importada(s) na aba Crédito` +
+      (duplicadas ? ` · ${duplicadas} ignorada(s) por já existir (mesma data/descrição/valor)` : "") +
       (puladasNaoCompra ? ` · ${puladasNaoCompra} ignorada(s) (saldo anterior/boleto)` : "") +
       (nomesNaoEncontrados.length ? `\n⚠️ Nomes fora do cadastro: ${nomesNaoEncontrados.join(", ")}` : "") +
       `\n📝 A categoria ficou em branco — escolha no menu suspenso de cada linha.`;
@@ -3982,11 +4002,25 @@ async function handleImportExtratoDebito(file){
       // B, C, D, E, F, G, H, I, J, K — E(Fixa), F, H(Categoria) ficam em branco
       return [fmtDataBR(t.data), fmtDataBR(t.data), t.historico, "", "", "Bradesco", "", lancamento, valor, status];
     });
+
+    // Não importa de novo uma transação que já existe (mesma data + descrição + valor)
+    const chavesExistentes = new Set(
+      debitoRows().map(d => chaveTransacaoImport(d.dataVenc ? fmtDataBR(serialToDate(d.dataVenc)) : "", d.desc, d.valor || 0))
+    );
+    const linhasSemDuplicar = linhas.filter(l => !chavesExistentes.has(chaveTransacaoImport(l[0], l[2], l[8])));
+    const duplicadas = linhas.length - linhasSemDuplicar.length;
+    if(linhasSemDuplicar.length === 0){
+      statusEl.textContent = `Todas as ${linhas.length} transação(ões) desse arquivo já estavam importadas — nada novo pra adicionar.`;
+      return;
+    }
+
     statusEl.textContent = "Importando...";
-    await appendRows("Débito", "B:K", linhas);
+    await appendRows("Débito", "B:K", linhasSemDuplicar);
     await loadData();
     renderLancamentos();
-    statusEl.textContent = `✅ ${linhas.length} transação(ões) importada(s) na aba Débito.\n📝 A categoria ficou em branco — escolha no menu suspenso de cada linha.`;
+    statusEl.textContent = `✅ ${linhasSemDuplicar.length} transação(ões) importada(s) na aba Débito` +
+      (duplicadas ? ` · ${duplicadas} ignorada(s) por já existir (mesma data/descrição/valor)` : "") +
+      `.\n📝 A categoria ficou em branco — escolha no menu suspenso de cada linha.`;
   }catch(err){
     statusEl.textContent = "❌ Não foi possível importar: " + err.message;
   }
