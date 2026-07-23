@@ -589,6 +589,16 @@
     </div>
   </div>
 
+  <div id="creditEditModal" class="modal-overlay hidden">
+    <div class="modal-box">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
+        <h2 style="margin:0;">Editar compra</h2>
+        <button class="icon-btn" style="font-size:20px;" onclick="closeCreditEditForm()">✕</button>
+      </div>
+      <div id="creditEditFormBody"></div>
+    </div>
+  </div>
+
   <div id="calendarModal" class="modal-overlay hidden">
     <div class="modal-box">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
@@ -716,7 +726,6 @@
               <button class="connect-btn" style="color:var(--red);border-color:var(--red);" onclick="bulkExcluirCompras()">🗑️ Excluir selecionadas</button>
             </div>
           </div>
-          <div id="creditEditForm" class="hidden"></div>
           <div id="creditPurchases" style="overflow-x:auto;"></div>
         </div>
       </div>
@@ -3567,10 +3576,8 @@ function openCreditEditForm(row){
   const item = (window._creditPurchasesCache || []).find(x => x.row === row);
   if(!item) return;
   const [data, cartao, desc, cat, valorTotal, valorParcela] = item.c;
-  const formEl = document.getElementById("creditEditForm");
-  formEl.classList.remove("hidden");
-  formEl.innerHTML = `
-    <div class="edit-form">
+  document.getElementById("creditEditFormBody").innerHTML = `
+    <div class="edit-form" style="margin-bottom:0;">
       <div><label>Descrição</label><input id="ceDesc" value="${desc}"></div>
       <div><label>Categoria</label><select id="ceCat">${categoriaOptions(cat)}</select></div>
       <div><label>Valor total</label><input id="ceValorTotal" type="number" step="0.01" value="${valorTotal}"></div>
@@ -3581,12 +3588,11 @@ function openCreditEditForm(row){
         <button class="cancel-btn" style="color:var(--red);border-color:var(--red);margin-left:auto;" onclick='deleteCreditCompra(${row}, ${JSON.stringify(desc)})'>Excluir</button>
       </div>
     </div>`;
-  formEl.scrollIntoView({ behavior: "smooth", block: "center" });
+  document.getElementById("creditEditModal").classList.remove("hidden");
 }
 function closeCreditEditForm(){
-  const formEl = document.getElementById("creditEditForm");
-  formEl.classList.add("hidden");
-  formEl.innerHTML = "";
+  document.getElementById("creditEditModal").classList.add("hidden");
+  document.getElementById("creditEditFormBody").innerHTML = "";
 }
 async function saveCreditEdit(row){
   const desc = document.getElementById("ceDesc").value;
