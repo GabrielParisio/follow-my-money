@@ -2817,7 +2817,7 @@ function renderCartoesOrfaosAviso(){
           <select id="orfaoSelect-${normalizeCatName(nomeAntigo).replace(/\s/g,"_")}" style="flex:1;min-width:140px;">
             ${cartoesAtuais.map(c => `<option value="${c.nome}">${c.nome}</option>`).join("")}
           </select>
-          <button class="connect-btn" onclick="resolverCartaoOrfao(${JSON.stringify(nomeAntigo)}, 'orfaoSelect-${normalizeCatName(nomeAntigo).replace(/\s/g,"_")}')">Reconectar</button>
+          <button class="connect-btn" onclick='resolverCartaoOrfao(${JSON.stringify(nomeAntigo)}, "orfaoSelect-${normalizeCatName(nomeAntigo).replace(/\s/g,"_")}")'>Reconectar</button>
         </div>`).join("")}
     </div>`;
 }
