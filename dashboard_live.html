@@ -3018,7 +3018,7 @@ function openCadCategoriaEditForm(row){
       <div><label>Categoria</label><input id="cadCatFormNome" value="${c.nome}"></div>
       <div><label>Orçamento mensal</label><input id="cadCatFormOrcado" type="number" step="0.01" value="${c.orcado}"></div>
       <div class="actions">
-        <button class="save-btn" onclick="saveCadCategoriaEdit(${row})">Salvar alterações</button>
+        <button class="save-btn" onclick='saveCadCategoriaEdit(${row}, ${JSON.stringify(c.nome)})'>Salvar alterações</button>
         <button class="cancel-btn" onclick="closeCadCategoriaForm()">Cancelar</button>
         <button class="cancel-btn" style="color:var(--red);border-color:var(--red);margin-left:auto;" onclick='deleteCadCategoria(${row}); closeCadCategoriaForm();'>Excluir</button>
       </div>
@@ -3030,14 +3030,32 @@ function closeCadCategoriaForm(){
   formEl.classList.add("hidden");
   formEl.innerHTML = "";
 }
-async function saveCadCategoriaEdit(row){
+// Renomear uma categoria precisa também atualizar os lançamentos já feitos com o nome antigo —
+// senão eles "descolam" da categoria (mesmo problema que já resolvemos pro nome de cartão).
+async function reconectarLancamentosDaCategoria(nomeAntigo, nomeNovo){
+  const alvo = normalizeCatName(nomeAntigo);
+  const updates = [];
+  debitoRows().forEach(it => {
+    if(normalizeCatName(it.categoria) === alvo) updates.push({ range: `Débito!H${it.row}`, value: nomeNovo });
+  });
+  (raw.compras || []).forEach((c, i) => {
+    if(c[2] && normalizeCatName(c[3]) === alvo) updates.push({ range: `Crédito!E${10 + i}`, value: nomeNovo });
+  });
+  if(updates.length > 0) await writeCellsBatch(updates);
+  return updates.length;
+}
+async function saveCadCategoriaEdit(row, nomeAntigo){
   const nome = document.getElementById("cadCatFormNome").value.trim();
   const orcado = parseFloat(document.getElementById("cadCatFormOrcado").value) || 0;
+  let reconectados = 0;
   await salvarEAtualizar(async () => {
     await writeCell(`Cadastro!B${row}`, nome);
     await writeCell(`Cadastro!F${row}`, orcado);
+    if(nomeAntigo && nome !== nomeAntigo){
+      reconectados = await reconectarLancamentosDaCategoria(nomeAntigo, nome);
+    }
     closeCadCategoriaForm();
-  }, [renderCadastro], "Categoria atualizada");
+  }, [renderCadastro], reconectados ? `Categoria atualizada — ${reconectados} lançamento${reconectados===1?"":"s"} reconectado${reconectados===1?"":"s"}` : "Categoria atualizada");
 }
 async function addCadastroCategoria(){
   const categorias = getCadastroCategoriasParsed();
