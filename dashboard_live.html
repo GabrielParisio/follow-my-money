@@ -708,6 +708,14 @@
         </div>
         <div class="chart-panel">
           <h2>Compras do mês</h2>
+          <div id="creditBulkBar" class="hidden" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:12px;padding:10px 14px;background:var(--card);border:1px solid var(--border);border-radius:10px;">
+            <span id="creditBulkCount" style="font-size:13px;color:var(--muted);"></span>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+              <select id="creditBulkCategoriaSelect" style="background:var(--panel);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:7px 9px;font-size:13px;"></select>
+              <button class="connect-btn" onclick="bulkCategorizarCompras()">Categorizar selecionadas</button>
+              <button class="connect-btn" style="color:var(--red);border-color:var(--red);" onclick="bulkExcluirCompras()">🗑️ Excluir selecionadas</button>
+            </div>
+          </div>
           <div id="creditEditForm" class="hidden"></div>
           <div id="creditPurchases" style="overflow-x:auto;"></div>
         </div>
@@ -3233,6 +3241,8 @@ function renderCredito(){
     el.innerHTML = state.creditCategoryFilter
       ? '<p class="empty">Nenhuma compra dessa categoria em ' + MONTHS_FULL[state.monthIdx] + '</p>'
       : '<p class="empty">Nenhuma compra neste cartão em ' + MONTHS_FULL[state.monthIdx] + '</p>';
+    window._creditPurchasesCache = [];
+    updateCreditBulkBar();
     return;
   }
   const sorted = [...filtered].sort((a,b) => (a[0]||0) - (b[0]||0));
@@ -3244,7 +3254,9 @@ function renderCredito(){
     const dateLabel = data ? fmtDate(serialToDate(data)) : "";
     // Compra à vista não conta como parcela no Brasil — só mostra a etiqueta quando for realmente parcelado
     const parcelaLabel = isCompraParcelada(c) ? ` <span class="pill">${parcela}</span>` : "";
-    return `<tr>
+    const checked = creditSelectedRows.has(row);
+    return `<tr id="credit-row-${row}">
+      <td><input type="checkbox" ${checked?"checked":""} onchange="toggleCreditRowSelect(${row}, this.checked)"></td>
       <td style="color:var(--muted);font-size:12px;" data-label="Data">${dateLabel}</td>
       <td data-label="Descrição">${desc}${parcelaLabel}</td>
       <td data-label="Categoria"><select onchange="saveCreditCategoriaInline(${row}, this.value)" style="background:transparent;border:none;color:${cleanCat?"var(--text)":"var(--muted)"};font-size:12.5px;width:100%;">${categoriaOptions(cleanCat)}</select></td>
@@ -3252,17 +3264,23 @@ function renderCredito(){
       <td data-label=""><button class="icon-btn" onclick="openCreditEditForm(${row})" title="Editar">✏️</button></td>
     </tr>`;
   }).join("");
-  el.innerHTML = `<table class="lanc" style="table-layout:fixed;width:100%;">
+  const allSelected = window._creditPurchasesCache.length > 0 && window._creditPurchasesCache.every(({row}) => creditSelectedRows.has(row));
+  el.innerHTML = `<table class="lanc" id="creditPurchasesInner" style="table-layout:fixed;width:100%;">
     <colgroup>
+      <col style="width:32px;">
       <col style="width:56px;">
       <col style="width:auto;">
       <col style="width:120px;">
       <col style="width:90px;">
       <col style="width:34px;">
     </colgroup>
-    <thead><tr><th>Data</th><th>Descrição</th><th>Categoria</th><th style="text-align:right;">Valor</th><th></th></tr></thead>
+    <thead><tr>
+      <th><input type="checkbox" ${allSelected?"checked":""} onchange="toggleCreditSelectAll(this.checked)"></th>
+      <th>Data</th><th>Descrição</th><th>Categoria</th><th style="text-align:right;">Valor</th><th></th>
+    </tr></thead>
     <tbody>${rows}</tbody>
   </table>`;
+  updateCreditBulkBar();
 }
 
 function renderCreditoLadoLado(){
@@ -3384,6 +3402,56 @@ function buildDonutFromTotals(totals, targetId, interactive, totalLabel){
 
 // ===================== EDIÇÃO DE COMPRAS DO CARTÃO (mesmo padrão do Débito) =====================
 // Categoria editável direto na linha, sem precisar abrir o formulário completo
+// ===================== SELEÇÃO EM LOTE (compras do cartão) =====================
+let creditSelectedRows = new Set();
+
+function toggleCreditRowSelect(row, checked){
+  if(checked) creditSelectedRows.add(row); else creditSelectedRows.delete(row);
+  updateCreditBulkBar();
+}
+function toggleCreditSelectAll(checked){
+  document.querySelectorAll("#creditPurchasesInner tbody tr").forEach(tr => {
+    const row = +tr.id.replace("credit-row-", "");
+    const cb = tr.querySelector('input[type="checkbox"]');
+    if(cb) cb.checked = checked;
+    if(checked) creditSelectedRows.add(row); else creditSelectedRows.delete(row);
+  });
+  updateCreditBulkBar();
+}
+function updateCreditBulkBar(){
+  const bar = document.getElementById("creditBulkBar");
+  if(!bar) return;
+  const count = creditSelectedRows.size;
+  bar.classList.toggle("hidden", count === 0);
+  const countEl = document.getElementById("creditBulkCount");
+  if(countEl) countEl.textContent = count + " selecionada" + (count===1?"":"s");
+  const sel = document.getElementById("creditBulkCategoriaSelect");
+  if(sel && count > 0) sel.innerHTML = categoriaOptions(null);
+}
+async function bulkCategorizarCompras(){
+  const rows = Array.from(creditSelectedRows);
+  if(rows.length === 0) return;
+  const categoria = document.getElementById("creditBulkCategoriaSelect").value;
+  if(!categoria){ showToast("Escolha uma categoria primeiro", "error"); return; }
+  await salvarEAtualizar(async () => {
+    await writeCellsBatch(rows.map(row => ({ range: `Crédito!E${row}`, value: categoria })));
+    creditSelectedRows.clear();
+  }, [renderCredito], `${rows.length} compra${rows.length===1?"":"s"} categorizada${rows.length===1?"":"s"}`, "Não foi possível categorizar em lote");
+}
+async function bulkExcluirCompras(){
+  const rows = Array.from(creditSelectedRows);
+  if(rows.length === 0) return;
+  if(!confirm(`Excluir ${rows.length} compra${rows.length===1?"":"s"} selecionada${rows.length===1?"":"s"}? Essa ação não pode ser desfeita.`)) return;
+  await salvarEAtualizar(async () => {
+    // Uma única requisição em lote (limpando B:I de cada linha) em vez de uma chamada por linha —
+    // evita estourar o limite de requisições da API quando muitas compras são excluídas de uma vez.
+    const colunas = ["B","C","D","E","F","G","H","I"];
+    const updates = rows.flatMap(row => colunas.map(col => ({ range: `Crédito!${col}${row}`, value: "" })));
+    await writeCellsBatch(updates);
+    creditSelectedRows.clear();
+  }, [renderCredito], `${rows.length} compra${rows.length===1?"":"s"} excluída${rows.length===1?"":"s"}`, "Não foi possível excluir em lote");
+}
+
 async function saveCreditCategoriaInline(row, categoria){
   await salvarEAtualizar(() => writeCell(`Crédito!E${row}`, categoria), [renderCredito], "Categoria atualizada");
 }
