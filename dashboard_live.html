@@ -2395,14 +2395,21 @@ async function saveNew(){
 // ===================== CRÉDITO =====================
 function setupCardSelect(){
   const sel = document.getElementById("cardSelect");
-  if(sel.options.length > 0) return; // já montado
   const cartoes = (raw.cartoes || []).filter(r => r[0]);
+  const valorAtual = sel.value; // preserva a seleção atual, se o cartão continuar existindo
+  sel.innerHTML = "";
   cartoes.forEach((c, i) => {
     const o = document.createElement("option");
     o.value = i; o.textContent = c[0];
     sel.appendChild(o);
   });
-  sel.addEventListener("change", () => { state.cardIdx = +sel.value; renderCredito(); });
+  if(valorAtual !== "" && +valorAtual < cartoes.length){
+    sel.value = valorAtual;
+  }
+  if(sel.dataset.wired !== "1"){
+    sel.dataset.wired = "1";
+    sel.addEventListener("change", () => { state.cardIdx = +sel.value; renderCredito(); });
+  }
 }
 
 const CAT_COLORS = ["#4ADE80","#F87171","#60A5FA","#FBBF24","#C084FC","#38BDF8","#FB923C","#A3E635","#F472B6","#94A3B8"];
