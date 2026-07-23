@@ -642,7 +642,10 @@
       <div>
         <div id="creditCard" class="credit-card">
           <div class="cc-top">
-            <span class="cc-brand" id="ccBrand">CARTÃO</span>
+            <span style="display:flex;align-items:center;gap:8px;">
+              <img id="ccBrandLogo" class="hidden" style="width:26px;height:26px;border-radius:6px;background:#fff;object-fit:contain;padding:3px;" alt="">
+              <span class="cc-brand" id="ccBrand">CARTÃO</span>
+            </span>
             <span class="cc-pill">Crédito</span>
           </div>
           <div class="cc-chip"></div>
@@ -2221,6 +2224,44 @@ function normalizeCatName(name){
     .normalize("NFD").replace(/[\u0300-\u036f]/g, "");
 }
 
+// Domínios dos principais bancos/fintechs brasileiros, usados só pra montar a URL do logo (Clearbit).
+// Nada disso é enviado pra nenhum servidor nosso — é o navegador da pessoa buscando a imagem direto.
+const BANK_DOMAINS = {
+  "banco do brasil": "bb.com.br", "bb": "bb.com.br",
+  "nubank": "nubank.com.br", "nu": "nubank.com.br",
+  "itau": "itau.com.br",
+  "bradesco": "bradesco.com.br",
+  "santander": "santander.com.br",
+  "caixa": "caixa.gov.br",
+  "banco inter": "bancointer.com.br", "inter": "bancointer.com.br",
+  "c6 bank": "c6bank.com.br", "c6": "c6bank.com.br",
+  "btg pactual": "btgpactual.com", "btg": "btgpactual.com",
+  "xp investimentos": "xpi.com.br", "xp": "xpi.com.br",
+  "picpay": "picpay.com",
+  "will bank": "willbank.com.br", "willbank": "willbank.com.br",
+  "next": "next.me",
+  "original": "original.com.br",
+  "safra": "safra.com.br",
+  "banco pan": "bancopan.com.br", "pan": "bancopan.com.br",
+  "porto seguro": "portoseguro.com.br", "porto": "portoseguro.com.br",
+  "neon": "neon.com.br",
+  "mercado pago": "mercadopago.com.br",
+  "american express": "americanexpress.com", "amex": "americanexpress.com",
+  "sicoob": "sicoob.com.br",
+  "sicredi": "sicredi.com.br",
+  "digio": "digio.com.br",
+  "agibank": "agibank.com.br",
+  "modalmais": "modalmais.com.br", "modal mais": "modalmais.com.br",
+};
+// Chaves ordenadas da mais específica pra mais genérica, pra "banco do brasil" ganhar de um "bb" solto, por ex.
+const BANK_DOMAIN_KEYS = Object.keys(BANK_DOMAINS).sort((a,b) => b.length - a.length);
+
+function getBankLogoUrl(nomeCartao, bandeira){
+  const texto = normalizeCatName(`${nomeCartao||""} ${bandeira||""}`);
+  const chave = BANK_DOMAIN_KEYS.find(k => texto.includes(k));
+  return chave ? `https://logo.clearbit.com/${BANK_DOMAINS[chave]}?size=64` : null;
+}
+
 function colorForCategory(name){
   const key = normalizeCatName(name);
   if(CATEGORY_COLOR_MAP[key]) return CATEGORY_COLOR_MAP[key];
@@ -2784,6 +2825,17 @@ function renderCredito(){
   document.getElementById("ccHolder").textContent = userName;
   document.getElementById("ccExpiry").textContent = vencimentoDia ? "Dia " + vencimentoDia : "—";
 
+  const logoUrl = getBankLogoUrl(nomeCartao, cartaoRow[1]);
+  const logoEl = document.getElementById("ccBrandLogo");
+  if(logoUrl){
+    logoEl.onerror = () => logoEl.classList.add("hidden"); // banco não reconhecido pela Clearbit — some sem quebrar nada
+    logoEl.src = logoUrl;
+    logoEl.classList.remove("hidden");
+  } else {
+    logoEl.classList.add("hidden");
+    logoEl.removeAttribute("src");
+  }
+
   const isMetal = /amex|platinum|centurion/i.test(nomeCartao + " " + (cartaoRow[1]||""));
   document.getElementById("creditCard").classList.toggle("metal", isMetal);
 
@@ -2888,12 +2940,16 @@ function renderCreditoLadoLado(){
     const compras = comprasDoCartao(nomeCartao);
     const faturaValor = compras.reduce((sum, c) => sum + (c[5] || c[4] || 0), 0);
     const chartId = "ladoCatChart" + i;
+    const logoUrl = getBankLogoUrl(nomeCartao, cartaoRow[1]);
+    const logoHtml = logoUrl
+      ? `<img src="${logoUrl}" onerror="this.remove()" alt="" style="width:22px;height:22px;border-radius:6px;background:#fff;object-fit:contain;padding:2px;margin-right:8px;vertical-align:middle;">`
+      : "";
 
     const card = document.createElement("div");
     card.className = "credito-side";
     card.innerHTML = `
       <div class="credito-mini-card ${isMetal ? "metal" : ""}">
-        <div class="mini-brand">${nomeCartao}</div>
+        <div class="mini-brand" style="display:flex;align-items:center;">${logoHtml}${nomeCartao}</div>
         <div class="mini-number">•••• •••• •••• ••••</div>
       </div>
       <div style="display:flex;justify-content:space-between;margin-bottom:14px;font-size:12px;color:var(--muted);">
