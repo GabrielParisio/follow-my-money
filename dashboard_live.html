@@ -833,7 +833,7 @@ let valoresOcultos = (localStorage.getItem("ftm_valores_ocultos") === "1");
 
 function fmtMoney(n){
   if(valoresOcultos) return "R$ ••••••";
-  return "R$ " + Math.round(n||0).toLocaleString("pt-BR");
+  return "R$ " + (n||0).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 function fmtPct(n){
   if(valoresOcultos) return "••%";
@@ -4206,9 +4206,30 @@ async function handleImportExtratoDebito(file){
   }
 }
 
+// Fecha qualquer modal ao clicar fora dele (no fundo escurecido, não no conteúdo do modal em si)
+function setupModalOutsideClickClose(){
+  const fechadores = {
+    alertasModal: closeAlertasModal,
+    detalhamentoModal: closeDetalhamentoModal,
+    parcelasModal: closeParcelasModal,
+    categoriaDonutModal: closeCategoriaDonutModal,
+    dividaEditModal: closeDividaEditForm,
+    creditEditModal: closeCreditEditForm,
+    calendarModal: closeCalendarModal,
+  };
+  document.querySelectorAll(".modal-overlay").forEach(overlay => {
+    overlay.addEventListener("click", (e) => {
+      if(e.target !== overlay) return; // só fecha se o clique foi no fundo, não em algo dentro do modal
+      const fechar = fechadores[overlay.id];
+      if(fechar) fechar();
+    });
+  });
+}
+
 window.onload = () => {
   document.querySelectorAll(".brand-logo").forEach(img => img.src = LOGO_DATA_URI);
   renderBalancoCardsShell();
+  setupModalOutsideClickClose();
   const toggleValoresBtn = document.getElementById("toggleValoresBtn");
   if(toggleValoresBtn && valoresOcultos) toggleValoresBtn.textContent = "🙈";
   const client = initTokenClient();
