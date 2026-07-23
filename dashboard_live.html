@@ -6,6 +6,8 @@
 <title>Follow My Money — Dashboard</title>
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/tesseract.js/5.0.4/tesseract.min.js"></script>
 <style>
   :root{
     --bg:#1A1917;
@@ -599,6 +601,23 @@
     </div>
   </div>
 
+  <div id="pdfPreviewModal" class="modal-overlay hidden">
+    <div class="modal-box" style="max-width:640px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+        <h2 style="margin:0;">Conferir antes de importar</h2>
+        <button class="icon-btn" style="font-size:20px;" onclick="closePdfPreviewModal()">✕</button>
+      </div>
+      <p style="font-size:12px;color:var(--muted);margin:0 0 14px;">
+        Isso veio de leitura automática (OCR) de um PDF — confere se os valores batem antes de gravar. Desmarque o que estiver errado ou duplicado.
+      </p>
+      <div id="pdfPreviewBody" style="max-height:50vh;overflow-y:auto;"></div>
+      <div class="actions" style="margin-top:14px;">
+        <button class="save-btn" onclick="confirmarImportacaoPdf()">Importar selecionadas</button>
+        <button class="cancel-btn" onclick="closePdfPreviewModal()">Cancelar</button>
+      </div>
+    </div>
+  </div>
+
   <div id="calendarModal" class="modal-overlay hidden">
     <div class="modal-box">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
@@ -756,6 +775,10 @@
         <div>
           <label>Extrato de débito (XLS ou CSV)</label>
           <input type="file" id="importDebitoInput" accept=".xls,.csv">
+        </div>
+        <div>
+          <label>Fatura em PDF (App Bradesco)</label>
+          <input type="file" id="importFaturaPdfInput" accept=".pdf">
         </div>
       </div>
       <div id="importStatus" style="margin-top:12px;font-size:12.5px;white-space:pre-wrap;"></div>
@@ -4206,6 +4229,162 @@ async function handleImportExtratoDebito(file){
   }
 }
 
+// ---- Parte 3: fatura em PDF do App Bradesco (via OCR) — ADICIONAL aos dois importadores acima ----
+// Esse PDF específico (gerado pelo app, não pelo site) não tem camada de texto — é uma "foto" da
+// tela. Por isso precisamos de OCR (Tesseract.js) em vez de extrair texto direto do PDF. Como OCR
+// pode errar (principalmente números), TUDO passa por uma tela de conferência antes de gravar —
+// nunca escreve direto na planilha sem você revisar.
+
+if(typeof pdfjsLib !== "undefined"){
+  pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+}
+
+// Renderiza cada página do PDF como imagem e roda OCR nela, devolvendo o texto reconhecido (todas as páginas concatenadas)
+async function extrairTextoPdfViaOcr(file, statusEl){
+  const buf = await file.arrayBuffer();
+  const pdf = await pdfjsLib.getDocument({ data: buf }).promise;
+  let textoCompleto = "";
+  for(let i = 1; i <= pdf.numPages; i++){
+    statusEl.textContent = `Lendo página ${i} de ${pdf.numPages} (OCR pode demorar um pouco)...`;
+    const page = await pdf.getPage(i);
+    const viewport = page.getViewport({ scale: 2 }); // resolução maior ajuda a precisão do OCR
+    const canvas = document.createElement("canvas");
+    canvas.width = viewport.width;
+    canvas.height = viewport.height;
+    await page.render({ canvasContext: canvas.getContext("2d"), viewport }).promise;
+    const { data: { text } } = await Tesseract.recognize(canvas.toDataURL("image/png"), "por");
+    textoCompleto += text + "\n";
+  }
+  return textoCompleto;
+}
+
+// Mesma lógica de reconhecimento de linha de transação usada no CSV de fatura, adaptada ao layout
+// do extrato do app (colunas "Data / Histórico / Moeda de origem / US$ / Cotação US$ / R$").
+function parseFaturaPDFTexto(texto){
+  const linhas = texto.split(/\r\n|\r|\n/);
+  let cartaoAtual = null;
+  const transacoes = [];
+
+  for(let rawLine of linhas){
+    const linha = rawLine.trim();
+    if(!linha) continue;
+
+    // Cabeçalho de cartão: "... XXXX.XXXX.XXXX.8428" (tolera OCR ler os X's com espaço ou ponto)
+    const matchCartao = linha.match(/(?:X{4}[.\s]){2,3}(\d{4})/i);
+    if(matchCartao){ cartaoAtual = matchCartao[1]; continue; }
+
+    if(/^total para/i.test(linha)) continue; // fim de seção do cartão, não é transação
+    if(/^data\s+hist[oó]rico/i.test(linha)) continue; // cabeçalho de coluna
+    if(/situa[cç][aã]o do extrato/i.test(linha)) continue;
+    if(/^aplicativo bradesco/i.test(linha)) continue;
+    if(/^data:\s*\d{2}\/\d{2}\/\d{4}/i.test(linha)) continue;
+
+    // Linha de transação: "DD/MM Descrição ... R$ valor" (o valor é sempre o último "R$" da linha)
+    const matchTransacao = linha.match(/^(\d{2}\/\d{2})\s+(.+?)\s+R\$\s*(-?[\d.,]+)\s*$/i);
+    if(!matchTransacao) continue;
+
+    const [, dataStr, descricaoBruta, valorStr] = matchTransacao;
+    // Remove os campos de moeda/cotação que sobraram colados na descrição
+    const descricao = descricaoBruta.replace(/USD\s*[\d.,]+/gi, "").replace(/R\$\s*[\d.,-]+/gi, "").trim();
+    if(!descricao) continue;
+    if(/SALDO ANTERIOR/i.test(descricao) || /PAG(AMENTO)?\s*BOLETO/i.test(descricao)) continue;
+
+    const valor = parseFloat(valorStr.replace(/\./g, "").replace(",", "."));
+    if(isNaN(valor) || valor <= 0) continue;
+
+    const [dia, mes] = dataStr.split("/");
+    const anoAtual = new Date().getFullYear();
+    const data = new Date(anoAtual, Number(mes) - 1, Number(dia));
+    transacoes.push({ data, cartaoNumero: cartaoAtual, descricao, valor });
+  }
+  return transacoes;
+}
+
+async function handleImportFaturaPDF(file){
+  const statusEl = document.getElementById("importStatus");
+  if(typeof pdfjsLib === "undefined" || typeof Tesseract === "undefined"){
+    statusEl.textContent = "❌ As bibliotecas de leitura de PDF ainda estão carregando — espera alguns segundos e tenta de novo.";
+    return;
+  }
+  try{
+    const texto = await extrairTextoPdfViaOcr(file, statusEl);
+    const transacoes = parseFaturaPDFTexto(texto);
+    if(transacoes.length === 0){
+      statusEl.textContent = "Não consegui reconhecer nenhuma transação nesse PDF. O layout pode ter mudado — me avisa que eu ajusto.";
+      return;
+    }
+    abrirPreviaImportacaoPdf(transacoes);
+    statusEl.textContent = `${transacoes.length} transação(ões) reconhecida(s) — confira na tela antes de importar.`;
+  }catch(err){
+    statusEl.textContent = "❌ Não foi possível ler o PDF: " + err.message;
+  }
+}
+
+// Tela de conferência: nada é gravado na planilha até o usuário clicar em "Importar selecionadas"
+function abrirPreviaImportacaoPdf(transacoes){
+  window._pdfPreviaTransacoes = transacoes;
+  const corpo = document.getElementById("pdfPreviewBody");
+  corpo.innerHTML = transacoes.map((t, i) => {
+    const nomeCartao = MAPA_CARTOES_IMPORT[t.cartaoNumero] || ("Cartão " + (t.cartaoNumero || "?"));
+    return `
+    <label style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border);cursor:pointer;">
+      <input type="checkbox" checked data-idx="${i}" class="pdf-previa-check">
+      <span style="flex:1;min-width:0;">
+        <div style="display:flex;justify-content:space-between;gap:8px;">
+          <span>${t.descricao}</span>
+          <span class="val-col despesa">${fmtMoney(t.valor)}</span>
+        </div>
+        <div style="font-size:11px;color:var(--muted);">${fmtDataBR(t.data)} · ${nomeCartao}</div>
+      </span>
+    </label>`;
+  }).join("");
+  document.getElementById("pdfPreviewModal").classList.remove("hidden");
+}
+function closePdfPreviewModal(){
+  document.getElementById("pdfPreviewModal").classList.add("hidden");
+  document.getElementById("pdfPreviewBody").innerHTML = "";
+  window._pdfPreviaTransacoes = null;
+}
+async function confirmarImportacaoPdf(){
+  const transacoes = window._pdfPreviaTransacoes || [];
+  const selecionadas = Array.from(document.querySelectorAll(".pdf-previa-check"))
+    .filter(cb => cb.checked)
+    .map(cb => transacoes[+cb.dataset.idx]);
+  if(selecionadas.length === 0){ showToast("Nenhuma transação selecionada", "error"); return; }
+
+  const rows = selecionadas.map(t => {
+    const nomeCartao = MAPA_CARTOES_IMPORT[t.cartaoNumero] || ("Cartão " + (t.cartaoNumero || "?"));
+    return [fmtDataBR(t.data), nomeCartao, t.descricao, sugerirCategoria(t.descricao) || "", t.valor, t.valor, "1/1", ""];
+  });
+
+  // Mesma checagem de duplicidade e de nome de cartão cadastrado usada no importador de CSV
+  const chavesExistentes = new Set(
+    (raw.compras || []).filter(c => c[0] && c[2]).map(c => chaveTransacaoImport(fmtDataBR(serialToDate(c[0])), c[2], c[4] || 0))
+  );
+  const rowsSemDuplicar = rows.filter(r => !chavesExistentes.has(chaveTransacaoImport(r[0], r[2], r[4])));
+  const duplicadas = rows.length - rowsSemDuplicar.length;
+  if(rowsSemDuplicar.length === 0){
+    closePdfPreviewModal();
+    showToast("Todas as selecionadas já estavam importadas — nada novo pra adicionar", "success");
+    return;
+  }
+
+  const cartoesCadastrados = new Set((raw.cartoes || []).filter(r => r[0]).map(r => r[0].trim()));
+  const nomesNaoEncontrados = [...new Set(rowsSemDuplicar.map(r => r[1]).filter(nome => !cartoesCadastrados.has(nome)))];
+  if(nomesNaoEncontrados.length > 0){
+    const confirmar = confirm(
+      `Estes nomes de cartão não batem com nenhum cartão cadastrado no Cadastro:\n\n${nomesNaoEncontrados.join(", ")}\n\n` +
+      `Quer importar mesmo assim?`
+    );
+    if(!confirmar) return;
+  }
+
+  await salvarEAtualizar(async () => {
+    await appendRows("Crédito", "B:I", rowsSemDuplicar);
+    closePdfPreviewModal();
+  }, [renderCredito], `${rowsSemDuplicar.length} transação(ões) importada(s)` + (duplicadas ? ` · ${duplicadas} ignorada(s) por já existir` : ""), "Não foi possível importar");
+}
+
 // Fecha qualquer modal ao clicar fora dele (no fundo escurecido, não no conteúdo do modal em si)
 function setupModalOutsideClickClose(){
   const fechadores = {
@@ -4215,6 +4394,7 @@ function setupModalOutsideClickClose(){
     categoriaDonutModal: closeCategoriaDonutModal,
     dividaEditModal: closeDividaEditForm,
     creditEditModal: closeCreditEditForm,
+    pdfPreviewModal: closePdfPreviewModal,
     calendarModal: closeCalendarModal,
   };
   document.querySelectorAll(".modal-overlay").forEach(overlay => {
@@ -4249,6 +4429,10 @@ window.onload = () => {
   });
   document.getElementById("importDebitoInput").addEventListener("change", (e) => {
     if(e.target.files[0]) handleImportExtratoDebito(e.target.files[0]);
+    e.target.value = "";
+  });
+  document.getElementById("importFaturaPdfInput").addEventListener("change", (e) => {
+    if(e.target.files[0]) handleImportFaturaPDF(e.target.files[0]);
     e.target.value = "";
   });
   setupTabs();
