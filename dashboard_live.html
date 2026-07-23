@@ -2271,6 +2271,7 @@ const BANK_DOMAINS = {
   "digio": "digio.com.br",
   "agibank": "agibank.com.br",
   "modalmais": "modalmais.com.br", "modal mais": "modalmais.com.br",
+  "amazon": "amazon.com.br",
 };
 // Chaves ordenadas da mais específica pra mais genérica, pra "banco do brasil" ganhar de um "bb" solto, por ex.
 const BANK_DOMAIN_KEYS = Object.keys(BANK_DOMAINS).sort((a,b) => b.length - a.length);
@@ -2282,8 +2283,11 @@ function textoContemChave(texto, chave){
 }
 
 function getBankLogoUrl(nomeCartao, bandeira){
-  const texto = normalizeCatName(`${nomeCartao||""} ${bandeira||""}`);
-  const chave = BANK_DOMAIN_KEYS.find(k => textoContemChave(texto, k));
+  // Primeiro tenta achar um banco usando só o NOME do cartão — protege contra o campo Banco
+  // estar errado/desatualizado (ex: cartão "Amazon Prime" com Banco="Bradesco" por engano).
+  const textoNome = normalizeCatName(nomeCartao || "");
+  const chaveNome = BANK_DOMAIN_KEYS.find(k => textoContemChave(textoNome, k));
+  const chave = chaveNome || BANK_DOMAIN_KEYS.find(k => textoContemChave(normalizeCatName(`${nomeCartao||""} ${bandeira||""}`), k));
   // Clearbit's Logo API foi desativada em dez/2025 — usando o endpoint de favicons do Google,
   // que não precisa de conta nem chave de API.
   return chave ? `https://www.google.com/s2/favicons?domain=${BANK_DOMAINS[chave]}&sz=64` : null;
@@ -2362,6 +2366,12 @@ const CARD_STYLE_KEYS = [1, 2, 3].flatMap(nivel =>
 );
 
 function getCardStyle(nomeCartao, bandeira){
+  // Se o próprio NOME do cartão já satisfaz uma chave de nível 1 sozinho (ex: "Amazon Prime",
+  // "Nubank Ultravioleta", "Bradesco Infinite"), usa direto — não depende do campo Banco estar certo.
+  const textoNome = normalizeCatName(nomeCartao || "");
+  const chaveNome = CARD_STYLE_KEYS.find(k => CARD_STYLES_RAW[k].tier === 1 && textoContemChave(textoNome, k));
+  if(chaveNome) return CARD_STYLES_RAW[chaveNome];
+
   const texto = normalizeCatName(`${nomeCartao||""} ${bandeira||""}`);
   const chave = CARD_STYLE_KEYS.find(k => textoContemChave(texto, k));
   return chave ? CARD_STYLES_RAW[chave] : null;
