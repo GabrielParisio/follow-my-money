@@ -2596,6 +2596,17 @@ function getBankLogoUrl(nomeCartao, bandeira){
 // de marca de cada banco (conhecimento geral, não é foto/arte baixada de nenhum lugar). "light:true" indica
 // que o cartão tem fundo claro e deve usar texto escuro (reaproveita a classe .metal já existente pra isso).
 // Chaves ordenadas da mais específica pra mais genérica (ex: "nubank ultravioleta" tem que ganhar de "nubank").
+// Gradientes reaproveitados por mais de uma chave (ex: com/sem a palavra "Visa" no nome) — definidos
+// uma única vez aqui, pra nunca mais precisar editar a mesma cor em dois lugares diferentes.
+const GRAD_ITAU_INFINITE = "linear-gradient(150deg, #003d82 0%, #0056b3 45%, #001f3f 100%)";
+const GRAD_BRADESCO_INFINITE = "linear-gradient(125deg, #050505 0%, #1c1c1c 40%, #2e2e2e 48%, #0a0a0a 55%, #000 100%)";
+const GRAD_XP_ONE = "linear-gradient(135deg, #9a9a9e 0%, #b5b5ba 50%, #8a8a8e 100%)";
+const GRAD_XP_LEGACY = "linear-gradient(150deg, #c8c9cd 0%, #9a9ca0 25%, #e8e9ec 50%, #85878b 75%, #b8bac0 100%)";
+const GRAD_XP_INFINITE = "linear-gradient(150deg, #0a0a0a 0%, #1a1a1a 100%)";
+const GRAD_C6 = "linear-gradient(150deg, #232323 0%, #000 100%)";
+const GRAD_BTG = "linear-gradient(150deg, #001e3c 0%, #000 100%)";
+const GRAD_METAL_PLATINUM = "linear-gradient(150deg, #d6d8db 0%, #aeb1b6 25%, #eceef0 50%, #9a9da3 75%, #c9ccd0 100%)";
+
 const CARD_STYLES_RAW = {
   // ===== NÍVEL 1 — Banco + Modelo (o mais específico: mesmo modelo muda de cor conforme o banco) =====
   "nubank ultravioleta": { background: "linear-gradient(150deg, #2B0B45 0%, #5A189A 55%, #8A05BE 100%)", tier: 1 },
@@ -2607,27 +2618,33 @@ const CARD_STYLES_RAW = {
   "itau uniclass": { background: "linear-gradient(150deg, #001b3a 0%, #000 100%)", tier: 1 },
   "itau personnalite": { background: "linear-gradient(150deg, #0a0a0a 0%, #1a1a1a 100%)", tier: 1 },
   // Itaú Visa Infinite é azul — diferente do Bradesco (preto) e do XP (preto com detalhe) com o mesmo nome de modelo
-  "itau visa infinite": { background: "linear-gradient(150deg, #003d82 0%, #0056b3 45%, #001f3f 100%)", tier: 1 },
-  "itau infinite": { background: "linear-gradient(150deg, #003d82 0%, #0056b3 45%, #001f3f 100%)", tier: 1 },
+  "itau visa infinite": { background: GRAD_ITAU_INFINITE, tier: 1 },
+  "itau infinite": { background: GRAD_ITAU_INFINITE, tier: 1 },
   "bradesco prime": { background: "linear-gradient(135deg, #1a1a1a 0%, #b8860b 100%)", tier: 1 },
   "bradesco elo nanquim": { background: "linear-gradient(150deg, #0a0a0a, #000)", tier: 1 },
   // Referência real enviada pelo usuário: preto fosco, minimalista, com traços diagonais brilhantes discretos
-  "bradesco visa infinite": { background: "linear-gradient(125deg, #050505 0%, #1c1c1c 40%, #2e2e2e 48%, #0a0a0a 55%, #000 100%)", tier: 1 },
-  // Mesmo cartão de cima, só que sem a palavra "Visa" no nome cadastrado
-  "bradesco infinite": { background: "linear-gradient(125deg, #050505 0%, #1c1c1c 40%, #2e2e2e 48%, #0a0a0a 55%, #000 100%)", tier: 1 },
+  "bradesco visa infinite": { background: GRAD_BRADESCO_INFINITE, tier: 1 },
+  "bradesco infinite": { background: GRAD_BRADESCO_INFINITE, tier: 1 },
   // Referência real enviada pelo usuário: vermelho intenso em degradê, brilhante, linha diagonal fina
   // Vermelho bordô (não o vermelho vivo do cartão classic/varejo — Principal é o segmento alta renda)
   "bradesco principal": { background: "linear-gradient(150deg, #6b0f1f 0%, #4a0a15 50%, #26050a 100%)", tier: 1 },
   "ourocard": { background: "linear-gradient(135deg, #003399 0%, #001a4d 100%)", tier: 1 },
   "santander select": { background: "linear-gradient(150deg, #1a1a1a, #8b0000)", tier: 1 },
-  "btg pactual": { background: "linear-gradient(150deg, #001e3c 0%, #000 100%)", tier: 1 },
-  "xp visa infinite": { background: "linear-gradient(150deg, #0a0a0a 0%, #1a1a1a 100%)", tier: 1 },
-  "xp infinite": { background: "linear-gradient(150deg, #0a0a0a 0%, #1a1a1a 100%)", tier: 1 },
+  "btg pactual": { background: GRAD_BTG, tier: 1 },
+  // XP tem 3 níveis do "Infinite" — cada um com um visual diferente.
+  // Referência real enviada pelo usuário: ONE é cinza claro/médio fosco (sem brilho de metal);
+  // Legacy é cartão de metal de verdade (acabamento prateado com brilho) — Infinite (meio) é preto.
+  "xp visa infinite one": { background: GRAD_XP_ONE, light: true, tier: 1 },
+  "xp infinite one": { background: GRAD_XP_ONE, light: true, tier: 1 },
+  "xp visa infinite legacy": { background: GRAD_XP_LEGACY, light: true, tier: 1 },
+  "xp infinite legacy": { background: GRAD_XP_LEGACY, light: true, tier: 1 },
+  "xp visa infinite": { background: GRAD_XP_INFINITE, tier: 1 },
+  "xp infinite": { background: GRAD_XP_INFINITE, tier: 1 },
   "will bank": { background: "linear-gradient(135deg, #00d563 0%, #00a34e 100%)", light: true, tier: 1 },
   "mastercard black": { background: "linear-gradient(150deg, #1a1a1a, #000)", tier: 1 },
   // Referência real: prata/cinza metálico, acabamento fosco com textura gravada
-  "amex platinum": { background: "linear-gradient(150deg, #d6d8db 0%, #aeb1b6 25%, #eceef0 50%, #9a9da3 75%, #c9ccd0 100%)", light: true, tier: 1 },
-  "american express platinum": { background: "linear-gradient(150deg, #d6d8db 0%, #aeb1b6 25%, #eceef0 50%, #9a9da3 75%, #c9ccd0 100%)", light: true, tier: 1 },
+  "amex platinum": { background: GRAD_METAL_PLATINUM, light: true, tier: 1 },
+  "american express platinum": { background: GRAD_METAL_PLATINUM, light: true, tier: 1 },
   // Referência real enviada pelo usuário: azul marinho escuro (não preto), textura levemente fosca
   "amazon prime": { background: "linear-gradient(140deg, #16213e 0%, #0d1428 55%, #1b2a4a 100%)", tier: 1 },
   "picpay": { background: "linear-gradient(135deg, #21c25e 0%, #0f9b46 100%)", tier: 1 },
@@ -2638,22 +2655,22 @@ const CARD_STYLES_RAW = {
 
   // ===== NÍVEL 2 — só o Modelo (usado quando não temos a variante daquele banco específico catalogada) =====
   "visa infinite": { background: "linear-gradient(150deg, #0a1128 0%, #1b2a4a 55%, #0a1128 100%)", tier: 2 },
-  "platinum": { background: "linear-gradient(150deg, #d6d8db 0%, #aeb1b6 25%, #eceef0 50%, #9a9da3 75%, #c9ccd0 100%)", light: true, tier: 2 },
+  "platinum": { background: GRAD_METAL_PLATINUM, light: true, tier: 2 },
 
   // ===== NÍVEL 3 — só o Banco (último recurso, quando não sabemos nem o modelo) =====
   "nubank": { background: "linear-gradient(135deg, #9D2FCE 0%, #8A05BE 60%, #6a0d91 100%)", tier: 3 },
   "inter": { background: "linear-gradient(135deg, #FF7A00 0%, #cf6400 100%)", tier: 3 },
-  "c6 bank": { background: "linear-gradient(150deg, #232323 0%, #000 100%)", tier: 3 },
-  "c6": { background: "linear-gradient(150deg, #232323 0%, #000 100%)", tier: 3 },
+  "c6 bank": { background: GRAD_C6, tier: 3 },
+  "c6": { background: GRAD_C6, tier: 3 },
   "itau": { background: "linear-gradient(135deg, #EC7000 0%, #c95e00 100%)", tier: 3 },
   "bradesco": { background: "linear-gradient(135deg, #cc092f 0%, #8b0000 100%)", tier: 3 },
   "banco do brasil": { background: "linear-gradient(135deg, #003399 0%, #001a4d 100%)", tier: 3 },
   "santander": { background: "linear-gradient(135deg, #ec0000 0%, #8b0000 100%)", tier: 3 },
-  "btg": { background: "linear-gradient(150deg, #001e3c 0%, #000 100%)", tier: 3 },
-  "xp": { background: "linear-gradient(150deg, #0a0a0a 0%, #1a1a1a 100%)", tier: 3 },
+  "btg": { background: GRAD_BTG, tier: 3 },
+  "xp": { background: GRAD_XP_INFINITE, tier: 3 },
   "visa": { background: "linear-gradient(150deg, #1a1f71 0%, #0d1147 100%)", tier: 3 },
-  "american express": { background: "linear-gradient(150deg, #d6d8db 0%, #aeb1b6 25%, #eceef0 50%, #9a9da3 75%, #c9ccd0 100%)", light: true, tier: 3 },
-  "amex": { background: "linear-gradient(150deg, #d6d8db 0%, #aeb1b6 25%, #eceef0 50%, #9a9da3 75%, #c9ccd0 100%)", light: true, tier: 3 },
+  "american express": { background: GRAD_METAL_PLATINUM, light: true, tier: 3 },
+  "amex": { background: GRAD_METAL_PLATINUM, light: true, tier: 3 },
 };
 // Prioridade em 3 níveis, do mais específico pro mais genérico:
 // 1) Banco + Modelo juntos (ex: "itau visa infinite" ≠ "bradesco visa infinite" ≠ "xp visa infinite")
@@ -4108,22 +4125,9 @@ function gerarLinhasCompraComParcelamento(dataCompra, nomeCartao, descricaoOrigi
   return linhas;
 }
 
-// Mapeia os últimos dígitos do cartão (como aparecem no CSV da fatura) pro nome do cartão cadastrado.
-// Precisa bater EXATAMENTE com o nome que está no Cadastro, senão o Sheets rejeita a célula
-// (a coluna "Cartão" da aba Crédito tem validação de dados restrita à lista de cartões cadastrados).
-// Isso é só um fallback antigo (de antes de existir o campo "Últimos 4 dígitos" no Cadastro) —
-// getNomeCartaoPorDigitos() abaixo dá prioridade ao que estiver cadastrado de verdade.
-const MAPA_CARTOES_IMPORT = {
-  "8428": "BRADESCO INFINITE",
-  "5162": "BRADESCO INFINITE",
-  "89921": "AMEX THE PLATINUM CARD",
-  "32107": "AMEX THE PLATINUM CARD",
-};
-
 // Acha o nome do cartão a partir dos últimos dígitos — usado quando o OCR/CSV não consegue ler
 // o nome do cartão diretamente (só o número mascarado). Um cadastro pode ter mais de um número
 // físico associado (ex: "8428, 5162" pro mesmo cartão) — separa por vírgula, espaço ou ponto-e-vírgula.
-// Prioridade: cartão cadastrado no Cadastro (campo "Últimos 4 dígitos") > mapa fixo antigo > "Cartão ?".
 function getNomeCartaoPorDigitos(digitos){
   if(!digitos) return "Cartão ?";
   const digitosLimpos = digitos.toString().slice(-4); // só os últimos 4, mesmo se vier um número maior
@@ -4132,9 +4136,7 @@ function getNomeCartaoPorDigitos(digitos){
     const numeros = c.ultimosDigitos.toString().split(/[,;\s]+/).map(n => n.trim()).filter(Boolean);
     return numeros.some(n => n.slice(-4) === digitosLimpos);
   });
-  if(cartaoCadastrado) return cartaoCadastrado.nome;
-  if(MAPA_CARTOES_IMPORT[digitos]) return MAPA_CARTOES_IMPORT[digitos];
-  return "Cartão ?";
+  return cartaoCadastrado ? cartaoCadastrado.nome : "Cartão ?";
 }
 
 // ---- Parser CSV genérico (separador configurável, respeita aspas) ----
