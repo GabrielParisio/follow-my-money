@@ -620,6 +620,16 @@
     </div>
   </div>
 
+  <div id="novaCompraModal" class="modal-overlay hidden">
+    <div class="modal-box">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
+        <h2 style="margin:0;">Nova compra no cartão</h2>
+        <button class="icon-btn" style="font-size:20px;" onclick="closeNovaCompraModal()">✕</button>
+      </div>
+      <div id="novaCompraBody"></div>
+    </div>
+  </div>
+
   <div id="calendarModal" class="modal-overlay hidden">
     <div class="modal-box">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
@@ -747,6 +757,7 @@
                 <option value="desc-az">Descrição (A-Z)</option>
                 <option value="desc-za">Descrição (Z-A)</option>
               </select>
+              <button class="connect-btn" onclick="abrirNovaCompraModal()">+ Nova compra</button>
               <button class="connect-btn" onclick="detectarERemoverDuplicatas()">🔍 Detectar e remover duplicatas</button>
             </div>
           </div>
@@ -4014,6 +4025,46 @@ function fmtDataBR(d){
 function chaveTransacaoImport(dataBR, desc, valor){
   return `${dataBR}|${(desc||"").trim().toLowerCase()}|${Number(valor).toFixed(2)}`;
 }
+// Versão específica pra compras de cartão: como agora uma compra parcelada gera várias linhas com a
+// MESMA data de compra, descrição e valor total (só o vencimento muda mês a mês), precisamos incluir
+// o vencimento na chave — senão a 2ª parcela em diante seria confundida como duplicata da 1ª.
+function chaveCompraCredito(dataBR, desc, valorTotal, vencBR){
+  return `${chaveTransacaoImport(dataBR, desc, valorTotal)}|${vencBR || ""}`;
+}
+
+// Detecta o indicativo de parcelamento no fim da descrição (ex: "LIVELO*Clube Livelo 5/12" ->
+// descrição "LIVELO*Clube Livelo", parcela atual 5, total 12). "1/1" não conta como parcelamento.
+function detectarParcelamento(descricao){
+  const match = (descricao || "").match(/^(.*?)\s+(\d{1,2})\/(\d{1,2})\s*$/);
+  if(!match) return null;
+  const descricaoLimpa = match[1].trim();
+  const parcelaAtual = parseInt(match[2], 10);
+  const parcelaTotal = parseInt(match[3], 10);
+  if(!descricaoLimpa || parcelaTotal <= 1 || parcelaAtual < 1 || parcelaAtual > parcelaTotal) return null;
+  return { descricaoLimpa, parcelaAtual, parcelaTotal };
+}
+
+// Monta as linhas de uma compra pra gravar na aba Crédito. Se a descrição indicar parcelamento
+// (ex: "3/12"), gera uma linha pra CADA parcela restante (da atual até a última), cada uma vencendo
+// um mês depois da anterior — assim as parcelas futuras já ficam lançadas, sem precisar esperar
+// a fatura de cada mês seguinte pra importar de novo.
+function gerarLinhasCompraComParcelamento(dataCompra, nomeCartao, descricaoOriginal, categoria, valorParcela, vencimentoBase){
+  const parcelamento = detectarParcelamento(descricaoOriginal);
+  if(!parcelamento || !vencimentoBase){
+    return [[fmtDataBR(dataCompra), nomeCartao, descricaoOriginal, categoria, valorParcela, valorParcela, "1/1", vencimentoBase ? fmtDataBR(vencimentoBase) : ""]];
+  }
+  const { descricaoLimpa, parcelaAtual, parcelaTotal } = parcelamento;
+  // Valor total é uma ESTIMATIVA (valor da parcela × total de parcelas) — só temos o valor de uma
+  // parcela nessa fatura, então assumimos parcelas iguais (o padrão mais comum).
+  const valorTotalEstimado = Math.round(valorParcela * parcelaTotal * 100) / 100;
+  const linhas = [];
+  for(let n = parcelaAtual; n <= parcelaTotal; n++){
+    const offsetMeses = n - parcelaAtual;
+    const vencData = new Date(vencimentoBase.getFullYear(), vencimentoBase.getMonth() + offsetMeses, vencimentoBase.getDate());
+    linhas.push([fmtDataBR(dataCompra), nomeCartao, descricaoLimpa, categoria, valorTotalEstimado, valorParcela, `${n}/${parcelaTotal}`, fmtDataBR(vencData)]);
+  }
+  return linhas;
+}
 
 // Mapeia os últimos dígitos do cartão (como aparecem no CSV da fatura) pro nome do cartão cadastrado.
 // Precisa bater EXATAMENTE com o nome que está no Cadastro, senão o Sheets rejeita a célula
@@ -4147,18 +4198,20 @@ async function handleImportFaturaCartao(file){
       statusEl.textContent = "Nenhuma transação nova encontrada nesse CSV.";
       return;
     }
-    const rows = transacoes.map(t => {
+    const rows = transacoes.flatMap(t => {
       const nomeCartao = getNomeCartaoPorDigitos(t.cartaoNumero);
-      return [fmtDataBR(t.data), nomeCartao, t.descricao, sugerirCategoria(t.descricao) || "", t.valor, t.valor, "1/1", vencimento ? fmtDataBR(vencimento) : ""];
+      const categoria = sugerirCategoria(t.descricao) || "";
+      return gerarLinhasCompraComParcelamento(t.data, nomeCartao, t.descricao, categoria, t.valor, vencimento);
     });
 
-    // Não importa de novo uma transação que já existe (mesma data + descrição + valor) — evita duplicidade
-    // quando o mesmo CSV é importado mais de uma vez, ou quando o período se sobrepõe com um import anterior.
-    const chave = chaveTransacaoImport;
+    // Não importa de novo uma transação que já existe (mesma data + descrição + valor + vencimento) —
+    // evita duplicidade quando o mesmo CSV é importado mais de uma vez, ou quando o período se
+    // sobrepõe com um import anterior (o vencimento entra na chave pra não confundir parcelas diferentes
+    // da mesma compra, já que elas compartilham data/descrição/valor total).
     const chavesExistentes = new Set(
-      (raw.compras || []).filter(c => c[0] && c[2]).map(c => chave(fmtDataBR(serialToDate(c[0])), c[2], c[4] || 0))
+      (raw.compras || []).filter(c => c[0] && c[2]).map(c => chaveCompraCredito(fmtDataBR(serialToDate(c[0])), c[2], c[4] || 0, c[7] ? fmtDataBR(serialToDate(c[7])) : ""))
     );
-    const rowsSemDuplicar = rows.filter(r => !chavesExistentes.has(chave(r[0], r[2], r[4])));
+    const rowsSemDuplicar = rows.filter(r => !chavesExistentes.has(chaveCompraCredito(r[0], r[2], r[4], r[7])));
     const duplicadas = rows.length - rowsSemDuplicar.length;
     if(rowsSemDuplicar.length === 0){
       statusEl.textContent = `Todas as ${rows.length} transação(ões) desse CSV já estavam importadas — nada novo pra adicionar.`;
@@ -4610,6 +4663,78 @@ async function confirmarLancarFatura(){
   }, [renderLancamentos, renderCredito, refreshCalendarIfOpen], "Fatura lançada na aba Débito");
 }
 
+// ===================== NOVA COMPRA MANUAL NO CARTÃO (com suporte a parcelamento) =====================
+function abrirNovaCompraModal(){
+  const cartoes = getCadastroCartoesParsed();
+  if(cartoes.length === 0){ showToast("Cadastre um cartão no Cadastro primeiro", "error"); return; }
+  const cartaoAtualNome = ((raw.cartoes || [])[state.cardIdx || 0] || [])[0] || cartoes[0].nome;
+  const hoje = new Date();
+  const hojeStr = hoje.toISOString().slice(0, 10);
+  // 1ª parcela vence no próximo dia 5 — mesma convenção usada nos importadores
+  let vencBase = new Date(hoje.getFullYear(), hoje.getMonth(), 5);
+  if(vencBase <= hoje) vencBase = new Date(hoje.getFullYear(), hoje.getMonth() + 1, 5);
+  const vencBaseStr = vencBase.toISOString().slice(0, 10);
+
+  document.getElementById("novaCompraBody").innerHTML = `
+    <div class="edit-form" style="margin-bottom:0;">
+      <div><label>Cartão</label>
+        <select id="ncCartao">${cartoes.map(c => `<option value="${c.nome}" ${c.nome===cartaoAtualNome?"selected":""}>${c.nome}</option>`).join("")}</select>
+      </div>
+      <div><label>Data da compra</label><input id="ncData" type="date" value="${hojeStr}"></div>
+      <div><label>Descrição</label><input id="ncDesc" placeholder="Ex: Notebook" oninput="autoSugerirCategoriaForm('ncDesc','ncCat')"></div>
+      <div><label>Categoria</label><select id="ncCat" onchange="this.dataset.manual='1'">${categoriaOptions()}</select></div>
+      <div><label>Valor total</label><input id="ncValorTotal" type="number" step="0.01" placeholder="0.00"></div>
+      <div><label>Nº de parcelas</label><input id="ncParcelas" type="number" min="1" step="1" value="1"></div>
+      <div><label>1ª parcela vence em</label><input id="ncVencimento" type="date" value="${vencBaseStr}"></div>
+      <div class="actions">
+        <button class="save-btn" onclick="saveNovaCompra()">Lançar compra</button>
+        <button class="cancel-btn" onclick="closeNovaCompraModal()">Cancelar</button>
+      </div>
+    </div>`;
+  document.getElementById("novaCompraModal").classList.remove("hidden");
+}
+function closeNovaCompraModal(){
+  document.getElementById("novaCompraModal").classList.add("hidden");
+  document.getElementById("novaCompraBody").innerHTML = "";
+}
+async function saveNovaCompra(){
+  const nomeCartao = document.getElementById("ncCartao").value;
+  const dataCompraStr = document.getElementById("ncData").value; // AAAA-MM-DD
+  const desc = document.getElementById("ncDesc").value.trim();
+  const categoria = document.getElementById("ncCat").value;
+  const valorTotal = parseFloat(document.getElementById("ncValorTotal").value) || 0;
+  const numParcelas = parseInt(document.getElementById("ncParcelas").value, 10) || 1;
+  const vencimentoStr = document.getElementById("ncVencimento").value; // AAAA-MM-DD
+
+  if(!desc){ showToast("Informe a descrição", "error"); return; }
+  if(valorTotal <= 0){ showToast("Valor precisa ser maior que zero", "error"); return; }
+  if(numParcelas < 1){ showToast("Número de parcelas inválido", "error"); return; }
+
+  const [anoC, mesC, diaC] = dataCompraStr.split("-").map(Number);
+  const dataCompraBR = `${String(diaC).padStart(2,"0")}/${String(mesC).padStart(2,"0")}/${anoC}`;
+  const [anoV, mesV, diaV] = vencimentoStr.split("-").map(Number);
+
+  // Divide o valor em parcelas iguais — a última parcela absorve a diferença de arredondamento,
+  // pra garantir que a soma de todas bate exatamente com o valor total.
+  const valorParcelaBase = Math.round((valorTotal / numParcelas) * 100) / 100;
+  const rows = [];
+  let somaAcumulada = 0;
+  for(let i = 0; i < numParcelas; i++){
+    const isUltima = i === numParcelas - 1;
+    const valorParcela = isUltima ? Math.round((valorTotal - somaAcumulada) * 100) / 100 : valorParcelaBase;
+    somaAcumulada += valorParcela;
+    const vencData = new Date(anoV, mesV - 1 + i, diaV);
+    const vencBR = fmtDataBR(vencData);
+    const parcelaLabel = numParcelas > 1 ? `${i+1}/${numParcelas}` : "1/1";
+    rows.push([dataCompraBR, nomeCartao, desc, categoria, valorTotal, valorParcela, parcelaLabel, vencBR]);
+  }
+
+  await salvarEAtualizar(async () => {
+    await appendRows("Crédito", "B:I", rows);
+    closeNovaCompraModal();
+  }, [renderCredito], `Compra lançada${numParcelas > 1 ? ` em ${numParcelas}x` : ""}`);
+}
+
 async function confirmarImportacaoPdf(){
   const transacoes = window._pdfPreviaTransacoes || [];
   const checks = Array.from(document.querySelectorAll(".pdf-previa-check")).filter(cb => cb.checked);
@@ -4618,21 +4743,22 @@ async function confirmarImportacaoPdf(){
   const mesInput = document.getElementById("pdfPreviaMesInput").value; // "AAAA-MM"
   const [anoVenc, mesVenc] = mesInput.split("-").map(Number);
   const vencimentoConfirmado = new Date(anoVenc, mesVenc - 1, 5); // dia 5, mesma convenção usada no resto do app
-  const vencimentoStr = fmtDataBR(vencimentoConfirmado);
 
-  const rows = checks.map(cb => {
+  const rows = checks.flatMap(cb => {
     const idx = +cb.dataset.idx;
     const t = transacoes[idx];
     const selectCartao = document.querySelector(`.pdf-previa-cartao[data-idx="${idx}"]`);
     const nomeCartao = (selectCartao && selectCartao.value) || getNomeCartaoPorDigitos(t.cartaoNumero);
-    return [fmtDataBR(t.data), nomeCartao, t.descricao, sugerirCategoria(t.descricao) || "", t.valor, t.valor, "1/1", vencimentoStr];
+    const categoria = sugerirCategoria(t.descricao) || "";
+    return gerarLinhasCompraComParcelamento(t.data, nomeCartao, t.descricao, categoria, t.valor, vencimentoConfirmado);
   });
 
-  // Mesma checagem de duplicidade e de nome de cartão cadastrado usada no importador de CSV
+  // Mesma checagem de duplicidade (agora considerando o vencimento) e de nome de cartão cadastrado
+  // usada no importador de CSV
   const chavesExistentes = new Set(
-    (raw.compras || []).filter(c => c[0] && c[2]).map(c => chaveTransacaoImport(fmtDataBR(serialToDate(c[0])), c[2], c[4] || 0))
+    (raw.compras || []).filter(c => c[0] && c[2]).map(c => chaveCompraCredito(fmtDataBR(serialToDate(c[0])), c[2], c[4] || 0, c[7] ? fmtDataBR(serialToDate(c[7])) : ""))
   );
-  const rowsSemDuplicar = rows.filter(r => !chavesExistentes.has(chaveTransacaoImport(r[0], r[2], r[4])));
+  const rowsSemDuplicar = rows.filter(r => !chavesExistentes.has(chaveCompraCredito(r[0], r[2], r[4], r[7])));
   const duplicadas = rows.length - rowsSemDuplicar.length;
   if(rowsSemDuplicar.length === 0){
     closePdfPreviewModal();
@@ -4667,6 +4793,7 @@ function setupModalOutsideClickClose(){
     creditEditModal: closeCreditEditForm,
     pdfPreviewModal: closePdfPreviewModal,
     lancarFaturaModal: closeLancarFaturaModal,
+    novaCompraModal: closeNovaCompraModal,
     calendarModal: closeCalendarModal,
   };
   document.querySelectorAll(".modal-overlay").forEach(overlay => {
