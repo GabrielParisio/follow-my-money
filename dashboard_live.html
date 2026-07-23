@@ -2420,7 +2420,7 @@ function renderDividas(){
         <div class="value" style="color:var(--green)">${fmtMoney(totalPago)}</div>
         <div class="sub">de ${fmtMoney(totalOriginal)} no total</div></div></div>
     <div class="card"><div class="accent" style="background:var(--blue)"></div>
-      <div class="body"><div class="label">Dívidas ativas</div>
+      <div class="body"><div class="label">Em aberto</div>
         <div class="value">${ativas.length}</div></div></div>`;
 
   const filtro = state.dividasFiltro || "todas";
@@ -2429,11 +2429,11 @@ function renderDividas(){
   const toggleHtml = `
     <div class="seg-toggle" id="dividasFiltroToggle" style="margin-bottom:14px;">
       <button class="seg-btn ${filtro==='todas'?'active':''}" data-dfiltro="todas">Todas (${todasDividas.length})</button>
-      <button class="seg-btn ${filtro==='ativas'?'active':''}" data-dfiltro="ativas">Só ativas (${ativas.length})</button>
+      <button class="seg-btn ${filtro==='ativas'?'active':''}" data-dfiltro="ativas">Só em aberto (${ativas.length})</button>
     </div>`;
 
   if(dividasExibidas.length === 0){
-    tableEl.innerHTML = toggleHtml + '<p class="empty">Nenhuma dívida ativa no momento 🎉</p>';
+    tableEl.innerHTML = toggleHtml + '<p class="empty">Nenhuma dívida em aberto no momento 🎉</p>';
     setupDividasFiltroToggle();
     return;
   }
@@ -2452,7 +2452,6 @@ function renderDividas(){
         <div style="height:6px;background:var(--border);border-radius:3px;overflow:hidden;">
           <div style="height:100%;width:${Math.min(pctPago,100)}%;background:${quitada?"var(--green)":"var(--blue)"};border-radius:3px;"></div>
         </div>
-        ${d.saldoDevedorAutoCalculado ? `<div style="font-size:10.5px;color:var(--muted);margin-top:3px;">dos quais ${fmtMoney(d.jurosPagos)} em juros</div>` : ""}
       </td>
       <td data-label="Status"><span class="pill">${d.status || "—"}</span></td>
       <td data-label=""><button class="icon-btn" onclick="openDividaEditForm(${d.row})" title="Editar">✏️</button></td>
