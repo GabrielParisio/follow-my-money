@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Follow My Money — Dashboard</title>
 <script src="https://accounts.google.com/gsi/client" async defer></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <style>
   :root{
     --bg:#1A1917;
@@ -721,6 +722,24 @@
 
   <div id="view-cadastro" class="view">
     <div class="chart-panel">
+      <h2>📥 Importar dados</h2>
+      <p style="font-size:12.5px;color:var(--muted);margin-top:-6px;margin-bottom:14px;">
+        Roda tudo aqui no navegador — não depende mais do Apps Script da planilha. A coluna "Categoria" fica em branco de propósito; escolha depois no menu suspenso de cada linha.
+      </p>
+      <div class="edit-form" style="margin-bottom:0;">
+        <div>
+          <label>Fatura de cartão (CSV)</label>
+          <input type="file" id="importFaturaInput" accept=".csv">
+        </div>
+        <div>
+          <label>Extrato de débito (XLS ou CSV)</label>
+          <input type="file" id="importDebitoInput" accept=".xls,.csv">
+        </div>
+      </div>
+      <div id="importStatus" style="margin-top:12px;font-size:12.5px;white-space:pre-wrap;"></div>
+    </div>
+
+    <div class="chart-panel">
       <h2>👤 Perfil</h2>
       <div class="edit-form" style="margin-bottom:0;">
         <div><label>Nome</label><input id="cadNome" placeholder="Seu nome"></div>
@@ -1052,6 +1071,21 @@ async function appendRow(sheetName, rowValues){
     body: JSON.stringify({ values: [rowValues] })
   });
   if(!res.ok) throw new Error("Falha ao adicionar (" + res.status + ")");
+  return res.json();
+}
+
+// Igual ao appendRow, mas manda VÁRIAS linhas numa única requisição — essencial pros importadores
+// de fatura/extrato, que podem gerar dezenas de transações de uma vez (uma requisição por linha
+// estouraria o limite de taxa da API do Google, como já vimos acontecer antes).
+async function appendRows(sheetName, colRange, rows2D){
+  if(!rows2D || rows2D.length === 0) return;
+  const url = `https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}/values/${encodeURIComponent(sheetName + "!" + colRange)}:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`;
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { Authorization: "Bearer " + accessToken, "Content-Type": "application/json" },
+    body: JSON.stringify({ values: rows2D })
+  });
+  if(!res.ok) throw new Error("Falha ao importar (" + res.status + ")");
   return res.json();
 }
 
@@ -3583,6 +3617,257 @@ function renderDetalheAnual(){
 
 const LOGO_DATA_URI = "data:image/png;base64,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";
 
+// ===================== IMPORTAÇÃO DE FATURA/EXTRATO (portado do Apps Script Code.gs) =====================
+// Tudo roda aqui no navegador agora — a planilha não precisa mais do script pra isso.
+
+function fmtDataBR(d){
+  return `${String(d.getDate()).padStart(2,"0")}/${String(d.getMonth()+1).padStart(2,"0")}/${d.getFullYear()}`;
+}
+
+// Mapeia os últimos dígitos do cartão (como aparecem no CSV da fatura) pro nome do cartão cadastrado.
+// Se cadastrar um cartão novo ou os dígitos mudarem, é só me pedir pra atualizar essa lista.
+const MAPA_CARTOES_IMPORT = {
+  "8428": "INFINITE",
+  "5162": "INFINITE",
+  "89921": "AMEX TPC",
+  "32107": "AMEX TPC",
+};
+
+// ---- Parser CSV genérico (separador configurável, respeita aspas) ----
+function parseCsvLine(line, delimiter){
+  const result = [];
+  let cur = "", inQuotes = false;
+  for(let i = 0; i < line.length; i++){
+    const ch = line[i];
+    if(inQuotes){
+      if(ch === '"'){
+        if(line[i+1] === '"'){ cur += '"'; i++; }
+        else inQuotes = false;
+      } else cur += ch;
+    } else {
+      if(ch === '"') inQuotes = true;
+      else if(ch === delimiter){ result.push(cur); cur = ""; }
+      else cur += ch;
+    }
+  }
+  result.push(cur);
+  return result;
+}
+function parseCsvText(text, delimiter){
+  return text.split(/\r\n|\r|\n/).filter(l => l.length > 0).map(l => parseCsvLine(l, delimiter));
+}
+
+// ---- Parte 1: fatura de cartão (CSV) -> aba Crédito ----
+function parseFaturaCartaoCsv(csvText){
+  const linhas = csvText.split(/\r\n|\r|\n/);
+  let anoFatura = null, dataEmissao = null, cartaoAtual = null, pararProcessamento = false;
+  const transacoes = [];
+  let puladasNaoCompra = 0;
+
+  for(let rawLine of linhas){
+    const linha = rawLine.trim();
+    if(!linha || pararProcessamento) continue;
+
+    const matchEmissao = linha.match(/^Data:\s*(\d{2})\/(\d{2})\/(\d{4})/);
+    if(matchEmissao){
+      dataEmissao = new Date(Number(matchEmissao[3]), Number(matchEmissao[2])-1, Number(matchEmissao[1]));
+      anoFatura = matchEmissao[3];
+      continue;
+    }
+    if(/^Lan[cç]amentos programados/i.test(linha) ||
+       /^Resumo das Despesas/i.test(linha) ||
+       /^Taxas/i.test(linha) ||
+       /^\*\s*Fatura em Aberto/i.test(linha)){
+      pararProcessamento = true;
+      continue;
+    }
+    if(/^Situa[cç][aã]o da Fatura/i.test(linha)) continue;
+    if(/^Total (da fatura|para)/i.test(linha)) continue;
+    if(/^Data;Hist[oó]rico/i.test(linha)) continue;
+
+    const matchCartao = linha.match(/;;;\s*(\d{3,5})\s*$/);
+    if(matchCartao){ cartaoAtual = matchCartao[1]; continue; }
+
+    const partes = linha.split(";");
+    if(partes.length < 4) continue;
+    const dataStr = partes[0].trim();
+    const historico = partes[1].trim();
+    const valorRStr = partes[3].trim();
+    if(!dataStr || !valorRStr) continue;
+
+    if(/SALDO ANTERIOR/i.test(historico) || /PAG(AMENTO)?\s*BOLETO/i.test(historico)){
+      puladasNaoCompra++;
+      continue;
+    }
+
+    const dParts = dataStr.split("/");
+    let dia, mes, ano;
+    if(dParts.length === 2){ dia = dParts[0]; mes = dParts[1]; ano = anoFatura || String(new Date().getFullYear()); }
+    else if(dParts.length === 3){ dia = dParts[0]; mes = dParts[1]; ano = dParts[2]; }
+    else continue;
+    const dataCompra = new Date(Number(ano), Number(mes)-1, Number(dia));
+
+    const valor = parseFloat(valorRStr.replace(/\./g, "").replace(",", "."));
+    if(isNaN(valor)) continue;
+
+    transacoes.push({ data: dataCompra, cartaoNumero: cartaoAtual, descricao: historico, valor });
+  }
+
+  let vencimento = null;
+  if(dataEmissao){
+    vencimento = new Date(dataEmissao.getFullYear(), dataEmissao.getMonth(), 5);
+    if(vencimento <= dataEmissao) vencimento = new Date(dataEmissao.getFullYear(), dataEmissao.getMonth()+1, 5);
+  }
+  return { transacoes, vencimento, puladasNaoCompra };
+}
+
+async function handleImportFaturaCartao(file){
+  const statusEl = document.getElementById("importStatus");
+  statusEl.textContent = "Lendo arquivo...";
+  try{
+    const buf = await file.arrayBuffer();
+    const bytes = new Uint8Array(buf);
+    let texto;
+    try{ texto = new TextDecoder("iso-8859-1").decode(bytes); }
+    catch(e){ texto = new TextDecoder("utf-8").decode(bytes); }
+
+    const { transacoes, vencimento, puladasNaoCompra } = parseFaturaCartaoCsv(texto);
+    if(transacoes.length === 0){
+      statusEl.textContent = "Nenhuma transação nova encontrada nesse CSV.";
+      return;
+    }
+    const rows = transacoes.map(t => {
+      const nomeCartao = MAPA_CARTOES_IMPORT[t.cartaoNumero] || ("Cartão " + (t.cartaoNumero || "?"));
+      return [fmtDataBR(t.data), nomeCartao, t.descricao, "", t.valor, t.valor, "1/1", vencimento ? fmtDataBR(vencimento) : ""];
+    });
+    statusEl.textContent = "Importando...";
+    await appendRows("Crédito", "B:I", rows);
+    await loadData();
+    renderCredito();
+    statusEl.textContent = `✅ ${rows.length} transação(ões) importada(s) na aba Crédito` +
+      (puladasNaoCompra ? ` · ${puladasNaoCompra} ignorada(s) (saldo anterior/boleto)` : "") +
+      `\n📝 A categoria ficou em branco — escolha no menu suspenso de cada linha.`;
+  }catch(err){
+    statusEl.textContent = "❌ Não foi possível importar: " + err.message;
+  }
+}
+
+// ---- Parte 2: extrato de débito (XLS/CSV) -> aba Débito ----
+function parseValorBR(v){
+  if(v === null || v === undefined || v === "") return 0;
+  if(typeof v === "number") return v;
+  let s = v.toString().trim();
+  if(!s) return 0;
+  let neg = false;
+  if(s.charAt(0) === "-"){ neg = true; s = s.substring(1); }
+  s = s.replace(/\./g, "").replace(",", ".");
+  const n = parseFloat(s);
+  if(isNaN(n)) return 0;
+  return neg ? -n : n;
+}
+function parseDataBRCell(v){
+  if(v instanceof Date) return v;
+  const s = (v || "").toString().trim();
+  const m = s.match(/^(\d{2})\/(\d{2})\/(\d{2})$/);
+  if(!m) return null;
+  const dia = parseInt(m[1],10), mes = parseInt(m[2],10), ano = 2000 + parseInt(m[3],10);
+  return new Date(ano, mes-1, dia);
+}
+
+function parseExtratoDebitoRows(rows){
+  const transacoes = [];
+  const mainDocto = {};
+  let current = null;
+  let section = "main"; // main | ultimos | futuros
+  let ignorarResto = false;
+
+  for(let i = 0; i < rows.length; i++){
+    if(ignorarResto) break;
+    const row = rows[i];
+    const dataRaw = (row[0] || "").toString().trim();
+    const historico = (row[1] || "").toString().trim();
+    const docto = (row[2] || "").toString().trim();
+    const credito = row[3];
+    const debito = row[4];
+
+    if(dataRaw === "Saldos Invest Fácil"){ ignorarResto = true; break; }
+    if(dataRaw === "Últimos Lançamentos"){ section = "ultimos"; current = null; continue; }
+    if(dataRaw === "Lançamentos Futuros"){ section = "futuros"; current = null; continue; }
+    if(historico === "Histórico" && dataRaw === "Data") continue;
+    if(historico === "SALDO ANTERIOR") continue;
+    if(historico === "Total do Dia" || historico === "Total") continue;
+    if(!dataRaw && !historico) continue;
+
+    const isDateRow = /^\d{2}\/\d{2}\/\d{2}$/.test(dataRaw);
+    if(isDateRow){
+      if(section === "ultimos" && docto && mainDocto[docto]){ current = null; continue; }
+      current = {
+        data: parseDataBRCell(dataRaw), historico, docto,
+        credito: parseValorBR(credito), debito: parseValorBR(debito)
+      };
+      if(section === "main" && docto) mainDocto[docto] = true;
+      transacoes.push(current);
+    } else if(current && historico){
+      current.historico += " — " + historico;
+    }
+  }
+  return transacoes;
+}
+
+function classificarLancamento(t){
+  const desc = t.historico.toLowerCase();
+  const isInvest = desc.indexOf("cdb") !== -1 || desc.indexOf("aplicac") !== -1 ||
+    desc.indexOf("invest") !== -1 || desc.indexOf("rent.inv") !== -1;
+  const isEntrada = t.credito && t.credito !== 0;
+  if(isInvest) return isEntrada ? "Resgate Investimento" : "Investimento";
+  return isEntrada ? "Receita" : "Despesa";
+}
+
+async function handleImportExtratoDebito(file){
+  const statusEl = document.getElementById("importStatus");
+  statusEl.textContent = "Lendo arquivo...";
+  const isXls = /\.xls$/i.test(file.name);
+  let rows;
+  try{
+    const buf = await file.arrayBuffer();
+    if(isXls){
+      const wb = XLSX.read(buf, { type: "array", cellDates: true });
+      const sheet = wb.Sheets[wb.SheetNames[0]];
+      rows = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: true, defval: "" });
+    } else {
+      const bytes = new Uint8Array(buf);
+      const texto = new TextDecoder("iso-8859-1").decode(bytes);
+      rows = parseCsvText(texto, ",");
+    }
+  }catch(err){
+    statusEl.textContent = "❌ Não foi possível ler o arquivo: " + err.message;
+    return;
+  }
+
+  try{
+    const transacoes = parseExtratoDebitoRows(rows).filter(t => t.data);
+    if(transacoes.length === 0){
+      statusEl.textContent = "Nenhuma transação encontrada no arquivo.";
+      return;
+    }
+    const hoje = new Date(); hoje.setHours(0,0,0,0);
+    const linhas = transacoes.map(t => {
+      const valor = Math.abs(t.credito) + Math.abs(t.debito);
+      const lancamento = classificarLancamento(t);
+      const status = t.data <= hoje ? "✅ Pago" : "";
+      // B, C, D, E, F, G, H, I, J, K — E(Fixa), F, H(Categoria) ficam em branco
+      return [fmtDataBR(t.data), fmtDataBR(t.data), t.historico, "", "", "Bradesco", "", lancamento, valor, status];
+    });
+    statusEl.textContent = "Importando...";
+    await appendRows("Débito", "B:K", linhas);
+    await loadData();
+    renderLancamentos();
+    statusEl.textContent = `✅ ${linhas.length} transação(ões) importada(s) na aba Débito.\n📝 A categoria ficou em branco — escolha no menu suspenso de cada linha.`;
+  }catch(err){
+    statusEl.textContent = "❌ Não foi possível importar: " + err.message;
+  }
+}
+
 window.onload = () => {
   document.querySelectorAll(".brand-logo").forEach(img => img.src = LOGO_DATA_URI);
   renderBalancoCardsShell();
@@ -3599,6 +3884,14 @@ window.onload = () => {
     resolveWorkspace();
   });
   document.getElementById("novoLancBtn").addEventListener("click", openNewForm);
+  document.getElementById("importFaturaInput").addEventListener("change", (e) => {
+    if(e.target.files[0]) handleImportFaturaCartao(e.target.files[0]);
+    e.target.value = "";
+  });
+  document.getElementById("importDebitoInput").addEventListener("change", (e) => {
+    if(e.target.files[0]) handleImportExtratoDebito(e.target.files[0]);
+    e.target.value = "";
+  });
   setupTabs();
   setupSidebarToggle();
 
