@@ -2332,12 +2332,13 @@ const CARD_STYLES_RAW = {
   "visa infinite": { background: "linear-gradient(150deg, #0a1128 0%, #1b2a4a 55%, #0a1128 100%)" },
   "visa": { background: "linear-gradient(150deg, #1a1f71 0%, #0d1147 100%)" },
   "mastercard black": { background: "linear-gradient(150deg, #1a1a1a, #000)" },
-  // Referência real enviada pelo usuário: prata/cinza metálico, acabamento fosco com textura gravada
+  // "Amex" sozinho não indica necessariamente metálico (a Amex tem vários cartões diferentes) — quem
+  // realmente identifica o visual prateado/metálico é o nome do modelo, "Platinum".
+  "platinum": { background: "linear-gradient(150deg, #d6d8db 0%, #aeb1b6 25%, #eceef0 50%, #9a9da3 75%, #c9ccd0 100%)", light: true },
   "american express": { background: "linear-gradient(150deg, #d6d8db 0%, #aeb1b6 25%, #eceef0 50%, #9a9da3 75%, #c9ccd0 100%)", light: true },
   "amex": { background: "linear-gradient(150deg, #d6d8db 0%, #aeb1b6 25%, #eceef0 50%, #9a9da3 75%, #c9ccd0 100%)", light: true },
-  // Referência real enviada pelo usuário: preto texturizado (fosco), bem próximo do estilo C6/XP mas
-  // levemente mais acinzentado, combina com o logo colorido (Mastercard) + "amazon prime" em azul
-  "amazon prime": { background: "linear-gradient(140deg, #232323 0%, #0f0f0f 55%, #1a1a1a 100%)" },
+  // Referência real enviada pelo usuário: azul marinho escuro (não preto), textura levemente fosca
+  "amazon prime": { background: "linear-gradient(140deg, #16213e 0%, #0d1428 55%, #1b2a4a 100%)" },
 };
 const CARD_STYLE_KEYS = Object.keys(CARD_STYLES_RAW).sort((a,b) => b.length - a.length);
 
@@ -2800,11 +2801,11 @@ function renderCadCartoesTable(){
   const rows = cartoes.map(c => `
     <tr>
       <td data-label="Nome"><input value="${c.nome}" onchange='renomearCartao(${c.row}, ${JSON.stringify(c.nome)}, this.value)' style="background:transparent;border:none;color:var(--text);width:100%;font-size:13px;"></td>
-      <td data-label="Bandeira/tipo"><input value="${c.bandeira}" placeholder="Ex: Amex Platinum" onchange="saveCadCartaoCampo(${c.row}, 'I', this.value)" style="background:transparent;border:none;color:var(--text);width:100%;font-size:13px;"></td>
+      <td data-label="Banco"><input value="${c.bandeira}" placeholder="Ex: Bradesco" onchange="saveCadCartaoCampo(${c.row}, 'I', this.value)" style="background:transparent;border:none;color:var(--text);width:100%;font-size:13px;"></td>
       <td data-label="Vencimento" style="text-align:right;"><input type="number" min="1" max="31" value="${c.vencimento}" onchange="saveCadCartaoCampo(${c.row}, 'J', this.value)" style="background:transparent;border:none;color:var(--text);width:60px;text-align:right;font-size:13px;"></td>
       <td><button class="icon-btn" onclick="deleteCadCartao(${c.row})" title="Remover">🗑️</button></td>
     </tr>`).join("");
-  el.innerHTML = `<table class="lanc"><thead><tr><th>Nome</th><th>Bandeira/tipo</th><th style="text-align:right;">Dia venc.</th><th></th></tr></thead><tbody>${rows}</tbody></table>`;
+  el.innerHTML = `<table class="lanc"><thead><tr><th>Nome</th><th>Banco</th><th style="text-align:right;">Dia venc.</th><th></th></tr></thead><tbody>${rows}</tbody></table>`;
 }
 // Crédito!B10:I -> a linha real de cada compra é 10 + índice no array bruto.
 // Atualiza todas as compras lançadas com "nomeAntigo" pra passarem a apontar pro "nomeNovo".
@@ -2886,7 +2887,6 @@ const BANCOS_CONHECIDOS = [
   "Porto Seguro", "Neon", "Mercado Pago", "Sicoob", "Sicredi", "Digio", "Agibank",
   "American Express", "Amazon", "Genérico"
 ];
-const BANDEIRAS_CONHECIDAS = ["Visa", "Mastercard", "American Express", "Elo", "Hipercard", "Diners Club", "Amazon", "Genérico"];
 
 function addCadastroCartao(){
   const cartoes = getCadastroCartoesParsed();
@@ -2900,10 +2900,7 @@ function addCadastroCartao(){
       <div><label>Banco</label>
         <select id="novoCartaoBanco">${BANCOS_CONHECIDOS.map(b => `<option value="${b}">${b}</option>`).join("")}</select>
       </div>
-      <div><label>Bandeira</label>
-        <select id="novoCartaoBandeira">${BANDEIRAS_CONHECIDAS.map(b => `<option value="${b}">${b}</option>`).join("")}</select>
-      </div>
-      <div><label>Modelo</label><input id="novoCartaoModelo" placeholder="Ex: Ultravioleta, Infinite, Platinum..."></div>
+      <div><label>Modelo</label><input id="novoCartaoModelo" placeholder="Ex: Ultravioleta, Infinite, The Platinum Card..."></div>
       <div><label>Dia de vencimento</label><input id="novoCartaoVencimento" type="number" min="1" max="31" value="10"></div>
       <div class="actions">
         <button class="save-btn" onclick="saveCadastroCartaoNovo(${nextRow})">Adicionar</button>
@@ -2919,13 +2916,12 @@ function closeCadastroCartaoNovoForm(){
 }
 async function saveCadastroCartaoNovo(row){
   const banco = document.getElementById("novoCartaoBanco").value;
-  const bandeira = document.getElementById("novoCartaoBandeira").value;
   const modelo = document.getElementById("novoCartaoModelo").value.trim();
   const nome = (banco === "Genérico" ? (modelo || "Cartão") : `${banco}${modelo ? " " + modelo : ""}`).trim();
   const vencimento = parseInt(document.getElementById("novoCartaoVencimento").value, 10) || 10;
   try{
     await writeCell(`Cadastro!H${row}`, nome);
-    await writeCell(`Cadastro!I${row}`, bandeira === "Genérico" ? "" : bandeira);
+    await writeCell(`Cadastro!I${row}`, banco === "Genérico" ? "" : banco);
     await writeCell(`Cadastro!J${row}`, vencimento);
     closeCadastroCartaoNovoForm();
     await loadData();
