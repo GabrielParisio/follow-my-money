@@ -2472,14 +2472,26 @@ const BANK_DOMAINS = {
   "agibank": "agibank.com.br",
   "modalmais": "modalmais.com.br", "modal mais": "modalmais.com.br",
   "amazon": "amazon.com.br",
+  "magazine luiza": "magazineluiza.com.br", "magalu": "magazineluiza.com.br",
+  "casas bahia": "casasbahia.com.br",
+  "hipercard": "hipercard.com.br",
+  "extra": "clubeextra.com.br",
+  "riachuelo": "riachuelo.com.br",
+  "renner": "lojasrenner.com.br",
+  "americanas": "americanas.com.br",
+  "shopfacil": "shopfacil.com.br",
+  "ponto frio": "pontofrio.com.br",
 };
 // Chaves ordenadas da mais específica pra mais genérica, pra "banco do brasil" ganhar de um "bb" solto, por ex.
 const BANK_DOMAIN_KEYS = Object.keys(BANK_DOMAINS).sort((a,b) => b.length - a.length);
 
 // Compara por palavra, não por frase exata — "INFINITE Visa" (nome + bandeira, nessa ordem) precisa
 // bater com a chave "visa infinite" mesmo com as palavras na ordem trocada.
+// Compara palavra INTEIRA (tokenizada), não substring solta — evita falso positivo tipo a chave
+// curta "nu" (Nubank) batendo dentro da palavra "platinum" (que contém "nu" no meio).
 function textoContemChave(texto, chave){
-  return chave.split(" ").every(palavra => texto.includes(palavra));
+  const palavrasTexto = texto.split(/\s+/).filter(Boolean);
+  return chave.split(" ").every(palavra => palavrasTexto.includes(palavra));
 }
 
 // Sugestão automática de categoria a partir da descrição do lançamento — mesmo princípio do catálogo
