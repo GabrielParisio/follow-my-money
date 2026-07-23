@@ -707,7 +707,10 @@
           <div id="creditCatChart"></div>
         </div>
         <div class="chart-panel">
-          <h2>Compras do mês</h2>
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:8px;">
+            <h2 style="margin:0;">Compras do mês</h2>
+            <button class="connect-btn" onclick="detectarERemoverDuplicatas()">🔍 Detectar e remover duplicatas</button>
+          </div>
           <div id="creditBulkBar" class="hidden" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:12px;padding:10px 14px;background:var(--card);border:1px solid var(--border);border-radius:10px;">
             <span id="creditBulkCount" style="font-size:13px;color:var(--muted);"></span>
             <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
@@ -1365,9 +1368,9 @@ function renderResumo(){
   const numCartoes = (raw.cartoes || []).filter(r => r[0]).length;
 
   // Cards de atalho pras outras abas — altura fixa (mesmo padrão do resto do app), só cresce na horizontal.
-  const irPara = (view) => `document.querySelector('.tabs [data-view="${view}"]').click()`;
+  const irPara = (view) => `document.querySelector('.tabs [data-view=${view}]').click()`;
   const atalhosHtml = `<div class="cards" style="margin-top:16px;">
-    <div class="card panel-clickable" onclick='${irPara("mensal")}'>
+    <div class="card panel-clickable" onclick="${irPara("mensal")}">
       <div class="accent" style="background:var(--blue)"></div>
       <div class="body">
         <div class="label">🏠 Visão Mensal</div>
@@ -1376,7 +1379,7 @@ function renderResumo(){
         <div class="sub" style="margin-top:4px;color:var(--gold);">ver mais →</div>
       </div>
     </div>
-    <div class="card panel-clickable" onclick='${irPara("investimentos")}'>
+    <div class="card panel-clickable" onclick="${irPara("investimentos")}">
       <div class="accent" style="background:var(--gold)"></div>
       <div class="body">
         <div class="label">💰 Investimentos</div>
@@ -1385,7 +1388,7 @@ function renderResumo(){
         <div class="sub" style="margin-top:4px;color:var(--gold);">ver mais →</div>
       </div>
     </div>
-    <div class="card panel-clickable" onclick='${irPara("credito")}'>
+    <div class="card panel-clickable" onclick="${irPara("credito")}">
       <div class="accent" style="background:var(--purple)"></div>
       <div class="body">
         <div class="label">💳 Crédito</div>
@@ -1394,7 +1397,7 @@ function renderResumo(){
         <div class="sub" style="margin-top:4px;color:var(--gold);">ver mais →</div>
       </div>
     </div>
-    <div class="card panel-clickable" onclick='${irPara("dividas")}'>
+    <div class="card panel-clickable" onclick="${irPara("dividas")}">
       <div class="accent" style="background:var(--red)"></div>
       <div class="body">
         <div class="label">📋 Dívidas</div>
@@ -3450,6 +3453,49 @@ async function bulkExcluirCompras(){
     await writeCellsBatch(updates);
     creditSelectedRows.clear();
   }, [renderCredito], `${rows.length} compra${rows.length===1?"":"s"} excluída${rows.length===1?"":"s"}`, "Não foi possível excluir em lote");
+}
+
+// ===================== DETECÇÃO DE DUPLICATAS JÁ EXISTENTES NA PLANILHA =====================
+// Agrupa TODAS as compras (não só o mês/cartão filtrado na tela) por data+descrição+valor.
+// Grupos com mais de 1 linha são duplicatas.
+function getGruposCompraDuplicada(){
+  const grupos = {};
+  (raw.compras || []).forEach((c, i) => {
+    if(!c[2]) return; // sem descrição, ignora (linha vazia)
+    const row = 10 + i;
+    const key = chaveTransacaoImport(c[0] ? fmtDataBR(serialToDate(c[0])) : "", c[2], c[4] || 0);
+    if(!grupos[key]) grupos[key] = [];
+    grupos[key].push({ row, categoria: c[3] || "" });
+  });
+  return Object.values(grupos).filter(g => g.length > 1);
+}
+
+async function detectarERemoverDuplicatas(){
+  const grupos = getGruposCompraDuplicada();
+  if(grupos.length === 0){
+    showToast("Nenhuma duplicata encontrada (mesma data, descrição e valor)", "success");
+    return;
+  }
+  const totalRemover = grupos.reduce((s,g) => s + (g.length - 1), 0);
+  const confirmar = confirm(
+    `Encontrei ${grupos.length} grupo(s) de compras duplicadas (mesma data, descrição e valor), ` +
+    `totalizando ${totalRemover} linha(s) a remover.\n\n` +
+    `Em cada grupo, mantenho a cópia que já tem categoria preenchida (ou a primeira, se nenhuma tiver) ` +
+    `e removo as outras.\n\nConfirma a remoção? Essa ação não pode ser desfeita.`
+  );
+  if(!confirmar) return;
+
+  await salvarEAtualizar(async () => {
+    const rowsParaRemover = [];
+    grupos.forEach(g => {
+      const idxComCategoria = g.findIndex(item => item.categoria);
+      const manterIdx = idxComCategoria !== -1 ? idxComCategoria : 0;
+      g.forEach((item, idx) => { if(idx !== manterIdx) rowsParaRemover.push(item.row); });
+    });
+    const colunas = ["B","C","D","E","F","G","H","I"];
+    const updates = rowsParaRemover.flatMap(row => colunas.map(col => ({ range: `Crédito!${col}${row}`, value: "" })));
+    await writeCellsBatch(updates);
+  }, [renderCredito], `${totalRemover} linha(s) duplicada(s) removida(s)`, "Não foi possível remover as duplicatas");
 }
 
 async function saveCreditCategoriaInline(row, categoria){
