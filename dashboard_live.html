@@ -2402,11 +2402,12 @@ function renderDividas(){
   const totalParcelaMensal = ativas.reduce((s,d) => s + d.valorParcela, 0);
   const totalPago = ativas.reduce((s,d) => s + d.valorPago, 0);
   const totalOriginal = ativas.reduce((s,d) => s + d.valorInicial, 0);
+  const algumCalculado = ativas.some(d => d.saldoDevedorAutoCalculado);
 
   cardsEl.innerHTML = `
     <div class="card"><div class="accent" style="background:var(--red)"></div>
       <div class="body"><div class="label">Saldo devedor total</div>
-        <div class="value" style="color:var(--red)">${fmtMoney(totalDevedor)}</div></div></div>
+        <div class="value" style="color:var(--red)">${algumCalculado ? "≈ " : ""}${fmtMoney(totalDevedor)}</div></div></div>
     <div class="card"><div class="accent" style="background:var(--yellow)"></div>
       <div class="body"><div class="label">Comprometido por mês</div>
         <div class="value" style="color:var(--yellow)">${fmtMoney(totalParcelaMensal)}</div></div></div>
@@ -2439,7 +2440,7 @@ function renderDividas(){
     return `<tr style="${quitada?'opacity:.6;':''}">
       <td data-label="Descrição">${d.desc}</td>
       <td style="color:var(--muted);" data-label="Credor">${d.credor}</td>
-      <td class="val-col despesa" data-label="Saldo devedor">${fmtMoney(d.saldoDevedor)}</td>
+      <td class="val-col despesa" data-label="Saldo devedor">${d.saldoDevedorAutoCalculado ? "≈ " : ""}${fmtMoney(d.saldoDevedor)}</td>
       <td style="text-align:right;" data-label="Parcela">${fmtMoney(d.valorParcela)}/mês</td>
       <td style="min-width:140px;" data-label="Progresso">
         <div style="font-size:11px;color:var(--muted);margin-bottom:3px;">${d.parcelasPagas}/${d.numParcelas} parcelas · ${fmtMoney(d.valorPago)} de ${fmtMoney(d.valorInicial)}</div>
@@ -2485,18 +2486,17 @@ function openDividaEditForm(row){
       <div><label>Credor</label><input id="dfCredor" value="${d.credor}"></div>
       <div><label>Valor inicial</label><input id="dfValorInicial" type="number" step="0.01" value="${d.valorInicial}"></div>
       <div>
-        <label>Saldo devedor${saldoAutoCalculado?' <span style="color:var(--muted);font-weight:400;text-transform:none;">(automático)</span>':''}</label>
+        <label>${saldoAutoCalculado?"≈ ":""}Saldo devedor</label>
         <input id="dfSaldoDevedor" type="number" step="0.01" value="${d.saldoDevedor.toFixed(2)}" ${saldoAutoCalculado?"disabled":""}>
       </div>
       <div><label>Nº de parcelas</label><input id="dfNumParcelas" type="number" step="1" value="${d.numParcelas}"></div>
       <div><label>Valor da parcela</label><input id="dfValorParcela" type="number" step="0.01" value="${d.valorParcela}"></div>
       <div><label>Parcelas pagas</label><input id="dfParcelasPagas" type="number" step="1" value="${d.parcelasPagas}"></div>
       <div>
-        <label>Taxa de juros${saldoAutoCalculado?' <span style="color:var(--muted);font-weight:400;text-transform:none;">(recalculada)</span>':''}</label>
+        <label>Taxa de juros</label>
         <input id="dfTaxaJuros" type="number" step="0.01" value="${saldoAutoCalculado ? d.taxaJurosImplicita.toFixed(2) : d.taxaJuros}">
       </div>
       <div><label>Status</label><input id="dfStatus" value="${d.status}" placeholder="Em aberto / Quitada..."></div>
-      ${saldoAutoCalculado ? '<div style="grid-column:1/-1;font-size:11.5px;color:var(--muted);">O saldo devedor é calculado sozinho como o valor presente das parcelas que faltam (descontando a taxa de juros implícita do financiamento) — mais preciso que só subtrair o que já foi pago, já que no início boa parte da parcela é juro. A "Taxa de juros" acima já veio corrigida pra bater com o financiamento real — é só salvar. Pra mudar o saldo, ajuste "Parcelas pagas".</div>' : ''}
       <div class="actions">
         <button class="save-btn" onclick="saveDividaEdit(${row})">Salvar alterações</button>
         <button class="cancel-btn" onclick="closeDividaEditForm()">Cancelar</button>
