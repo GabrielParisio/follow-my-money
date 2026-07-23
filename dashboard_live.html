@@ -2260,7 +2260,9 @@ const BANK_DOMAIN_KEYS = Object.keys(BANK_DOMAINS).sort((a,b) => b.length - a.le
 function getBankLogoUrl(nomeCartao, bandeira){
   const texto = normalizeCatName(`${nomeCartao||""} ${bandeira||""}`);
   const chave = BANK_DOMAIN_KEYS.find(k => texto.includes(k));
-  return chave ? `https://logo.clearbit.com/${BANK_DOMAINS[chave]}?size=64` : null;
+  // Clearbit's Logo API foi desativada em dez/2025 — usando o endpoint de favicons do Google,
+  // que não precisa de conta nem chave de API.
+  return chave ? `https://www.google.com/s2/favicons?domain=${BANK_DOMAINS[chave]}&sz=64` : null;
 }
 
 function colorForCategory(name){
