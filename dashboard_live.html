@@ -5,9 +5,6 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Follow My Money — Dashboard</title>
 <script src="https://accounts.google.com/gsi/client" async defer></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/tesseract.js/5.0.4/tesseract.min.js"></script>
 <style>
   :root{
     --bg:#1A1917;
@@ -119,7 +116,6 @@
   }
   .alert-item.warn{background:rgba(251,191,36,.08);border-color:rgba(251,191,36,.3);color:#FDE68A;}
   .alert-item.danger{background:rgba(248,113,113,.08);border-color:rgba(248,113,113,.3);color:#FCA5A5;}
-  .alert-item.good{background:rgba(74,222,128,.08);border-color:rgba(74,222,128,.3);color:#86EFAC;}
   .info-icon{
     display:inline-flex;align-items:center;justify-content:center;width:14px;height:14px;
     border-radius:50%;background:var(--border);color:var(--muted);font-size:9px;font-weight:700;
@@ -140,8 +136,6 @@
   .toast.error{border-color:var(--red);color:#FCA5A5;}
   .toast.success{border-color:var(--green);color:#86EFAC;}
   .toast.hidden{opacity:0;pointer-events:none;transform:translateX(-50%) translateY(8px);}
-  .del-btn{background:none;border:none;color:var(--muted);cursor:pointer;font-size:13px;padding:4px 6px;}
-  .del-btn:hover{color:var(--red);}
   h1{font-size:26px;margin:4px 0 2px;}
   .subtitle{color:var(--muted);font-size:14px;margin:0 0 22px;display:flex;align-items:center;gap:14px;flex-wrap:wrap;}
   select{
@@ -228,8 +222,6 @@
   table.lanc .val-col{text-align:right;font-weight:600;}
   table.lanc .val-col.receita{color:var(--green);}
   table.lanc .val-col.despesa{color:var(--red);}
-  table.lanc td.editable{cursor:pointer;}
-  table.lanc td.editable:hover{background:rgba(229,181,103,.08);}
   .lanc-card{
     background:var(--card);border:1px solid var(--border);border-radius:10px;
     padding:12px 14px;margin-bottom:8px;cursor:pointer;transition:border-color .15s ease;
@@ -735,7 +727,17 @@
         <div class="chart-panel">
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:8px;">
             <h2 style="margin:0;">Compras do mês</h2>
-            <button class="connect-btn" onclick="detectarERemoverDuplicatas()">🔍 Detectar e remover duplicatas</button>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+              <select id="creditSortSelect" onchange="setCreditSortOrder(this.value)" style="background:var(--panel);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:7px 9px;font-size:12.5px;">
+                <option value="data-desc">Data (mais recente)</option>
+                <option value="data-asc">Data (mais antiga)</option>
+                <option value="valor-desc">Valor (maior)</option>
+                <option value="valor-asc">Valor (menor)</option>
+                <option value="desc-az">Descrição (A-Z)</option>
+                <option value="desc-za">Descrição (Z-A)</option>
+              </select>
+              <button class="connect-btn" onclick="detectarERemoverDuplicatas()">🔍 Detectar e remover duplicatas</button>
+            </div>
           </div>
           <div id="creditBulkBar" class="hidden" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:12px;padding:10px 14px;background:var(--card);border:1px solid var(--border);border-radius:10px;">
             <span id="creditBulkCount" style="font-size:13px;color:var(--muted);"></span>
@@ -3346,7 +3348,18 @@ function renderCredito(){
     updateCreditBulkBar();
     return;
   }
-  const sorted = [...filtered].sort((a,b) => (a[0]||0) - (b[0]||0));
+  const ordem = state.creditSortOrder || "data-desc";
+  const sortSelectEl = document.getElementById("creditSortSelect");
+  if(sortSelectEl) sortSelectEl.value = ordem;
+  const comparadores = {
+    "data-desc": (a,b) => (b[0]||0) - (a[0]||0),
+    "data-asc": (a,b) => (a[0]||0) - (b[0]||0),
+    "valor-desc": (a,b) => (b[5]||b[4]||0) - (a[5]||a[4]||0),
+    "valor-asc": (a,b) => (a[5]||a[4]||0) - (b[5]||b[4]||0),
+    "desc-az": (a,b) => (a[2]||"").localeCompare(b[2]||""),
+    "desc-za": (a,b) => (b[2]||"").localeCompare(a[2]||""),
+  };
+  const sorted = [...filtered].sort(comparadores[ordem] || comparadores["data-desc"]);
   window._creditPurchasesCache = sorted.map(c => ({ c, row: 10 + raw.compras.indexOf(c) }));
   const allSelected = window._creditPurchasesCache.length > 0 && window._creditPurchasesCache.every(({row}) => creditSelectedRows.has(row));
   const cards = window._creditPurchasesCache.map(({ c, row }) => {
@@ -3565,6 +3578,12 @@ function getGruposCompraDuplicada(){
     grupos[key].push({ row, categoria: c[3] || "" });
   });
   return Object.values(grupos).filter(g => g.length > 1);
+}
+
+// Muda a ordem de exibição de "Compras do mês" e re-renderiza
+function setCreditSortOrder(valor){
+  state.creditSortOrder = valor;
+  renderCredito();
 }
 
 async function detectarERemoverDuplicatas(){
@@ -4195,10 +4214,14 @@ function classificarLancamento(t){
 
 async function handleImportExtratoDebito(file){
   const statusEl = document.getElementById("importStatus");
-  statusEl.textContent = "Lendo arquivo...";
   const isXls = /\.xls$/i.test(file.name);
   let rows;
   try{
+    if(isXls){
+      statusEl.textContent = "Carregando ferramenta de leitura de planilha...";
+      await garantirXLSX();
+    }
+    statusEl.textContent = "Lendo arquivo...";
     const buf = await file.arrayBuffer();
     if(isXls){
       const wb = XLSX.read(buf, { type: "array", cellDates: true });
@@ -4258,8 +4281,32 @@ async function handleImportExtratoDebito(file){
 // pode errar (principalmente números), TUDO passa por uma tela de conferência antes de gravar —
 // nunca escreve direto na planilha sem você revisar.
 
-if(typeof pdfjsLib !== "undefined"){
-  pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+// Carregamento sob demanda das bibliotecas externas (xlsx, pdf.js, tesseract.js) — só baixa quando
+// a pessoa realmente usa aquele tipo de importação, em vez de sempre no carregamento da página.
+const _scriptsCarregados = {};
+function carregarScriptExterno(url){
+  if(_scriptsCarregados[url]) return _scriptsCarregados[url];
+  _scriptsCarregados[url] = new Promise((resolve, reject) => {
+    const script = document.createElement("script");
+    script.src = url;
+    script.onload = resolve;
+    script.onerror = () => reject(new Error("Falha ao carregar biblioteca externa (" + url + ")"));
+    document.head.appendChild(script);
+  });
+  return _scriptsCarregados[url];
+}
+async function garantirXLSX(){
+  if(typeof XLSX !== "undefined") return;
+  await carregarScriptExterno("https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js");
+}
+async function garantirPdfEOcr(){
+  if(typeof pdfjsLib === "undefined"){
+    await carregarScriptExterno("https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js");
+    pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+  }
+  if(typeof Tesseract === "undefined"){
+    await carregarScriptExterno("https://cdnjs.cloudflare.com/ajax/libs/tesseract.js/5.0.4/tesseract.min.js");
+  }
 }
 
 // Renderiza cada página do PDF como imagem e roda OCR nela, devolvendo o texto reconhecido (todas as páginas concatenadas)
@@ -4286,6 +4333,7 @@ async function extrairTextoPdfViaOcr(file, statusEl){
 function parseFaturaPDFTexto(texto){
   const linhas = texto.split(/\r\n|\r|\n/);
   let cartaoAtual = null;
+  let dataEmissao = null;
   const transacoes = [];
 
   for(let rawLine of linhas){
@@ -4300,7 +4348,15 @@ function parseFaturaPDFTexto(texto){
     if(/^data\s+hist[oó]rico/i.test(linha)) continue; // cabeçalho de coluna
     if(/situa[cç][aã]o do extrato/i.test(linha)) continue;
     if(/^aplicativo bradesco/i.test(linha)) continue;
-    if(/^data:\s*\d{2}\/\d{2}\/\d{4}/i.test(linha)) continue;
+
+    // "Data: DD/MM/AAAA" — data de referência do extrato, usada pra calcular o vencimento da fatura
+    // (mesma regra "próximo dia 5" já usada na importação de CSV — todas as compras dessa fatura
+    // caem no mesmo mês de fechamento, não espalhadas pelo mês em que cada compra individual ocorreu).
+    const matchEmissao = linha.match(/^Data:\s*(\d{2})\/(\d{2})\/(\d{4})/i);
+    if(matchEmissao){
+      dataEmissao = new Date(Number(matchEmissao[3]), Number(matchEmissao[2]) - 1, Number(matchEmissao[1]));
+      continue;
+    }
 
     // Linha de transação: "DD/MM Descrição ... R$ valor" (o valor é sempre o último "R$" da linha)
     const matchTransacao = linha.match(/^(\d{2}\/\d{2})\s+(.+?)\s+R\$\s*(-?[\d.,]+)\s*$/i);
@@ -4320,24 +4376,29 @@ function parseFaturaPDFTexto(texto){
     const data = new Date(anoAtual, Number(mes) - 1, Number(dia));
     transacoes.push({ data, cartaoNumero: cartaoAtual, descricao, valor });
   }
-  return transacoes;
+
+  let vencimento = null;
+  if(dataEmissao){
+    vencimento = new Date(dataEmissao.getFullYear(), dataEmissao.getMonth(), 5);
+    if(vencimento <= dataEmissao) vencimento = new Date(dataEmissao.getFullYear(), dataEmissao.getMonth() + 1, 5);
+  }
+  return { transacoes, vencimento };
 }
 
 async function handleImportFaturaPDF(file){
   const statusEl = document.getElementById("importStatus");
-  if(typeof pdfjsLib === "undefined" || typeof Tesseract === "undefined"){
-    statusEl.textContent = "❌ As bibliotecas de leitura de PDF ainda estão carregando — espera alguns segundos e tenta de novo.";
-    return;
-  }
   try{
+    statusEl.textContent = "Carregando ferramentas de leitura de PDF (primeira vez pode demorar um pouco)...";
+    await garantirPdfEOcr();
     const texto = await extrairTextoPdfViaOcr(file, statusEl);
-    const transacoes = parseFaturaPDFTexto(texto);
+    const { transacoes, vencimento } = parseFaturaPDFTexto(texto);
     if(transacoes.length === 0){
       statusEl.textContent = "Não consegui reconhecer nenhuma transação nesse PDF. O layout pode ter mudado — me avisa que eu ajusto.";
       return;
     }
-    abrirPreviaImportacaoPdf(transacoes);
-    statusEl.textContent = `${transacoes.length} transação(ões) reconhecida(s) — confira na tela antes de importar.`;
+    abrirPreviaImportacaoPdf(transacoes, vencimento);
+    statusEl.textContent = `${transacoes.length} transação(ões) reconhecida(s) — confira na tela antes de importar.` +
+      (vencimento ? "" : " ⚠️ Não consegui reconhecer a data do extrato — confirme o mês de cada compra na tela de conferência.");
   }catch(err){
     statusEl.textContent = "❌ Não foi possível ler o PDF: " + err.message;
   }
@@ -4350,8 +4411,9 @@ function cartaoOptionsPreview(selecionado){
   const blank = `<option value="" ${semSelecao?"selected":""}>— Escolher cartão —</option>`;
   return blank + cartoes.map(c => `<option value="${c.nome}" ${c.nome===selecionado?"selected":""}>${c.nome}</option>`).join("");
 }
-function abrirPreviaImportacaoPdf(transacoes){
+function abrirPreviaImportacaoPdf(transacoes, vencimento){
   window._pdfPreviaTransacoes = transacoes;
+  window._pdfPreviaVencimento = vencimento || null;
   const corpo = document.getElementById("pdfPreviewBody");
   const cartoesCadastrados = getCadastroCartoesParsed();
   const bulkHtml = cartoesCadastrados.length > 0 ? `
@@ -4389,6 +4451,7 @@ function closePdfPreviewModal(){
   document.getElementById("pdfPreviewModal").classList.add("hidden");
   document.getElementById("pdfPreviewBody").innerHTML = "";
   window._pdfPreviaTransacoes = null;
+  window._pdfPreviaVencimento = null;
 }
 async function confirmarImportacaoPdf(){
   const transacoes = window._pdfPreviaTransacoes || [];
@@ -4400,7 +4463,8 @@ async function confirmarImportacaoPdf(){
     const t = transacoes[idx];
     const selectCartao = document.querySelector(`.pdf-previa-cartao[data-idx="${idx}"]`);
     const nomeCartao = (selectCartao && selectCartao.value) || getNomeCartaoPorDigitos(t.cartaoNumero);
-    return [fmtDataBR(t.data), nomeCartao, t.descricao, sugerirCategoria(t.descricao) || "", t.valor, t.valor, "1/1", ""];
+    const vencimento = window._pdfPreviaVencimento;
+    return [fmtDataBR(t.data), nomeCartao, t.descricao, sugerirCategoria(t.descricao) || "", t.valor, t.valor, "1/1", vencimento ? fmtDataBR(vencimento) : ""];
   });
 
   // Mesma checagem de duplicidade e de nome de cartão cadastrado usada no importador de CSV
