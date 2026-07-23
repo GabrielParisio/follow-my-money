@@ -2788,7 +2788,7 @@ function renderCadCartoesTable(){
   }
   const rows = cartoes.map(c => `
     <tr>
-      <td data-label="Nome"><input value="${c.nome}" onchange="renomearCartao(${c.row}, ${JSON.stringify(c.nome)}, this.value)" style="background:transparent;border:none;color:var(--text);width:100%;font-size:13px;"></td>
+      <td data-label="Nome"><input value="${c.nome}" onchange='renomearCartao(${c.row}, ${JSON.stringify(c.nome)}, this.value)' style="background:transparent;border:none;color:var(--text);width:100%;font-size:13px;"></td>
       <td data-label="Bandeira/tipo"><input value="${c.bandeira}" placeholder="Ex: Amex Platinum" onchange="saveCadCartaoCampo(${c.row}, 'I', this.value)" style="background:transparent;border:none;color:var(--text);width:100%;font-size:13px;"></td>
       <td data-label="Vencimento" style="text-align:right;"><input type="number" min="1" max="31" value="${c.vencimento}" onchange="saveCadCartaoCampo(${c.row}, 'J', this.value)" style="background:transparent;border:none;color:var(--text);width:60px;text-align:right;font-size:13px;"></td>
       <td><button class="icon-btn" onclick="deleteCadCartao(${c.row})" title="Remover">🗑️</button></td>
