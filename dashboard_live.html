@@ -718,10 +718,10 @@
           </div>
         </div>
         <div class="chart-panel" style="margin-top:16px;">
-          <div class="label" style="color:var(--muted);font-size:11px;font-weight:700;text-transform:uppercase;">Fatura em aberto</div>
+          <div class="label" id="ccFaturaLabel" style="color:var(--muted);font-size:11px;font-weight:700;text-transform:uppercase;">Fatura em aberto</div>
           <div class="value" id="ccFatura" style="font-size:26px;font-weight:700;color:var(--purple);margin:6px 0;">—</div>
           <div class="sub" id="ccFaturaSub" style="color:var(--muted);font-size:12px;"></div>
-          <button class="connect-btn" style="margin-top:10px;width:100%;" onclick="abrirLancarFaturaModal()">💳 Lançar pagamento desta fatura</button>
+          <button class="connect-btn" id="ccLancarFaturaBtn" style="margin-top:10px;width:100%;" onclick="abrirLancarFaturaModal()">💳 Lançar pagamento desta fatura</button>
         </div>
         <div class="chart-panel" style="margin-top:16px;">
           <div class="label" style="color:var(--muted);font-size:11px;font-weight:700;text-transform:uppercase;">Parcelas em aberto</div>
@@ -3316,12 +3316,38 @@ function renderCredito(){
   creditCardEl.style.background = cardStyle ? cardStyle.background : "";
 
   const compras = comprasDoCartao(nomeCartao);
-
   const faturaValor = compras.reduce((sum, c) => sum + (c[5] || c[4] || 0), 0);
-  document.getElementById("ccFatura").textContent = fmtMoney(faturaValor);
+
+  // Já foi lançado um pagamento pra esse cartão+mês? (mesma descrição gerada em "Lançar pagamento de fatura")
+  const nomeMesView = MONTHS_FULL[state.monthIdx];
+  const descEsperada = normalizeCatName(`Fatura ${nomeCartao} - ${nomeMesView}/${state.year}`);
+  const jaPaga = debitoRows().some(it => normalizeCatName(it.desc) === descEsperada);
+  // Vencida = data de vencimento do cartão, no mês/ano em exibição, já passou e ainda não foi paga
+  const diaVenc = Number(vencimentoDia) || 5;
+  const dataVencimentoFatura = new Date(state.year, state.monthIdx, diaVenc);
+  const hoje = new Date(); hoje.setHours(0,0,0,0);
+  const atrasada = !jaPaga && dataVencimentoFatura < hoje;
+
+  const faturaLabelEl = document.getElementById("ccFaturaLabel");
+  const faturaValEl = document.getElementById("ccFatura");
+  const lancarBtnEl = document.getElementById("ccLancarFaturaBtn");
+  if(jaPaga){
+    faturaLabelEl.textContent = "Fatura paga";
+    faturaValEl.style.color = "var(--green)";
+    lancarBtnEl.textContent = "✅ Fatura já paga";
+  } else if(atrasada){
+    faturaLabelEl.textContent = "Fatura atrasada";
+    faturaValEl.style.color = "var(--red)";
+    lancarBtnEl.textContent = "💳 Lançar pagamento (atrasada)";
+  } else {
+    faturaLabelEl.textContent = "Fatura em aberto";
+    faturaValEl.style.color = "var(--purple)";
+    lancarBtnEl.textContent = "💳 Lançar pagamento desta fatura";
+  }
+  faturaValEl.textContent = fmtMoney(faturaValor);
   document.getElementById("ccFaturaSub").textContent = compras.length
-    ? compras.length + " compra" + (compras.length > 1 ? "s" : "") + " em " + MONTHS_FULL[state.monthIdx]
-    : "Nenhuma compra em " + MONTHS_FULL[state.monthIdx];
+    ? compras.length + " compra" + (compras.length > 1 ? "s" : "") + " em " + nomeMesView
+    : "Nenhuma compra em " + nomeMesView;
 
   // Parcelas em aberto: todas as compras desse cartão com vencimento a partir do mês selecionado, em diante
   const todasDoCartao = (raw.compras || []).filter(r => r[2] && (r[1] || "").trim() === nomeCartao.trim());
@@ -4560,6 +4586,13 @@ async function confirmarLancarFatura(){
   const [anoPag, mesPag, diaPag] = dataPagamento.split("-").map(Number);
   const dataBR = `${String(diaPag).padStart(2,"0")}/${String(mesPag).padStart(2,"0")}/${anoPag}`;
   const nomeMesRef = MONTHS_FULL[mesRef - 1];
+  // Já existe um pagamento lançado pra esse cartão+mês? Evita duplicar o mesmo lançamento por engano.
+  const descNova = normalizeCatName(`Fatura ${nomeCartao} - ${nomeMesRef}/${anoRef}`);
+  const jaExiste = debitoRows().some(it => normalizeCatName(it.desc) === descNova);
+  if(jaExiste){
+    const confirmar = confirm(`Já existe um pagamento lançado pra "${nomeCartao}" em ${nomeMesRef}/${anoRef}. Quer lançar de novo mesmo assim?`);
+    if(!confirmar) return;
+  }
   // Usa a categoria "Fatura do Cartão" (ou o que estiver cadastrado com esse nome), pra ficar
   // consistente com o resto do orçamento por categoria já configurado no Cadastro.
   const categoriaFatura = (raw.cadastro || []).map(r => r[0]).find(c => normalizeCatName(c).includes("fatura")) || "";
@@ -4574,7 +4607,7 @@ async function confirmarLancarFatura(){
   await salvarEAtualizar(async () => {
     await appendRow("Débito", row);
     closeLancarFaturaModal();
-  }, [renderLancamentos, refreshCalendarIfOpen], "Fatura lançada na aba Débito");
+  }, [renderLancamentos, renderCredito, refreshCalendarIfOpen], "Fatura lançada na aba Débito");
 }
 
 async function confirmarImportacaoPdf(){
