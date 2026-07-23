@@ -4412,11 +4412,27 @@ function cartaoOptionsPreview(selecionado){
   const blank = `<option value="" ${semSelecao?"selected":""}>— Escolher cartão —</option>`;
   return blank + cartoes.map(c => `<option value="${c.nome}" ${c.nome===selecionado?"selected":""}>${c.nome}</option>`).join("");
 }
+// Sugere um mês/ano padrão pro seletor: usa o vencimento que o OCR conseguiu ler, ou (se não achou)
+// aplica a mesma regra do "dia 5" usada no resto do app, a partir da data de hoje.
+function mesInputPadrao(vencimento){
+  if(vencimento) return `${vencimento.getFullYear()}-${String(vencimento.getMonth()+1).padStart(2,"0")}`;
+  const hoje = new Date();
+  let mes = hoje.getDate() > 5 ? hoje.getMonth() + 1 : hoje.getMonth();
+  let ano = hoje.getFullYear();
+  if(mes > 11){ mes = 0; ano++; }
+  return `${ano}-${String(mes + 1).padStart(2,"0")}`;
+}
 function abrirPreviaImportacaoPdf(transacoes, vencimento){
   window._pdfPreviaTransacoes = transacoes;
-  window._pdfPreviaVencimento = vencimento || null;
   const corpo = document.getElementById("pdfPreviewBody");
   const cartoesCadastrados = getCadastroCartoesParsed();
+  const mesHtml = `
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding-bottom:12px;margin-bottom:12px;border-bottom:1px solid var(--border);">
+      <span style="font-size:12px;color:var(--muted);">Mês de vencimento dessas compras:</span>
+      <input type="month" id="pdfPreviaMesInput" value="${mesInputPadrao(vencimento)}"
+        style="background:var(--panel);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:5px 8px;font-size:12.5px;">
+    </div>
+    ${!vencimento ? '<p style="font-size:11.5px;color:var(--yellow);margin:-4px 0 12px;">⚠️ Não consegui ler a data do extrato — confirme o mês acima antes de importar.</p>' : ''}`;
   const bulkHtml = cartoesCadastrados.length > 0 ? `
     <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding-bottom:12px;margin-bottom:8px;border-bottom:1px solid var(--border);">
       <span style="font-size:12px;color:var(--muted);">Aplicar cartão a todas:</span>
@@ -4440,7 +4456,7 @@ function abrirPreviaImportacaoPdf(transacoes, vencimento){
       </span>
     </div>`;
   }).join("");
-  corpo.innerHTML = bulkHtml + linhasHtml;
+  corpo.innerHTML = mesHtml + bulkHtml + linhasHtml;
   document.getElementById("pdfPreviewModal").classList.remove("hidden");
 }
 function aplicarCartaoATodasPrevia(){
@@ -4452,20 +4468,23 @@ function closePdfPreviewModal(){
   document.getElementById("pdfPreviewModal").classList.add("hidden");
   document.getElementById("pdfPreviewBody").innerHTML = "";
   window._pdfPreviaTransacoes = null;
-  window._pdfPreviaVencimento = null;
 }
 async function confirmarImportacaoPdf(){
   const transacoes = window._pdfPreviaTransacoes || [];
   const checks = Array.from(document.querySelectorAll(".pdf-previa-check")).filter(cb => cb.checked);
   if(checks.length === 0){ showToast("Nenhuma transação selecionada", "error"); return; }
 
+  const mesInput = document.getElementById("pdfPreviaMesInput").value; // "AAAA-MM"
+  const [anoVenc, mesVenc] = mesInput.split("-").map(Number);
+  const vencimentoConfirmado = new Date(anoVenc, mesVenc - 1, 5); // dia 5, mesma convenção usada no resto do app
+  const vencimentoStr = fmtDataBR(vencimentoConfirmado);
+
   const rows = checks.map(cb => {
     const idx = +cb.dataset.idx;
     const t = transacoes[idx];
     const selectCartao = document.querySelector(`.pdf-previa-cartao[data-idx="${idx}"]`);
     const nomeCartao = (selectCartao && selectCartao.value) || getNomeCartaoPorDigitos(t.cartaoNumero);
-    const vencimento = window._pdfPreviaVencimento;
-    return [fmtDataBR(t.data), nomeCartao, t.descricao, sugerirCategoria(t.descricao) || "", t.valor, t.valor, "1/1", vencimento ? fmtDataBR(vencimento) : ""];
+    return [fmtDataBR(t.data), nomeCartao, t.descricao, sugerirCategoria(t.descricao) || "", t.valor, t.valor, "1/1", vencimentoStr];
   });
 
   // Mesma checagem de duplicidade e de nome de cartão cadastrado usada no importador de CSV
