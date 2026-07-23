@@ -160,6 +160,10 @@
   .card .accent{height:4px;flex-shrink:0;}
   .card .body{padding:16px;flex:1;min-height:0;overflow-y:auto;}
   .card.no-scroll .body{overflow:visible;}
+  .card.wide-card{grid-column:1/-1;}
+  .card.wide-card .body{display:flex;align-items:center;gap:24px;flex-wrap:wrap;}
+  .card.wide-card .wide-card-info{flex-shrink:0;min-width:200px;}
+  .card.wide-card .wide-card-extra{flex:1;min-width:220px;}
   .card .label{font-size:10.5px;letter-spacing:.04em;color:var(--muted);font-weight:700;text-transform:uppercase;margin-bottom:8px;}
   .card .value{font-size:22px;font-weight:700;line-height:1.1;margin-bottom:6px;}
   .card .sub{font-size:11.5px;color:var(--muted);}
@@ -3489,20 +3493,31 @@ function renderBalancoCardsShell(){
     { id:"cFatura", accent:"var(--purple)", label:"Fatura em aberto", valueStyle:"color:var(--purple)" },
     { id:"cTaxaPoupanca", accent:"var(--green)", label:"Taxa de poupança",
       tip:"Percentual da receita acumulada no ano (Jan até o mês atual) que sobrou como saldo positivo.", valueStyle:"color:var(--green)" },
-    { id:"cComprometimento", accent:"var(--red)", label:"Comprometimento de renda", cardClass:"no-scroll",
+    { id:"cComprometimento", accent:"var(--red)", label:"Comprometimento de renda", cardClass:"no-scroll wide-card",
       tip:"Soma de todas as parcelas fixas (dívidas + compras parceladas no cartão) que vencem neste mês, dividida pelo salário bruto (Cadastro) — ou pela receita do mês, se o salário bruto não estiver preenchido.",
       valueStyle:"color:var(--red)", extra:`<div id="comprometimentoChart" style="margin-top:10px;"></div>` },
   ];
-  document.getElementById("balancoCards").innerHTML = cards.map(c => `
+  document.getElementById("balancoCards").innerHTML = cards.map(c => {
+    const isWide = (c.cardClass||"").includes("wide-card");
+    const info = `
+        <div class="label">${c.label}${c.tip ? ` <span class="info-icon" data-tip="${c.tip}">?</span>` : ""}</div>
+        <div class="value" id="${c.id}"${c.valueStyle?` style="${c.valueStyle}"`:""}><span class="skeleton" style="width:70%;"></span></div>
+        <div class="sub" id="${c.id}Sub"></div>`;
+    return isWide ? `
     <div class="card ${c.cardClass||""}">
       <div class="accent" style="background:${c.accent}"></div>
       <div class="body">
-        <div class="label">${c.label}${c.tip ? ` <span class="info-icon" data-tip="${c.tip}">?</span>` : ""}</div>
-        <div class="value" id="${c.id}"${c.valueStyle?` style="${c.valueStyle}"`:""}><span class="skeleton" style="width:70%;"></span></div>
-        <div class="sub" id="${c.id}Sub"></div>
+        <div class="wide-card-info">${info}</div>
+        <div class="wide-card-extra">${c.extra||""}</div>
+      </div>
+    </div>` : `
+    <div class="card ${c.cardClass||""}">
+      <div class="accent" style="background:${c.accent}"></div>
+      <div class="body">${info}
         ${c.extra||""}
       </div>
-    </div>`).join("");
+    </div>`;
+  }).join("");
 }
 
 function renderCharts(){
