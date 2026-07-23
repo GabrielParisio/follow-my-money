@@ -2265,6 +2265,53 @@ function getBankLogoUrl(nomeCartao, bandeira){
   return chave ? `https://www.google.com/s2/favicons?domain=${BANK_DOMAINS[chave]}&sz=64` : null;
 }
 
+// Catálogo do "visual" de cartões brasileiros conhecidos — cor/gradiente/acabamento a partir da identidade
+// de marca de cada banco (conhecimento geral, não é foto/arte baixada de nenhum lugar). "light:true" indica
+// que o cartão tem fundo claro e deve usar texto escuro (reaproveita a classe .metal já existente pra isso).
+// Chaves ordenadas da mais específica pra mais genérica (ex: "nubank ultravioleta" tem que ganhar de "nubank").
+const CARD_STYLES_RAW = {
+  "nubank ultravioleta": { background: "linear-gradient(150deg, #2B0B45 0%, #5A189A 55%, #8A05BE 100%)" },
+  "nubank infinite": { background: "linear-gradient(150deg, #1a1a1a 0%, #3d1155 55%, #8A05BE 100%)" },
+  "nubank": { background: "linear-gradient(135deg, #9D2FCE 0%, #8A05BE 60%, #6a0d91 100%)" },
+  "inter gold": { background: "linear-gradient(135deg, #cfa54a 0%, #8a6a1f 50%, #e8cf8a 100%)", light: true },
+  "inter black": { background: "linear-gradient(150deg, #1c1c1c 0%, #000 100%)" },
+  "inter win": { background: "linear-gradient(135deg, #FF7A00 0%, #e86a00 100%)" },
+  "inter": { background: "linear-gradient(135deg, #FF7A00 0%, #cf6400 100%)" },
+  "c6 carbon": { background: "linear-gradient(140deg, #2b2b2b 0%, #0a0a0a 55%, #3a3a3a 100%)" },
+  "c6 bank": { background: "linear-gradient(150deg, #232323 0%, #000 100%)" },
+  "c6": { background: "linear-gradient(150deg, #232323 0%, #000 100%)" },
+  "itau uniclass": { background: "linear-gradient(150deg, #001b3a 0%, #000 100%)" },
+  "itau personnalite": { background: "linear-gradient(150deg, #0a0a0a 0%, #1a1a1a 100%)" },
+  "itau": { background: "linear-gradient(135deg, #EC7000 0%, #c95e00 100%)" },
+  "bradesco prime": { background: "linear-gradient(135deg, #1a1a1a 0%, #b8860b 100%)" },
+  "bradesco elo nanquim": { background: "linear-gradient(150deg, #0a0a0a, #000)" },
+  "bradesco": { background: "linear-gradient(135deg, #cc092f 0%, #8b0000 100%)" },
+  "ourocard": { background: "linear-gradient(135deg, #003399 0%, #001a4d 100%)" },
+  "banco do brasil": { background: "linear-gradient(135deg, #003399 0%, #001a4d 100%)" },
+  "santander select": { background: "linear-gradient(150deg, #1a1a1a, #8b0000)" },
+  "santander": { background: "linear-gradient(135deg, #ec0000 0%, #8b0000 100%)" },
+  "btg pactual": { background: "linear-gradient(150deg, #001e3c 0%, #000 100%)" },
+  "btg": { background: "linear-gradient(150deg, #001e3c 0%, #000 100%)" },
+  "xp visa infinite": { background: "linear-gradient(150deg, #0a0a0a 0%, #1a1a1a 100%)" },
+  "xp": { background: "linear-gradient(150deg, #0a0a0a 0%, #1a1a1a 100%)" },
+  "will bank": { background: "linear-gradient(135deg, #00d563 0%, #00a34e 100%)", light: true },
+  "picpay": { background: "linear-gradient(135deg, #21c25e 0%, #0f9b46 100%)" },
+  "neon": { background: "linear-gradient(135deg, #00c2ff 0%, #0072ff 100%)" },
+  "original": { background: "linear-gradient(135deg, #00a651 0%, #007a3d 100%)" },
+  "mercado pago": { background: "linear-gradient(135deg, #00b1ea 0%, #009ee3 100%)" },
+  "digio": { background: "linear-gradient(135deg, #6a0dad 0%, #4a0a7a 100%)" },
+  "visa infinite": { background: "linear-gradient(150deg, #0a1128 0%, #1b2a4a 55%, #0a1128 100%)" },
+  "visa": { background: "linear-gradient(150deg, #1a1f71 0%, #0d1147 100%)" },
+  "mastercard black": { background: "linear-gradient(150deg, #1a1a1a, #000)" },
+};
+const CARD_STYLE_KEYS = Object.keys(CARD_STYLES_RAW).sort((a,b) => b.length - a.length);
+
+function getCardStyle(nomeCartao, bandeira){
+  const texto = normalizeCatName(`${nomeCartao||""} ${bandeira||""}`);
+  const chave = CARD_STYLE_KEYS.find(k => texto.includes(k));
+  return chave ? CARD_STYLES_RAW[chave] : null;
+}
+
 function colorForCategory(name){
   const key = normalizeCatName(name);
   if(CATEGORY_COLOR_MAP[key]) return CATEGORY_COLOR_MAP[key];
@@ -2908,8 +2955,11 @@ function renderCredito(){
     logoEl.removeAttribute("src");
   }
 
-  const isMetal = /amex|platinum|centurion/i.test(nomeCartao + " " + (cartaoRow[1]||""));
-  document.getElementById("creditCard").classList.toggle("metal", isMetal);
+  const cardStyle = getCardStyle(nomeCartao, cartaoRow[1]);
+  const isMetal = cardStyle ? !!cardStyle.light : /amex|platinum|centurion/i.test(nomeCartao + " " + (cartaoRow[1]||""));
+  const creditCardEl = document.getElementById("creditCard");
+  creditCardEl.classList.toggle("metal", isMetal);
+  creditCardEl.style.background = cardStyle ? cardStyle.background : "";
 
   const compras = comprasDoCartao(nomeCartao);
 
@@ -3008,7 +3058,8 @@ function renderCreditoLadoLado(){
   cartoes.forEach((cartaoRow, i) => {
     const nomeCartao = cartaoRow[0];
     const vencimentoDia = cartaoRow[2] || "";
-    const isMetal = /amex|platinum|centurion/i.test(nomeCartao + " " + (cartaoRow[1]||""));
+    const cardStyle = getCardStyle(nomeCartao, cartaoRow[1]);
+    const isMetal = cardStyle ? !!cardStyle.light : /amex|platinum|centurion/i.test(nomeCartao + " " + (cartaoRow[1]||""));
     const compras = comprasDoCartao(nomeCartao);
     const faturaValor = compras.reduce((sum, c) => sum + (c[5] || c[4] || 0), 0);
     const chartId = "ladoCatChart" + i;
@@ -3020,7 +3071,7 @@ function renderCreditoLadoLado(){
     const card = document.createElement("div");
     card.className = "credito-side";
     card.innerHTML = `
-      <div class="credito-mini-card ${isMetal ? "metal" : ""}">
+      <div class="credito-mini-card ${isMetal ? "metal" : ""}" ${cardStyle ? `style="background:${cardStyle.background};"` : ""}>
         <div class="mini-brand" style="display:flex;align-items:center;">${logoHtml}${nomeCartao}</div>
         <div class="mini-number">•••• •••• •••• ••••</div>
       </div>
