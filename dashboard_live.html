@@ -610,6 +610,16 @@
     </div>
   </div>
 
+  <div id="lancarFaturaModal" class="modal-overlay hidden">
+    <div class="modal-box">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
+        <h2 style="margin:0;">Lançar pagamento de fatura</h2>
+        <button class="icon-btn" style="font-size:20px;" onclick="closeLancarFaturaModal()">✕</button>
+      </div>
+      <div id="lancarFaturaBody"></div>
+    </div>
+  </div>
+
   <div id="calendarModal" class="modal-overlay hidden">
     <div class="modal-box">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
@@ -711,6 +721,7 @@
           <div class="label" style="color:var(--muted);font-size:11px;font-weight:700;text-transform:uppercase;">Fatura em aberto</div>
           <div class="value" id="ccFatura" style="font-size:26px;font-weight:700;color:var(--purple);margin:6px 0;">—</div>
           <div class="sub" id="ccFaturaSub" style="color:var(--muted);font-size:12px;"></div>
+          <button class="connect-btn" style="margin-top:10px;width:100%;" onclick="abrirLancarFaturaModal()">💳 Lançar pagamento desta fatura</button>
         </div>
         <div class="chart-panel" style="margin-top:16px;">
           <div class="label" style="color:var(--muted);font-size:11px;font-weight:700;text-transform:uppercase;">Parcelas em aberto</div>
@@ -4469,6 +4480,85 @@ function closePdfPreviewModal(){
   document.getElementById("pdfPreviewBody").innerHTML = "";
   window._pdfPreviaTransacoes = null;
 }
+// ===================== LANÇAR PAGAMENTO DE FATURA (Crédito -> Débito) =====================
+// Soma as compras de um cartão específico com vencimento num mês/ano específico — não depende do
+// mês/cartão que está sendo visualizado na tela no momento (por isso recebe os parâmetros direto).
+function calcularValorFaturaCartaoMes(nomeCartao, mesIdx, ano){
+  return (raw.compras || [])
+    .filter(c => c[2] && (c[1] || "").trim() === nomeCartao.trim())
+    .filter(c => {
+      const venc = c[7];
+      if(!venc) return false;
+      const d = serialToDate(venc);
+      return d.getMonth() === mesIdx && d.getFullYear() === ano;
+    })
+    .reduce((sum, c) => sum + (c[5] || c[4] || 0), 0);
+}
+
+function abrirLancarFaturaModal(){
+  const cartoes = getCadastroCartoesParsed();
+  if(cartoes.length === 0){ showToast("Cadastre um cartão no Cadastro primeiro", "error"); return; }
+  const cartaoAtualNome = ((raw.cartoes || [])[state.cardIdx || 0] || [])[0] || cartoes[0].nome;
+  const mesAtual = `${state.year}-${String(state.monthIdx + 1).padStart(2, "0")}`;
+  const hoje = new Date().toISOString().slice(0, 10);
+  document.getElementById("lancarFaturaBody").innerHTML = `
+    <div class="edit-form" style="margin-bottom:0;">
+      <div><label>Cartão</label>
+        <select id="lfCartao" onchange="atualizarPreviaLancarFatura()">
+          ${cartoes.map(c => `<option value="${c.nome}" ${c.nome===cartaoAtualNome?"selected":""}>${c.nome}</option>`).join("")}
+        </select>
+      </div>
+      <div><label>Mês da fatura</label><input type="month" id="lfMes" value="${mesAtual}" onchange="atualizarPreviaLancarFatura()"></div>
+      <div><label>Valor da fatura</label><input id="lfValor" type="number" step="0.01" value="0"></div>
+      <div><label>Data do pagamento</label><input id="lfDataPagamento" type="date" value="${hoje}"></div>
+      <div><label>Conta</label><input id="lfConta" placeholder="Ex: Bradesco"></div>
+      <div class="actions">
+        <button class="save-btn" onclick="confirmarLancarFatura()">Lançar na aba Débito</button>
+        <button class="cancel-btn" onclick="closeLancarFaturaModal()">Cancelar</button>
+      </div>
+    </div>`;
+  document.getElementById("lancarFaturaModal").classList.remove("hidden");
+  atualizarPreviaLancarFatura();
+}
+function atualizarPreviaLancarFatura(){
+  const nomeCartao = document.getElementById("lfCartao").value;
+  const [ano, mes] = document.getElementById("lfMes").value.split("-").map(Number);
+  const valor = calcularValorFaturaCartaoMes(nomeCartao, mes - 1, ano);
+  document.getElementById("lfValor").value = valor.toFixed(2);
+}
+function closeLancarFaturaModal(){
+  document.getElementById("lancarFaturaModal").classList.add("hidden");
+  document.getElementById("lancarFaturaBody").innerHTML = "";
+}
+async function confirmarLancarFatura(){
+  const nomeCartao = document.getElementById("lfCartao").value;
+  const mesInput = document.getElementById("lfMes").value; // "AAAA-MM"
+  const valor = parseFloat(document.getElementById("lfValor").value) || 0;
+  const dataPagamento = document.getElementById("lfDataPagamento").value; // "AAAA-MM-DD"
+  const conta = document.getElementById("lfConta").value.trim();
+  if(valor <= 0){ showToast("Valor precisa ser maior que zero", "error"); return; }
+
+  const [anoRef, mesRef] = mesInput.split("-").map(Number);
+  const [anoPag, mesPag, diaPag] = dataPagamento.split("-").map(Number);
+  const dataBR = `${String(diaPag).padStart(2,"0")}/${String(mesPag).padStart(2,"0")}/${anoPag}`;
+  const nomeMesRef = MONTHS_FULL[mesRef - 1];
+  // Usa a categoria "Fatura do Cartão" (ou o que estiver cadastrado com esse nome), pra ficar
+  // consistente com o resto do orçamento por categoria já configurado no Cadastro.
+  const categoriaFatura = (raw.cadastro || []).map(r => r[0]).find(c => normalizeCatName(c).includes("fatura")) || "";
+
+  const hoje = new Date(); hoje.setHours(0,0,0,0);
+  const dataPagamentoObj = new Date(anoPag, mesPag - 1, diaPag);
+  const status = dataPagamentoObj <= hoje ? "✅ Pago" : "";
+
+  // Colunas B..K: Data Lanç, Data Venc, Descrição, Fixa, (vazio), Conta, Categoria, Tipo, Valor, Status
+  const row = [dataBR, dataBR, `Fatura ${nomeCartao} - ${nomeMesRef}/${anoRef}`, "", "", conta, categoriaFatura, "Despesa", valor, status];
+
+  await salvarEAtualizar(async () => {
+    await appendRow("Débito", row);
+    closeLancarFaturaModal();
+  }, [renderLancamentos, refreshCalendarIfOpen], "Fatura lançada na aba Débito");
+}
+
 async function confirmarImportacaoPdf(){
   const transacoes = window._pdfPreviaTransacoes || [];
   const checks = Array.from(document.querySelectorAll(".pdf-previa-check")).filter(cb => cb.checked);
@@ -4525,6 +4615,7 @@ function setupModalOutsideClickClose(){
     dividaEditModal: closeDividaEditForm,
     creditEditModal: closeCreditEditForm,
     pdfPreviewModal: closePdfPreviewModal,
+    lancarFaturaModal: closeLancarFaturaModal,
     calendarModal: closeCalendarModal,
   };
   document.querySelectorAll(".modal-overlay").forEach(overlay => {
