@@ -2296,17 +2296,17 @@ function getBankLogoUrl(nomeCartao, bandeira){
 const CARD_STYLES_RAW = {
   "nubank ultravioleta": { background: "linear-gradient(150deg, #2B0B45 0%, #5A189A 55%, #8A05BE 100%)" },
   "nubank infinite": { background: "linear-gradient(150deg, #1a1a1a 0%, #3d1155 55%, #8A05BE 100%)" },
-  "nubank": { background: "linear-gradient(135deg, #9D2FCE 0%, #8A05BE 60%, #6a0d91 100%)" },
+  "nubank": { background: "linear-gradient(135deg, #9D2FCE 0%, #8A05BE 60%, #6a0d91 100%)", generic: true },
   "inter gold": { background: "linear-gradient(135deg, #cfa54a 0%, #8a6a1f 50%, #e8cf8a 100%)", light: true },
   "inter black": { background: "linear-gradient(150deg, #1c1c1c 0%, #000 100%)" },
   "inter win": { background: "linear-gradient(135deg, #FF7A00 0%, #e86a00 100%)" },
-  "inter": { background: "linear-gradient(135deg, #FF7A00 0%, #cf6400 100%)" },
+  "inter": { background: "linear-gradient(135deg, #FF7A00 0%, #cf6400 100%)", generic: true },
   "c6 carbon": { background: "linear-gradient(140deg, #2b2b2b 0%, #0a0a0a 55%, #3a3a3a 100%)" },
-  "c6 bank": { background: "linear-gradient(150deg, #232323 0%, #000 100%)" },
-  "c6": { background: "linear-gradient(150deg, #232323 0%, #000 100%)" },
+  "c6 bank": { background: "linear-gradient(150deg, #232323 0%, #000 100%)", generic: true },
+  "c6": { background: "linear-gradient(150deg, #232323 0%, #000 100%)", generic: true },
   "itau uniclass": { background: "linear-gradient(150deg, #001b3a 0%, #000 100%)" },
   "itau personnalite": { background: "linear-gradient(150deg, #0a0a0a 0%, #1a1a1a 100%)" },
-  "itau": { background: "linear-gradient(135deg, #EC7000 0%, #c95e00 100%)" },
+  "itau": { background: "linear-gradient(135deg, #EC7000 0%, #c95e00 100%)", generic: true },
   "bradesco prime": { background: "linear-gradient(135deg, #1a1a1a 0%, #b8860b 100%)" },
   "bradesco elo nanquim": { background: "linear-gradient(150deg, #0a0a0a, #000)" },
   // Referência real enviada pelo usuário: preto fosco, minimalista, com traços diagonais brilhantes discretos
@@ -2314,15 +2314,15 @@ const CARD_STYLES_RAW = {
   // Referência real enviada pelo usuário: vermelho intenso em degradê, brilhante, linha diagonal fina
   // Vermelho bordô (não o vermelho vivo do cartão classic/varejo — Principal é o segmento alta renda)
   "bradesco principal": { background: "linear-gradient(150deg, #6b0f1f 0%, #4a0a15 50%, #26050a 100%)" },
-  "bradesco": { background: "linear-gradient(135deg, #cc092f 0%, #8b0000 100%)" },
+  "bradesco": { background: "linear-gradient(135deg, #cc092f 0%, #8b0000 100%)", generic: true },
   "ourocard": { background: "linear-gradient(135deg, #003399 0%, #001a4d 100%)" },
-  "banco do brasil": { background: "linear-gradient(135deg, #003399 0%, #001a4d 100%)" },
+  "banco do brasil": { background: "linear-gradient(135deg, #003399 0%, #001a4d 100%)", generic: true },
   "santander select": { background: "linear-gradient(150deg, #1a1a1a, #8b0000)" },
-  "santander": { background: "linear-gradient(135deg, #ec0000 0%, #8b0000 100%)" },
-  "btg pactual": { background: "linear-gradient(150deg, #001e3c 0%, #000 100%)" },
-  "btg": { background: "linear-gradient(150deg, #001e3c 0%, #000 100%)" },
+  "santander": { background: "linear-gradient(135deg, #ec0000 0%, #8b0000 100%)", generic: true },
+  "btg pactual": { background: "linear-gradient(150deg, #001e3c 0%, #000 100%)", generic: true },
+  "btg": { background: "linear-gradient(150deg, #001e3c 0%, #000 100%)", generic: true },
   "xp visa infinite": { background: "linear-gradient(150deg, #0a0a0a 0%, #1a1a1a 100%)" },
-  "xp": { background: "linear-gradient(150deg, #0a0a0a 0%, #1a1a1a 100%)" },
+  "xp": { background: "linear-gradient(150deg, #0a0a0a 0%, #1a1a1a 100%)", generic: true },
   "will bank": { background: "linear-gradient(135deg, #00d563 0%, #00a34e 100%)", light: true },
   "picpay": { background: "linear-gradient(135deg, #21c25e 0%, #0f9b46 100%)" },
   "neon": { background: "linear-gradient(135deg, #00c2ff 0%, #0072ff 100%)" },
@@ -2330,17 +2330,24 @@ const CARD_STYLES_RAW = {
   "mercado pago": { background: "linear-gradient(135deg, #00b1ea 0%, #009ee3 100%)" },
   "digio": { background: "linear-gradient(135deg, #6a0dad 0%, #4a0a7a 100%)" },
   "visa infinite": { background: "linear-gradient(150deg, #0a1128 0%, #1b2a4a 55%, #0a1128 100%)" },
-  "visa": { background: "linear-gradient(150deg, #1a1f71 0%, #0d1147 100%)" },
+  "visa": { background: "linear-gradient(150deg, #1a1f71 0%, #0d1147 100%)", generic: true },
   "mastercard black": { background: "linear-gradient(150deg, #1a1a1a, #000)" },
   // "Amex" sozinho não indica necessariamente metálico (a Amex tem vários cartões diferentes) — quem
   // realmente identifica o visual prateado/metálico é o nome do modelo, "Platinum".
   "platinum": { background: "linear-gradient(150deg, #d6d8db 0%, #aeb1b6 25%, #eceef0 50%, #9a9da3 75%, #c9ccd0 100%)", light: true },
-  "american express": { background: "linear-gradient(150deg, #d6d8db 0%, #aeb1b6 25%, #eceef0 50%, #9a9da3 75%, #c9ccd0 100%)", light: true },
-  "amex": { background: "linear-gradient(150deg, #d6d8db 0%, #aeb1b6 25%, #eceef0 50%, #9a9da3 75%, #c9ccd0 100%)", light: true },
+  "american express": { background: "linear-gradient(150deg, #d6d8db 0%, #aeb1b6 25%, #eceef0 50%, #9a9da3 75%, #c9ccd0 100%)", light: true, generic: true },
+  "amex": { background: "linear-gradient(150deg, #d6d8db 0%, #aeb1b6 25%, #eceef0 50%, #9a9da3 75%, #c9ccd0 100%)", light: true, generic: true },
   // Referência real enviada pelo usuário: azul marinho escuro (não preto), textura levemente fosca
   "amazon prime": { background: "linear-gradient(140deg, #16213e 0%, #0d1428 55%, #1b2a4a 100%)" },
 };
-const CARD_STYLE_KEYS = Object.keys(CARD_STYLES_RAW).sort((a,b) => b.length - a.length);
+// Prioridade: nomes de modelo específicos (ex: "platinum", "ultravioleta") sempre ganham de nomes
+// genéricos de banco/bandeira sozinhos (ex: "bradesco", "amex") — mesmo quando têm o mesmo tamanho.
+// Sem isso, um cartão "Amex The Platinum Card" cadastrado com banco "Bradesco" (erro de digitação,
+// por ex.) acabava herdando a cor do Bradesco em vez do visual metálico da Platinum.
+const CARD_STYLE_KEYS = [
+  ...Object.keys(CARD_STYLES_RAW).filter(k => !CARD_STYLES_RAW[k].generic).sort((a,b) => b.length - a.length),
+  ...Object.keys(CARD_STYLES_RAW).filter(k => CARD_STYLES_RAW[k].generic).sort((a,b) => b.length - a.length),
+];
 
 function getCardStyle(nomeCartao, bandeira){
   const texto = normalizeCatName(`${nomeCartao||""} ${bandeira||""}`);
