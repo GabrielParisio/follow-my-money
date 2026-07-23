@@ -705,7 +705,7 @@
         <div class="chart-panel">
           <h2>Compras do mês</h2>
           <div id="creditEditForm" class="hidden"></div>
-          <div id="creditPurchases" style="max-height:420px;overflow-y:auto;"></div>
+          <div id="creditPurchases" style="overflow-x:auto;"></div>
         </div>
       </div>
     </div>
@@ -2093,7 +2093,9 @@ function calcSaldoInvestimento(categoriaAlvo){
 
 function categoriaOptions(selected){
   const cats = (raw.cadastro || []).map(r => r[0]).filter(Boolean);
-  return cats.map(c => `<option value="${c}" ${c===selected?"selected":""}>${c}</option>`).join("");
+  const semCategoria = !selected || !cats.includes(selected);
+  const blank = semCategoria ? `<option value="" selected>— Selecionar —</option>` : "";
+  return blank + cats.map(c => `<option value="${c}" ${c===selected?"selected":""}>${c}</option>`).join("");
 }
 
 let lancSelectedRows = new Set();
@@ -3241,7 +3243,7 @@ function renderCredito(){
     return `<tr>
       <td style="color:var(--muted);font-size:12px;" data-label="Data">${dateLabel}</td>
       <td data-label="Descrição">${desc}${parcelaLabel}</td>
-      <td data-label="Categoria"><span class="pill"><i style="width:8px;height:8px;border-radius:50%;background:${catColor};display:inline-block;margin-right:6px;"></i>${cleanCat}</span></td>
+      <td data-label="Categoria"><select onchange="saveCreditCategoriaInline(${row}, this.value)" style="background:transparent;border:none;color:${cleanCat?"var(--text)":"var(--muted)"};font-size:12.5px;width:100%;">${categoriaOptions(cleanCat)}</select></td>
       <td class="val-col despesa" data-label="Valor">${fmtMoney(valorParcela || valorTotal)}</td>
       <td data-label=""><button class="icon-btn" onclick="openCreditEditForm(${row})" title="Editar">✏️</button></td>
     </tr>`;
@@ -3377,6 +3379,11 @@ function buildDonutFromTotals(totals, targetId, interactive, totalLabel){
 }
 
 // ===================== EDIÇÃO DE COMPRAS DO CARTÃO (mesmo padrão do Débito) =====================
+// Categoria editável direto na linha, sem precisar abrir o formulário completo
+async function saveCreditCategoriaInline(row, categoria){
+  await salvarEAtualizar(() => writeCell(`Crédito!E${row}`, categoria), [renderCredito], "Categoria atualizada");
+}
+
 function openCreditEditForm(row){
   const item = (window._creditPurchasesCache || []).find(x => x.row === row);
   if(!item) return;
