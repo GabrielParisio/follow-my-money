@@ -3330,22 +3330,37 @@ function renderCredito(){
   const faturaValor = compras.reduce((sum, c) => sum + (c[5] || c[4] || 0), 0);
 
   // Já foi lançado um pagamento pra esse cartão+mês? (mesma descrição gerada em "Lançar pagamento de fatura")
+  // Compara o VALOR pago com o valor atual da fatura — se você lançou uma compra nova depois de já
+  // ter pago, sobra uma diferença, e a fatura deve voltar a ficar "em aberto" só com essa diferença.
   const nomeMesView = MONTHS_FULL[state.monthIdx];
   const descEsperada = normalizeCatName(`Fatura ${nomeCartao} - ${nomeMesView}/${state.year}`);
-  const jaPaga = debitoRows().some(it => normalizeCatName(it.desc) === descEsperada);
-  // Vencida = data de vencimento do cartão, no mês/ano em exibição, já passou e ainda não foi paga
+  const pagamentoExistente = debitoRows().find(it => normalizeCatName(it.desc) === descEsperada);
+  const valorPago = pagamentoExistente ? (pagamentoExistente.valor || 0) : 0;
+  const diferenca = Math.round((faturaValor - valorPago) * 100) / 100;
+  const totalmentePaga = pagamentoExistente && diferenca <= 0.01;
+  const diferencaPendente = pagamentoExistente && diferenca > 0.01;
+
+  // Vencida = data de vencimento do cartão, no mês/ano em exibição, já passou e ainda não foi (totalmente) paga
   const diaVenc = Number(vencimentoDia) || 5;
   const dataVencimentoFatura = new Date(state.year, state.monthIdx, diaVenc);
   const hoje = new Date(); hoje.setHours(0,0,0,0);
-  const atrasada = !jaPaga && dataVencimentoFatura < hoje;
+  const atrasada = !totalmentePaga && dataVencimentoFatura < hoje;
 
   const faturaLabelEl = document.getElementById("ccFaturaLabel");
   const faturaValEl = document.getElementById("ccFatura");
   const lancarBtnEl = document.getElementById("ccLancarFaturaBtn");
-  if(jaPaga){
+  const faturaSubEl = document.getElementById("ccFaturaSub");
+  let subExtra = "";
+  if(totalmentePaga){
     faturaLabelEl.textContent = "Fatura paga";
     faturaValEl.style.color = "var(--green)";
     lancarBtnEl.textContent = "✅ Fatura já paga";
+  } else if(diferencaPendente){
+    // Já tinha pago, mas surgiu gasto novo depois — destaca a DIFERENÇA, não o valor total de novo
+    faturaLabelEl.textContent = atrasada ? "Fatura atrasada (gasto novo após pagamento)" : "Fatura em aberto (gasto novo após pagamento)";
+    faturaValEl.style.color = "var(--yellow)";
+    lancarBtnEl.textContent = `💳 Lançar diferença (${fmtMoney(diferenca)})`;
+    subExtra = ` · já pago ${fmtMoney(valorPago)} de ${fmtMoney(faturaValor)} · falta ${fmtMoney(diferenca)}`;
   } else if(atrasada){
     faturaLabelEl.textContent = "Fatura atrasada";
     faturaValEl.style.color = "var(--red)";
@@ -3355,10 +3370,10 @@ function renderCredito(){
     faturaValEl.style.color = "var(--purple)";
     lancarBtnEl.textContent = "💳 Lançar pagamento desta fatura";
   }
-  faturaValEl.textContent = fmtMoney(faturaValor);
-  document.getElementById("ccFaturaSub").textContent = compras.length
+  faturaValEl.textContent = fmtMoney(diferencaPendente ? diferenca : faturaValor);
+  faturaSubEl.textContent = (compras.length
     ? compras.length + " compra" + (compras.length > 1 ? "s" : "") + " em " + nomeMesView
-    : "Nenhuma compra em " + nomeMesView;
+    : "Nenhuma compra em " + nomeMesView) + subExtra;
 
   // Parcelas em aberto: todas as compras desse cartão com vencimento a partir do mês selecionado, em diante
   const todasDoCartao = (raw.compras || []).filter(r => r[2] && (r[1] || "").trim() === nomeCartao.trim());
@@ -4620,7 +4635,13 @@ function abrirLancarFaturaModal(){
 function atualizarPreviaLancarFatura(){
   const nomeCartao = document.getElementById("lfCartao").value;
   const [ano, mes] = document.getElementById("lfMes").value.split("-").map(Number);
-  const valor = calcularValorFaturaCartaoMes(nomeCartao, mes - 1, ano);
+  const valorFatura = calcularValorFaturaCartaoMes(nomeCartao, mes - 1, ano);
+  // Se já existe um pagamento lançado pra esse cartão+mês, sugere só a diferença — evita sugerir
+  // o valor cheio de novo quando a fatura já foi paga em parte antes de uma compra nova ser lançada.
+  const descEsperada = normalizeCatName(`Fatura ${nomeCartao} - ${MONTHS_FULL[mes - 1]}/${ano}`);
+  const pagamentoExistente = debitoRows().find(it => normalizeCatName(it.desc) === descEsperada);
+  const valorPago = pagamentoExistente ? (pagamentoExistente.valor || 0) : 0;
+  const valor = Math.max(0, Math.round((valorFatura - valorPago) * 100) / 100);
   document.getElementById("lfValor").value = valor.toFixed(2);
 }
 function closeLancarFaturaModal(){
@@ -4643,7 +4664,7 @@ async function confirmarLancarFatura(){
   const descNova = normalizeCatName(`Fatura ${nomeCartao} - ${nomeMesRef}/${anoRef}`);
   const jaExiste = debitoRows().some(it => normalizeCatName(it.desc) === descNova);
   if(jaExiste){
-    const confirmar = confirm(`Já existe um pagamento lançado pra "${nomeCartao}" em ${nomeMesRef}/${anoRef}. Quer lançar de novo mesmo assim?`);
+    const confirmar = confirm(`Já existe um pagamento lançado pra "${nomeCartao}" em ${nomeMesRef}/${anoRef}. Se for pra cobrir uma diferença de gasto novo, pode confirmar — senão, cancela pra não duplicar.`);
     if(!confirmar) return;
   }
   // Usa a categoria "Fatura do Cartão" (ou o que estiver cadastrado com esse nome), pra ficar
