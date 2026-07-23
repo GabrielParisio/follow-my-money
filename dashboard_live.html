@@ -2287,6 +2287,37 @@ function mapHeaders(headerRow, keywordMap){
   return idx;
 }
 
+function pvAnnuity(rate, n, pmt){
+  if(n <= 0) return 0;
+  if(rate === 0) return pmt * n;
+  return pmt * (1 - Math.pow(1+rate, -n)) / rate;
+}
+
+// Deduz a taxa mensal implícita do financiamento a partir dos próprios dados da dívida
+// (valor inicial, valor da parcela, número de parcelas) via busca binária — não depende do
+// campo "Taxa de juros" da planilha, que na prática nem sempre bate com o financiamento real.
+function taxaImplicita(valorInicial, valorParcela, numParcelas){
+  const totalSemJuros = valorParcela * numParcelas;
+  if(totalSemJuros <= valorInicial) return 0; // sem juros (ou dado inconsistente) — trata como linear
+  let lo = 0.0000001, hi = 0.5;
+  for(let iter = 0; iter < 100; iter++){
+    const mid = (lo + hi) / 2;
+    const pv = pvAnnuity(mid, numParcelas, valorParcela);
+    if(pv > valorInicial) lo = mid; else hi = mid;
+  }
+  return (lo + hi) / 2;
+}
+
+// Saldo devedor "a mercado": valor presente das parcelas que ainda faltam, descontado pela taxa
+// implícita do financiamento. Mais preciso que só subtrair parcelas pagas, porque no início do
+// financiamento boa parte de cada parcela é juro, não abatimento do principal.
+function calcSaldoDevedorAmortizado(valorInicial, valorParcela, numParcelas, parcelasPagas){
+  if(valorInicial <= 0 || valorParcela <= 0 || numParcelas <= 0) return null; // sem dados suficientes
+  if(parcelasPagas >= numParcelas) return 0;
+  const i = taxaImplicita(valorInicial, valorParcela, numParcelas);
+  return pvAnnuity(i, numParcelas - parcelasPagas, valorParcela);
+}
+
 function getDividasParsed(){
   const all = raw.dividas || [];
   const headerRowIdx = all.findIndex(r => r.some(cell => /descri[cç][aã]o/i.test((cell||"").toString())));
@@ -2309,20 +2340,23 @@ function getDividasParsed(){
     .map((r, i) => {
       const valorInicial = col.valorInicial >= 0 ? r[col.valorInicial] || 0 : 0;
       const valorParcela = col.valorParcela >= 0 ? r[col.valorParcela] || 0 : 0;
+      const numParcelas = col.numParcelas >= 0 ? r[col.numParcelas] || 0 : 0;
       const parcelasPagas = col.parcelasPagas >= 0 ? r[col.parcelasPagas] || 0 : 0;
       const saldoDevedorPlanilha = col.saldoDevedor >= 0 ? r[col.saldoDevedor] || 0 : 0;
       const valorPago = parcelasPagas * valorParcela;
-      // Saldo devedor recalculado a partir das parcelas pagas — atualiza sozinho conforme você paga.
-      // Se não houver Valor Inicial preenchido, cai de volta pro valor manual da planilha (compatibilidade).
-      const saldoDevedor = valorInicial > 0 ? Math.max(valorInicial - valorPago, 0) : saldoDevedorPlanilha;
+      // Saldo devedor "a mercado" (valor presente das parcelas restantes) — atualiza sozinho conforme você paga.
+      // Se não houver dados suficientes pro cálculo, cai de volta pro valor manual da planilha (compatibilidade).
+      const saldoDevedorCalc = calcSaldoDevedorAmortizado(valorInicial, valorParcela, numParcelas, parcelasPagas);
+      const saldoDevedor = saldoDevedorCalc !== null ? saldoDevedorCalc : saldoDevedorPlanilha;
       return {
         row: headerRowIdx + 2 + i, // linha real na planilha (o range começa em B1)
         desc: r[col.desc] || "",
         credor: col.credor >= 0 ? r[col.credor] || "" : "",
         valorInicial,
         saldoDevedor,
+        saldoDevedorAutoCalculado: saldoDevedorCalc !== null,
         valorPago,
-        numParcelas: col.numParcelas >= 0 ? r[col.numParcelas] || 0 : 0,
+        numParcelas,
         valorParcela,
         parcelasPagas,
         taxaJuros: col.taxaJuros >= 0 ? r[col.taxaJuros] || 0 : 0,
@@ -2440,7 +2474,7 @@ function openDividaEditForm(row){
   modal.classList.remove("hidden");
   modal.dataset.editingRow = row;
   document.getElementById("dividaEditTitle").textContent = "Editar dívida";
-  const saldoAutoCalculado = d.valorInicial > 0;
+  const saldoAutoCalculado = d.saldoDevedorAutoCalculado;
   document.getElementById("dividaFormBody").innerHTML = `
     <div class="edit-form" style="margin-bottom:0;">
       <div><label>Descrição</label><input id="dfDesc" value="${d.desc}"></div>
@@ -2455,7 +2489,7 @@ function openDividaEditForm(row){
       <div><label>Parcelas pagas</label><input id="dfParcelasPagas" type="number" step="1" value="${d.parcelasPagas}"></div>
       <div><label>Taxa de juros</label><input id="dfTaxaJuros" type="number" step="0.01" value="${d.taxaJuros}"></div>
       <div><label>Status</label><input id="dfStatus" value="${d.status}" placeholder="Em aberto / Quitada..."></div>
-      ${saldoAutoCalculado ? '<div style="grid-column:1/-1;font-size:11.5px;color:var(--muted);">Com "Valor inicial" preenchido, o saldo devedor é calculado sozinho (Valor inicial − Parcelas pagas × Valor da parcela). Pra mudar o saldo, ajuste "Parcelas pagas".</div>' : ''}
+      ${saldoAutoCalculado ? '<div style="grid-column:1/-1;font-size:11.5px;color:var(--muted);">O saldo devedor é calculado sozinho como o valor presente das parcelas que faltam (descontando a taxa de juros implícita do financiamento) — mais preciso que só subtrair o que já foi pago, já que no início boa parte da parcela é juro. Pra mudar o saldo, ajuste "Parcelas pagas".</div>' : ''}
       <div class="actions">
         <button class="save-btn" onclick="saveDividaEdit(${row})">Salvar alterações</button>
         <button class="cancel-btn" onclick="closeDividaEditForm()">Cancelar</button>
