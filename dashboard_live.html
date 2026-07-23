@@ -2351,6 +2351,9 @@ function getDividasParsed(){
       const saldoDevedorAutoCalculado = saldoDevedorCalc !== null;
       // Mesma taxa usada no cálculo do saldo devedor — deixada disponível pra corrigir o campo "Taxa de juros" da planilha
       const taxaJurosImplicita = saldoDevedorAutoCalculado ? taxaImplicita(valorInicial, valorParcela, numParcelas) * 100 : null;
+      // Do que já foi pago, quanto foi juro e quanto foi abatimento real do principal
+      const principalAmortizado = saldoDevedorAutoCalculado ? valorInicial - saldoDevedor : null;
+      const jurosPagos = saldoDevedorAutoCalculado ? valorPago - principalAmortizado : null;
       return {
         row: headerRowIdx + 2 + i, // linha real na planilha (o range começa em B1)
         desc: r[col.desc] || "",
@@ -2359,6 +2362,7 @@ function getDividasParsed(){
         saldoDevedor,
         saldoDevedorAutoCalculado,
         valorPago,
+        jurosPagos,
         numParcelas,
         valorParcela,
         parcelasPagas,
@@ -2447,6 +2451,7 @@ function renderDividas(){
         <div style="height:6px;background:var(--border);border-radius:3px;overflow:hidden;">
           <div style="height:100%;width:${Math.min(pctPago,100)}%;background:${quitada?"var(--green)":"var(--blue)"};border-radius:3px;"></div>
         </div>
+        ${d.saldoDevedorAutoCalculado ? `<div style="font-size:10.5px;color:var(--muted);margin-top:3px;">dos quais ${fmtMoney(d.jurosPagos)} em juros</div>` : ""}
       </td>
       <td data-label="Status"><span class="pill">${d.status || "—"}</span></td>
       <td data-label=""><button class="icon-btn" onclick="openDividaEditForm(${d.row})" title="Editar">✏️</button></td>
@@ -2497,6 +2502,7 @@ function openDividaEditForm(row){
         <input id="dfTaxaJuros" type="number" step="0.01" value="${saldoAutoCalculado ? d.taxaJurosImplicita.toFixed(2) : d.taxaJuros}">
       </div>
       <div><label>Status</label><input id="dfStatus" value="${d.status}" placeholder="Em aberto / Quitada..."></div>
+      ${saldoAutoCalculado ? `<div><label>Juros pagos até agora</label><input type="text" value="${fmtMoney(d.jurosPagos)}" disabled></div>` : ""}
       <div class="actions">
         <button class="save-btn" onclick="saveDividaEdit(${row})">Salvar alterações</button>
         <button class="cancel-btn" onclick="closeDividaEditForm()">Cancelar</button>
