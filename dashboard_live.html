@@ -389,7 +389,8 @@
       </button>
     </div>
     <div class="tabs">
-      <span class="active" data-view="mensal">🏠 <b>Visão Mensal</b></span>
+      <span class="active" data-view="resumo">📈 <b>Resumo</b></span>
+      <span data-view="mensal">🏠 <b>Visão Mensal</b></span>
       <span data-view="balanco">📊 <b>Balanço</b></span>
       <span data-view="investimentos">💰 <b>Investimentos</b></span>
       <span data-view="lancamentos">🧾 <b>Lançamentos</b></span>
@@ -424,7 +425,24 @@
     <div id="monthRuler" class="month-ruler"></div>
 
 
-  <div id="view-mensal" class="view active">
+  <div id="view-resumo" class="view active">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:10px;">
+      <div>
+        <h1 style="margin:0;">📈 Resumo Geral</h1>
+        <p style="color:var(--muted);font-size:13px;margin:4px 0 0;">Tudo que importa, em um só lugar</p>
+      </div>
+      <div class="seg-toggle" id="resumoModoToggle">
+        <button class="seg-btn active" data-modo="resumido">Resumido</button>
+        <button class="seg-btn" data-modo="detalhado">Detalhado</button>
+      </div>
+    </div>
+    <div id="resumoConteudo">
+      <div class="skeleton-row"><span class="skeleton" style="width:100%;"></span></div>
+      <div class="skeleton-row"><span class="skeleton" style="width:100%;"></span></div>
+    </div>
+  </div>
+
+  <div id="view-mensal" class="view">
 
   <div class="panels">
     <div class="panel panel-clickable" onclick="openCategoriaDonutModal()" title="Ver gráfico">
@@ -741,13 +759,6 @@
       <div id="cadCartoesTable" style="overflow-x:auto;"></div>
     </div>
   </div>
-
-  <div id="view-soon" class="view">
-    <div class="chart-panel">
-      <h2>Em construção</h2>
-      <p class="empty">Essa aba ainda não foi conectada — em breve.</p>
-    </div>
-  </div>
   </div>
 </div>
 
@@ -995,6 +1006,7 @@ async function loadData(){
     updateLastUpdatedLabel();
     setupSelectors();
     render();
+    renderResumo();
     showToast("Dados atualizados", "success");
   }catch(err){
     showToast("Erro ao carregar dados: " + err.message, "error");
@@ -1004,11 +1016,6 @@ async function loadData(){
 }
 
 // ===================== ESCRITA NA PLANILHA =====================
-function dateToSerial(d){
-  const utcMidnight = Date.UTC(d.getFullYear(), d.getMonth(), d.getDate());
-  return utcMidnight / 86400000 + 25569;
-}
-
 async function writeCell(a1Range, value){
   const url = `https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}/values/${encodeURIComponent(a1Range)}?valueInputOption=USER_ENTERED`;
   const res = await fetch(url, {
@@ -1057,6 +1064,21 @@ async function clearRange(a1Range){
   });
   if(!res.ok) throw new Error("Falha ao excluir (" + res.status + ")");
   return res.json();
+}
+
+// Padrão comum à maioria das ações de salvar/editar/excluir: escreve na planilha, recarrega os
+// dados, roda os re-renders necessários e mostra o toast — em vez de repetir o mesmo try/catch
+// em cada função. "acaoAsync" faz as escritas (e qualquer coisa que deva rodar só se elas derem certo,
+// tipo fechar um formulário); "aposCarregar" é a lista de funções de render a chamar depois do reload.
+async function salvarEAtualizar(acaoAsync, aposCarregar, mensagemSucesso, mensagemErroPrefixo){
+  try{
+    await acaoAsync();
+    await loadData();
+    (aposCarregar || []).forEach(fn => fn());
+    showToast(mensagemSucesso, "success");
+  }catch(err){
+    showToast((mensagemErroPrefixo || "Não foi possível salvar") + ": " + err.message, "error");
+  }
 }
 
 async function deleteLancamento(row, desc){
@@ -1256,6 +1278,97 @@ function render(){
   renderOrcadoReal(lanc, mi);
   renderAlertas(lanc, mi);
   renderTopDias(mi);
+}
+
+// ===================== RESUMO GERAL (página consolidada) =====================
+let resumoModo = "resumido";
+function setupResumoToggle(){
+  const toggle = document.getElementById("resumoModoToggle");
+  if(!toggle || toggle.dataset.wired === "1") return;
+  toggle.dataset.wired = "1";
+  toggle.querySelectorAll(".seg-btn").forEach(btn => {
+    btn.addEventListener("click", () => {
+      toggle.querySelectorAll(".seg-btn").forEach(b => b.classList.remove("active"));
+      btn.classList.add("active");
+      resumoModo = btn.dataset.modo;
+      renderResumo();
+    });
+  });
+}
+
+function renderResumo(){
+  if(!raw) return;
+  setupResumoToggle();
+  const mi = state.monthIdx;
+  const row = (n) => raw.balanco[n-44] || [];
+  const receitaReal = row(48)[mi] || 0;
+  const despesaReal = row(49)[mi] || 0;
+  const saldoReal = row(50)[mi] || 0;
+  const orcado = (raw.orcadoTotal[0] && raw.orcadoTotal[0][0]) || 0;
+  const pctOrcamento = orcado ? despesaReal / orcado : 0;
+
+  const totalAtivos = calcSaldoInvestimento("Reserva de Emergência") + calcSaldoInvestimento("Renda Fixa") + calcSaldoInvestimento("Renda Variável");
+  const dividasAtivas = getDividasParsed().filter(d => !isDividaQuitada(d));
+  const totalDevedor = dividasAtivas.reduce((s,d) => s + d.saldoDevedor, 0);
+  const totalParcelaMensal = dividasAtivas.reduce((s,d) => s + d.valorParcela, 0);
+  const totalPago = dividasAtivas.reduce((s,d) => s + d.valorPago, 0);
+  const patrimonioDescontado = totalAtivos - totalDevedor;
+
+  const inicioMesAtual = new Date(state.year, mi, 1);
+  const fimMesAtual = new Date(state.year, mi+1, 1);
+  const creditoParcelasMes = (raw.compras || [])
+    .filter(c => c[2] && c[7] && isCompraParcelada(c))
+    .filter(c => { const d = serialToDate(c[7]); return d >= inicioMesAtual && d < fimMesAtual; })
+    .reduce((s,c) => s + (c[5] || c[4] || 0), 0);
+  const totalParcelado = totalParcelaMensal + creditoParcelasMes;
+  const rendaBase = getSalarioBruto() > 0 ? getSalarioBruto() : receitaReal;
+  const comprometimento = rendaBase > 0 ? (totalParcelado / rendaBase * 100) : 0;
+
+  const receitaYTD = row(48).slice(0, mi+1).reduce((a,b) => a+(b||0), 0);
+  const despesaYTD = row(49).slice(0, mi+1).reduce((a,b) => a+(b||0), 0);
+  const taxaPoupanca = receitaYTD > 0 ? ((receitaYTD - despesaYTD) / receitaYTD * 100) : 0;
+
+  const faturaValor = (raw.credito[0] && raw.credito[0][1]) || 0;
+  const alertasAtivos = (window._alertasAtuais || []).length;
+
+  const kpisResumidos = [
+    { label: "Patrimônio Acumulado", valor: fmtMoney(totalAtivos), cor: "var(--gold)" },
+    { label: "Saldo do mês", valor: fmtMoney(saldoReal), cor: saldoReal >= 0 ? "var(--green)" : "var(--red)" },
+    { label: "Comprometimento de renda", valor: fmtPct(comprometimento/100), cor: comprometimento > 15 ? "var(--red)" : "var(--green)" },
+    { label: "Alertas ativos", valor: String(alertasAtivos), cor: alertasAtivos > 0 ? "var(--yellow)" : "var(--green)" },
+  ];
+  const kpisDetalhados = [
+    ...kpisResumidos,
+    { label: "Receita do mês", valor: fmtMoney(receitaReal), cor: "var(--green)" },
+    { label: "Despesa do mês", valor: fmtMoney(despesaReal), cor: "var(--red)" },
+    { label: "% orçamento gasto", valor: fmtPct(pctOrcamento), cor: "var(--yellow)" },
+    { label: "Taxa de poupança", valor: fmtPct(taxaPoupanca/100), cor: "var(--green)" },
+    { label: "Fatura em aberto", valor: fmtMoney(faturaValor), cor: "var(--purple)" },
+    { label: "Patrimônio descontando dívidas", valor: fmtMoney(patrimonioDescontado), cor: patrimonioDescontado >= 0 ? "var(--text)" : "var(--red)" },
+    { label: "Total investido", valor: fmtMoney(totalAtivos), cor: "var(--gold)" },
+    { label: "Saldo devedor (dívidas ativas)", valor: fmtMoney(totalDevedor), cor: "var(--red)" },
+    { label: "Já pago em dívidas", valor: fmtMoney(totalPago), cor: "var(--green)" },
+    { label: "Comprometido por mês (dívidas)", valor: fmtMoney(totalParcelaMensal), cor: "var(--yellow)" },
+  ];
+  const kpis = resumoModo === "detalhado" ? kpisDetalhados : kpisResumidos;
+  const kpisHtml = `<div class="cards">${kpis.map(k => `
+    <div class="card"><div class="accent" style="background:${k.cor}"></div>
+      <div class="body"><div class="label">${k.label}</div><div class="value" style="color:${k.cor}">${k.valor}</div></div></div>
+  `).join("")}</div>`;
+
+  const atalhos = [
+    { view: "balanco", label: "📊 Balanço", desc: `Saldo do mês: ${fmtMoney(saldoReal)}` },
+    { view: "investimentos", label: "💰 Investimentos", desc: `Total investido: ${fmtMoney(totalAtivos)}` },
+    { view: "credito", label: "💳 Crédito", desc: `Fatura em aberto: ${fmtMoney(faturaValor)}` },
+    { view: "dividas", label: "📋 Dívidas", desc: `Saldo devedor: ${fmtMoney(totalDevedor)}` },
+  ];
+  const atalhosHtml = `<div class="panels" style="margin-top:16px;">${atalhos.map(a => `
+    <div class="panel panel-clickable" onclick='document.querySelector(".tabs [data-view=\\"${a.view}\\"]").click()'>
+      <h2 style="margin:0 0 6px;">${a.label}</h2>
+      <p style="color:var(--muted);font-size:13px;margin:0;">${a.desc} · ver mais →</p>
+    </div>`).join("")}</div>`;
+
+  document.getElementById("resumoConteudo").innerHTML = kpisHtml + atalhosHtml;
 }
 
 function greetingWord(){
@@ -1838,6 +1951,7 @@ function setupTabs(){
       if(tab.dataset.view === "credito") renderCredito();
       if(tab.dataset.view === "dividas") renderDividas();
       if(tab.dataset.view === "cadastro") renderCadastro();
+      if(tab.dataset.view === "resumo") renderResumo();
     });
   });
 }
@@ -2682,7 +2796,7 @@ async function saveDividaEdit(row){
     ["taxaJuros", "dfTaxaJuros", v => parseFloat(v) || 0],
     ["status", "dfStatus", v => v],
   ];
-  try{
+  await salvarEAtualizar(async () => {
     for(const [key, inputId, parse] of fields){
       if(col[key] === undefined || col[key] < 0) continue; // essa coluna não existe na planilha do usuário
       const value = parse(document.getElementById(inputId).value);
@@ -2690,12 +2804,7 @@ async function saveDividaEdit(row){
       await writeCell(cellRef, value);
     }
     closeDividaEditForm();
-    await loadData();
-    renderDividas();
-    showToast("Dívida atualizada", "success");
-  }catch(err){
-    showToast("Não foi possível salvar: " + err.message, "error");
-  }
+  }, [renderDividas], "Dívida atualizada");
 }
 
 // ===================== CADASTRO =====================
@@ -2718,22 +2827,11 @@ function renderCadastro(){
 
 async function saveCadastroPerfil(){
   const nome = document.getElementById("cadNome").value.trim();
-  try{
-    await writeCell("Cadastro!T6", nome);
-    await loadData();
-    renderCadastro();
-    showToast("Perfil atualizado", "success");
-  }catch(err){ showToast("Não foi possível salvar: " + err.message, "error"); }
+  await salvarEAtualizar(() => writeCell("Cadastro!T6", nome), [renderCadastro], "Perfil atualizado");
 }
 async function saveCadastroSalario(){
   const valor = parseFloat(document.getElementById("cadSalarioBruto").value) || 0;
-  try{
-    await writeCell("Cadastro!T8", valor);
-    await loadData();
-    renderCadastro();
-    if(raw) { renderCharts(); render(); }
-    showToast("Salário bruto atualizado", "success");
-  }catch(err){ showToast("Não foi possível salvar: " + err.message, "error"); }
+  await salvarEAtualizar(() => writeCell("Cadastro!T8", valor), [renderCadastro, renderCharts, render], "Salário bruto atualizado");
 }
 
 // ---- Orçamento por categoria (Cadastro!B7:F60) ----
@@ -2781,14 +2879,11 @@ function closeCadCategoriaForm(){
 async function saveCadCategoriaEdit(row){
   const nome = document.getElementById("cadCatFormNome").value.trim();
   const orcado = parseFloat(document.getElementById("cadCatFormOrcado").value) || 0;
-  try{
+  await salvarEAtualizar(async () => {
     await writeCell(`Cadastro!B${row}`, nome);
     await writeCell(`Cadastro!F${row}`, orcado);
     closeCadCategoriaForm();
-    await loadData();
-    renderCadastro();
-    showToast("Categoria atualizada", "success");
-  }catch(err){ showToast("Não foi possível salvar: " + err.message, "error"); }
+  }, [renderCadastro], "Categoria atualizada");
 }
 async function addCadastroCategoria(){
   const categorias = getCadastroCategoriasParsed();
@@ -2797,22 +2892,14 @@ async function addCadastroCategoria(){
   if(nextRow > maxRow){ showToast("Limite de categorias atingido — me chama que eu amplio o espaço na planilha.", "error"); return; }
   const nome = prompt('Nome da nova categoria (ex: "🎮 Lazer"):');
   if(!nome) return;
-  try{
+  await salvarEAtualizar(async () => {
     await writeCell(`Cadastro!B${nextRow}`, nome);
     await writeCell(`Cadastro!F${nextRow}`, 0);
-    await loadData();
-    renderCadastro();
-    showToast("Categoria adicionada", "success");
-  }catch(err){ showToast("Não foi possível adicionar: " + err.message, "error"); }
+  }, [renderCadastro], "Categoria adicionada", "Não foi possível adicionar");
 }
 async function deleteCadCategoria(row){
   if(!confirm("Remover essa categoria? Os lançamentos já feitos nela continuam existindo, só some da lista de orçamento.")) return;
-  try{
-    await clearRange(`Cadastro!B${row}:F${row}`);
-    await loadData();
-    renderCadastro();
-    showToast("Categoria removida", "success");
-  }catch(err){ showToast("Não foi possível remover: " + err.message, "error"); }
+  await salvarEAtualizar(() => clearRange(`Cadastro!B${row}:F${row}`), [renderCadastro], "Categoria removida", "Não foi possível remover");
 }
 
 // ---- Cartões de crédito (Cadastro!H7:K20) ----
@@ -2889,8 +2976,7 @@ async function resolverCartaoOrfao(nomeAntigo, selectId){
   }catch(err){ showToast("Não foi possível reconectar: " + err.message, "error"); }
 }
 async function saveCadCartaoCampo(row, col, value){
-  try{ await writeCell(`Cadastro!${col}${row}`, value); await loadData(); renderCadastro(); showToast("Cartão atualizado", "success"); }
-  catch(err){ showToast("Não foi possível salvar: " + err.message, "error"); }
+  await salvarEAtualizar(() => writeCell(`Cadastro!${col}${row}`, value), [renderCadastro], "Cartão atualizado");
 }
 // Renomear o cartão precisa também atualizar as compras já lançadas com o nome antigo — senão elas
 // "descolam" do cartão (o nome funciona como a ligação entre a compra e o cartão na aba Crédito).
@@ -2948,24 +3034,16 @@ async function saveCadastroCartaoNovo(row){
   const modelo = document.getElementById("novoCartaoModelo").value.trim();
   const nome = (banco === "Genérico" ? (modelo || "Cartão") : `${banco}${modelo ? " " + modelo : ""}`).trim();
   const vencimento = parseInt(document.getElementById("novoCartaoVencimento").value, 10) || 10;
-  try{
+  await salvarEAtualizar(async () => {
     await writeCell(`Cadastro!H${row}`, nome);
     await writeCell(`Cadastro!I${row}`, banco === "Genérico" ? "" : banco);
     await writeCell(`Cadastro!J${row}`, vencimento);
     closeCadastroCartaoNovoForm();
-    await loadData();
-    renderCadastro();
-    showToast("Cartão adicionado", "success");
-  }catch(err){ showToast("Não foi possível adicionar: " + err.message, "error"); }
+  }, [renderCadastro], "Cartão adicionado", "Não foi possível adicionar");
 }
 async function deleteCadCartao(row){
   if(!confirm("Remover esse cartão? As compras já lançadas continuam existindo, só o cartão some da lista.")) return;
-  try{
-    await clearRange(`Cadastro!H${row}:K${row}`);
-    await loadData();
-    renderCadastro();
-    showToast("Cartão removido", "success");
-  }catch(err){ showToast("Não foi possível remover: " + err.message, "error"); }
+  await salvarEAtualizar(() => clearRange(`Cadastro!H${row}:K${row}`), [renderCadastro], "Cartão removido", "Não foi possível remover");
 }
 
 function renderReservaCombo(saldo, saldoPrevisto, reserva, meta, mi){
@@ -3287,12 +3365,6 @@ function svgLine(points, color, w, h, fill){
     extra = `<path d="${path} L${points[points.length-1].x},${h} L${points[0].x},${h} Z" fill="${color}" opacity="0.12"/>`;
   }
   return extra + `<path d="${path}" fill="none" stroke="${color}" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>`;
-}
-
-function scalePoints(values, w, h, pad, max){
-  const n = values.length;
-  const step = (w - pad*2) / (n-1);
-  return values.map((v,i) => ({ x: pad + i*step, y: h - pad - (v/max)*(h-pad*2) }));
 }
 
 function fmtShort(n){
