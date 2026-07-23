@@ -3317,6 +3317,11 @@ function renderCredito(){
   document.getElementById("ccHolder").textContent = userName;
   document.getElementById("ccExpiry").textContent = vencimentoDia ? "Dia " + vencimentoDia : "—";
 
+  // Mostra os últimos 4 dígitos cadastrados (se o cartão tiver mais de um número físico associado,
+  // mostra só o primeiro da lista) — só pra deixar a UI mais parecida com um cartão de verdade.
+  const primeiroDigitos = ((cartaoRow[3] || "").toString().split(/[,;\s]+/).map(n => n.trim()).filter(Boolean)[0] || "").slice(-4);
+  document.getElementById("ccNumber").textContent = primeiroDigitos ? `•••• •••• •••• ${primeiroDigitos}` : "•••• •••• •••• ••••";
+
   const logoUrl = getBankLogoUrl(nomeCartao, cartaoRow[1]);
   const logoEl = document.getElementById("ccBrandLogo");
   if(logoUrl){
@@ -3504,13 +3509,15 @@ function renderCreditoLadoLado(){
     const logoHtml = logoUrl
       ? `<img src="${logoUrl}" onerror="this.remove()" alt="" style="width:22px;height:22px;border-radius:6px;background:#fff;object-fit:contain;padding:2px;margin-right:8px;vertical-align:middle;">`
       : "";
+    const primeiroDigitosLado = ((cartaoRow[3] || "").toString().split(/[,;\s]+/).map(n => n.trim()).filter(Boolean)[0] || "").slice(-4);
+    const miniNumero = primeiroDigitosLado ? `•••• •••• •••• ${primeiroDigitosLado}` : "•••• •••• •••• ••••";
 
     const card = document.createElement("div");
     card.className = "credito-side";
     card.innerHTML = `
       <div class="credito-mini-card ${isMetal ? "metal" : ""}" ${cardStyle ? `style="background:${cardStyle.background};"` : ""}>
         <div class="mini-brand" style="display:flex;align-items:center;">${logoHtml}${nomeCartao}</div>
-        <div class="mini-number">•••• •••• •••• ••••</div>
+        <div class="mini-number">${miniNumero}</div>
       </div>
       <div style="display:flex;justify-content:space-between;margin-bottom:14px;font-size:12px;color:var(--muted);">
         <span>${userName} · Vence dia ${vencimentoDia || "—"}</span>
