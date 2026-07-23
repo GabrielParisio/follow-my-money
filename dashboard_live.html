@@ -158,6 +158,7 @@
   }
   .card .accent{height:4px;flex-shrink:0;}
   .card .body{padding:16px;flex:1;min-height:0;overflow-y:auto;}
+  .card.no-scroll .body{overflow:visible;}
   .card .label{font-size:10.5px;letter-spacing:.04em;color:var(--muted);font-weight:700;text-transform:uppercase;margin-bottom:8px;}
   .card .value{font-size:22px;font-weight:700;line-height:1.1;margin-bottom:6px;}
   .card .sub{font-size:11.5px;color:var(--muted);}
@@ -3049,7 +3050,7 @@ function renderBalancoCardsShell(){
     { id:"cFatura", accent:"var(--purple)", label:"Fatura em aberto", valueStyle:"color:var(--purple)" },
     { id:"cTaxaPoupanca", accent:"var(--green)", label:"Taxa de poupança",
       tip:"Percentual da receita acumulada no ano (Jan até o mês atual) que sobrou como saldo positivo.", valueStyle:"color:var(--green)" },
-    { id:"cComprometimento", accent:"var(--red)", label:"Comprometimento de renda",
+    { id:"cComprometimento", accent:"var(--red)", label:"Comprometimento de renda", cardClass:"no-scroll",
       tip:"Soma de todas as parcelas fixas (dívidas + compras parceladas no cartão) que vencem neste mês, dividida pelo salário bruto (Cadastro) — ou pela receita do mês, se o salário bruto não estiver preenchido.",
       valueStyle:"color:var(--red)", extra:`<div id="comprometimentoChart" style="margin-top:10px;"></div>` },
   ];
