@@ -393,7 +393,7 @@
       <span class="active" data-view="resumo">📈 <b>Resumo</b></span>
       <span data-view="mensal">🏠 <b>Visão Mensal</b></span>
       <span data-view="investimentos">💰 <b>Investimentos</b></span>
-      <span data-view="lancamentos">🧾 <b>Lançamentos</b></span>
+      <span data-view="lancamentos">🧾 <b>Débito</b></span>
       <span data-view="credito">💳 <b>Crédito</b></span>
       <span data-view="dividas">📋 <b>Dívidas</b></span>
       <span data-view="cadastro">⚙️ <b>Cadastro</b></span>
@@ -704,6 +704,7 @@
         </div>
         <div class="chart-panel">
           <h2>Compras do mês</h2>
+          <div id="creditEditForm" class="hidden"></div>
           <div id="creditPurchases" style="max-height:420px;overflow-y:auto;"></div>
         </div>
       </div>
@@ -3229,7 +3230,8 @@ function renderCredito(){
     return;
   }
   const sorted = [...filtered].sort((a,b) => (a[0]||0) - (b[0]||0));
-  const rows = sorted.map(c => {
+  window._creditPurchasesCache = sorted.map(c => ({ c, row: 10 + raw.compras.indexOf(c) }));
+  const rows = window._creditPurchasesCache.map(({ c, row }) => {
     const [data, cartao, desc, cat, valorTotal, valorParcela, parcela] = c;
     const cleanCat = cat || "";
     const catColor = cleanCat ? colorForCategory(cleanCat) : "var(--muted)";
@@ -3241,6 +3243,7 @@ function renderCredito(){
       <td data-label="Descrição">${desc}${parcelaLabel}</td>
       <td data-label="Categoria"><span class="pill"><i style="width:8px;height:8px;border-radius:50%;background:${catColor};display:inline-block;margin-right:6px;"></i>${cleanCat}</span></td>
       <td class="val-col despesa" data-label="Valor">${fmtMoney(valorParcela || valorTotal)}</td>
+      <td data-label=""><button class="icon-btn" onclick="openCreditEditForm(${row})" title="Editar">✏️</button></td>
     </tr>`;
   }).join("");
   el.innerHTML = `<table class="lanc" style="table-layout:fixed;width:100%;">
@@ -3249,8 +3252,9 @@ function renderCredito(){
       <col style="width:auto;">
       <col style="width:120px;">
       <col style="width:90px;">
+      <col style="width:34px;">
     </colgroup>
-    <thead><tr><th>Data</th><th>Descrição</th><th>Categoria</th><th style="text-align:right;">Valor</th></tr></thead>
+    <thead><tr><th>Data</th><th>Descrição</th><th>Categoria</th><th style="text-align:right;">Valor</th><th></th></tr></thead>
     <tbody>${rows}</tbody>
   </table>`;
 }
@@ -3370,6 +3374,54 @@ function buildDonutFromTotals(totals, targetId, interactive, totalLabel){
     ${donutSvg}
     <div style="flex:1;min-width:180px;display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:4px 16px;">${legend}</div>
   </div>`;
+}
+
+// ===================== EDIÇÃO DE COMPRAS DO CARTÃO (mesmo padrão do Débito) =====================
+function openCreditEditForm(row){
+  const item = (window._creditPurchasesCache || []).find(x => x.row === row);
+  if(!item) return;
+  const [data, cartao, desc, cat, valorTotal, valorParcela] = item.c;
+  const formEl = document.getElementById("creditEditForm");
+  formEl.classList.remove("hidden");
+  formEl.innerHTML = `
+    <div class="edit-form">
+      <div><label>Descrição</label><input id="ceDesc" value="${desc}"></div>
+      <div><label>Categoria</label><select id="ceCat">${categoriaOptions(cat)}</select></div>
+      <div><label>Valor total</label><input id="ceValorTotal" type="number" step="0.01" value="${valorTotal}"></div>
+      <div><label>Valor da parcela</label><input id="ceValorParcela" type="number" step="0.01" value="${valorParcela}"></div>
+      <div class="actions">
+        <button class="save-btn" onclick="saveCreditEdit(${row})">Salvar alterações</button>
+        <button class="cancel-btn" onclick="closeCreditEditForm()">Cancelar</button>
+        <button class="cancel-btn" style="color:var(--red);border-color:var(--red);margin-left:auto;" onclick='deleteCreditCompra(${row}, ${JSON.stringify(desc)})'>Excluir</button>
+      </div>
+    </div>`;
+  formEl.scrollIntoView({ behavior: "smooth", block: "center" });
+}
+function closeCreditEditForm(){
+  const formEl = document.getElementById("creditEditForm");
+  formEl.classList.add("hidden");
+  formEl.innerHTML = "";
+}
+async function saveCreditEdit(row){
+  const desc = document.getElementById("ceDesc").value;
+  const cat = document.getElementById("ceCat").value;
+  const valorTotal = parseFloat(document.getElementById("ceValorTotal").value) || 0;
+  const valorParcela = parseFloat(document.getElementById("ceValorParcela").value) || 0;
+  await salvarEAtualizar(async () => {
+    // Crédito!B10:I -> D=Descrição E=Categoria F=Valor total G=Valor da parcela
+    await writeCellsBatch([
+      { range: `Crédito!D${row}`, value: desc },
+      { range: `Crédito!E${row}`, value: cat },
+      { range: `Crédito!F${row}`, value: valorTotal },
+      { range: `Crédito!G${row}`, value: valorParcela },
+    ]);
+    closeCreditEditForm();
+  }, [renderCredito], "Compra atualizada");
+}
+async function deleteCreditCompra(row, desc){
+  if(!confirm(`Excluir "${desc}"? Essa ação não pode ser desfeita.`)) return;
+  closeCreditEditForm();
+  await salvarEAtualizar(() => clearRange(`Crédito!B${row}:I${row}`), [renderCredito], "Compra excluída", "Não foi possível excluir");
 }
 
 function renderCreditCategoryChart(compras, targetId){
