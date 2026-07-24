@@ -6166,8 +6166,25 @@ window.onload = () => {
   setupModalOutsideClickClose();
   const toggleValoresBtn = document.getElementById("toggleValoresBtn");
   if(toggleValoresBtn && valoresOcultos) toggleValoresBtn.textContent = "🙈";
-  const client = initTokenClient();
-  document.getElementById("connectBtn").addEventListener("click", () => client.requestAccessToken({ prompt: "consent" }));
+  // Se o script do Google (accounts.google.com/gsi/client) não carregar — bloqueado por
+  // ad-blocker/extensão de privacidade, ou rede lenta — "google" não existe ainda e initTokenClient()
+  // quebra. Sem esse try/catch, o erro travava o resto do onload e o botão "Conectar" ficava sem
+  // nenhum listener, dando a impressão de que "nada acontece" ao clicar.
+  let client = null;
+  try{
+    client = initTokenClient();
+  }catch(err){
+    console.error("Falha ao iniciar o cliente do Google:", err);
+  }
+  document.getElementById("connectBtn").addEventListener("click", () => {
+    if(!client){
+      document.getElementById("gateError").textContent =
+        "Não consegui carregar o login do Google. Verifica sua conexão com a internet, ou se algum bloqueador de anúncios/extensão de privacidade está bloqueando accounts.google.com — e tenta recarregar a página.";
+      showScreen("gate");
+      return;
+    }
+    client.requestAccessToken({ prompt: "consent" });
+  });
   document.getElementById("retryBtn").addEventListener("click", () => resolveWorkspace());
   document.getElementById("refreshBtn").addEventListener("click", () => { if(accessToken) loadData(); });
   document.getElementById("switchSheetBtn").addEventListener("click", () => {
