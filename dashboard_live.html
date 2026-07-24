@@ -814,6 +814,24 @@
   </div>
 
   <div id="view-cadastro" class="view">
+    <div class="chart-panel" id="changelogDevPanel" style="border-color:var(--purple);">
+      <details>
+        <summary style="cursor:pointer;font-weight:700;font-size:15px;color:var(--purple);">🛠️ Changelog (uso interno de desenvolvimento)</summary>
+        <p style="font-size:11.5px;color:var(--muted);margin:10px 0 12px;">Só pra acompanhar o progresso enquanto o app está sendo construído — some depois que não precisar mais.</p>
+        <ul style="font-size:12.5px;line-height:1.7;padding-left:18px;margin:0;color:var(--text);">
+          <li>Tema claro/escuro, com alternância e persistência entre visitas</li>
+          <li>App instalável (PWA) — manifest, ícones e service worker</li>
+          <li>"Real" do Balanço migrado da planilha pro cálculo direto em JS</li>
+          <li>Reserva Inicial no Cadastro, integrada ao cálculo de patrimônio</li>
+          <li>Projeção de patrimônio em 12 meses, baseada na média real dos últimos meses</li>
+          <li>Excluir e categorizar em lote também na aba Débito (antes só existia na Crédito)</li>
+          <li>Detecção de compra parcelada na importação — lança as parcelas futuras automaticamente</li>
+          <li>Status de fatura (paga/atrasada/em aberto/sem gastos) dinâmico e sincronizado entre abas</li>
+          <li>Importação de fatura em PDF via OCR, com tela de conferência antes de gravar</li>
+          <li>Correção de bug de correspondência de texto no catálogo de cartões (chave curta "nu" batendo dentro de "platinum")</li>
+        </ul>
+      </details>
+    </div>
     <div class="chart-panel">
       <h2>📥 Importar dados</h2>
       <p style="font-size:12.5px;color:var(--muted);margin-top:-6px;margin-bottom:14px;">
@@ -4295,6 +4313,10 @@ function renderDetalheAnual(){
   if(sideEl) sideEl.innerHTML = html;
 }
 
+// Changelog de desenvolvimento — só pra acompanhar o que foi feito enquanto o app está sendo
+// construído. Pra esconder depois (quando não precisar mais), é só trocar pra false aqui.
+const MOSTRAR_CHANGELOG_DEV = true;
+
 const LOGO_DATA_URI = "data:image/png;base64,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";
 
 // ===================== IMPORTAÇÃO DE FATURA/EXTRATO (portado do Apps Script Code.gs) =====================
@@ -5082,6 +5104,10 @@ function setupModalOutsideClickClose(){
 
 window.onload = () => {
   aplicarTema(localStorage.getItem("ftm_tema") || "dark");
+  if(!MOSTRAR_CHANGELOG_DEV){
+    const changelogEl = document.getElementById("changelogDevPanel");
+    if(changelogEl) changelogEl.remove();
+  }
   if("serviceWorker" in navigator){
     navigator.serviceWorker.register("service-worker.js").catch(() => {}); // se falhar, o app continua funcionando normal, só sem instalação
   }
