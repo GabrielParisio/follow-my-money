@@ -2811,6 +2811,10 @@ const CATEGORIAS_PADRAO = [
   "📈 Investimento", "📌 Renda Fixa", "📊 Renda Variável", "🚨 Reserva de Emergência",
 ];
 function openConfigInicialModal(){
+  if(!raw){
+    showToast("Os dados ainda estão carregando — espera alguns segundos e tenta de novo", "error");
+    return;
+  }
   const nome = (raw.nomeUsuario && raw.nomeUsuario[0] && raw.nomeUsuario[0][0]) || "";
   const salario = getSalarioBruto();
   const reserva = getReservaInicial();
