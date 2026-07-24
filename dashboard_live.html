@@ -2385,9 +2385,17 @@ function debitoRows(){
 
 // "Previsto" migrado da planilha (era =SOMASES(valor; tipo; mês; ano) em Lançamentos(fx), sem filtro de status).
 // Calculado direto da aba Débito — não depende mais do espelho Lançamentos(fx).
+// Transferência entre suas próprias contas não é receita nem despesa de verdade — não muda seu
+// patrimônio, só move dinheiro de conta pra conta. Por isso essa categoria fica de fora dos
+// cálculos de Receita/Despesa (Previsto e Real), mesmo que o Tipo esteja marcado como Receita/Despesa.
+function ehCategoriaTransferencia(categoria){
+  return normalizeCatName(categoria || "").includes("transferencia");
+}
+
 function calcPrevisto(tipo, mesIdx, ano){
   return debitoRows().reduce((s, it) => {
     if(it.tipo !== tipo || !it.dataVenc) return s;
+    if(ehCategoriaTransferencia(it.categoria)) return s;
     const d = serialToDate(it.dataVenc);
     if(d.getMonth() !== mesIdx || d.getFullYear() !== ano) return s;
     return s + (it.valor || 0);
@@ -2401,6 +2409,7 @@ function calcReal(tipo, mesIdx, ano){
   return debitoRows().reduce((s, it) => {
     if(it.tipo !== tipo || !it.dataLanc) return s;
     if(it.status !== "✅ Pago") return s; // só conta o que já foi confirmado como pago — "Pendente" ainda não é "Real"
+    if(ehCategoriaTransferencia(it.categoria)) return s;
     const d = serialToDate(it.dataLanc);
     if(d.getMonth() !== mesIdx || d.getFullYear() !== ano) return s;
     return s + (it.valor || 0);
