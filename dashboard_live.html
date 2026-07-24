@@ -31,12 +31,12 @@
     --wood:#4A3728;
   }
   [data-theme="light"]{
-    --bg:#F5F3EE;
-    --panel:#FFFFFF;
-    --card:#FFFFFF;
-    --border:#E2DDD2;
-    --text:#28261F;
-    --muted:#75705F;
+    --bg:#E3EBE0;
+    --panel:#EFF4EC;
+    --card:#FAFCF8;
+    --border:#C6D6C0;
+    --text:#20291D;
+    --muted:#5B6B54;
     --green:#1F7A44;
     --red:#C23B34;
     --blue:#3D6FA0;
@@ -3564,7 +3564,8 @@ function getDividasParsed(){
     valorParcela: /valor da parcela/i,
     parcelasPagas: /parcelas pagas/i,
     taxaJuros: /taxa de juros|juros/i,
-    status: /status/i
+    status: /status/i,
+    vencimentoDia: /dia de vencimento|dia.*vencimento/i
   });
   // Guarda o mapeamento de colunas (a partir de B) pra saber em qual célula escrever ao editar
   window._dividasColMap = col;
@@ -3586,6 +3587,19 @@ function getDividasParsed(){
       // Do que já foi pago, quanto foi juro e quanto foi abatimento real do principal
       const principalAmortizado = saldoDevedorAutoCalculado ? valorInicial - saldoDevedor : null;
       const jurosPagos = saldoDevedorAutoCalculado ? valorPago - principalAmortizado : null;
+      const vencimentoDia = col.vencimentoDia >= 0 ? (parseInt(r[col.vencimentoDia], 10) || 0) : 0;
+      const parcelasRestantes = Math.max(0, numParcelas - parcelasPagas);
+      // Só dá pra calcular data de quitação prevista se soubermos o dia de vencimento — sem isso,
+      // só temos "quantas parcelas faltam", não "faltam quantos dias/meses até acabar".
+      let proximoVencimento = null, dataQuitacaoPrevista = null, diasRestantes = null, mesesRestantes = null;
+      if(vencimentoDia > 0 && parcelasRestantes > 0){
+        const hoje = new Date(); hoje.setHours(0,0,0,0);
+        proximoVencimento = new Date(hoje.getFullYear(), hoje.getMonth(), vencimentoDia);
+        if(proximoVencimento < hoje) proximoVencimento = new Date(hoje.getFullYear(), hoje.getMonth() + 1, vencimentoDia);
+        dataQuitacaoPrevista = new Date(proximoVencimento.getFullYear(), proximoVencimento.getMonth() + (parcelasRestantes - 1), vencimentoDia);
+        diasRestantes = Math.round((dataQuitacaoPrevista - hoje) / 86400000);
+        mesesRestantes = parcelasRestantes;
+      }
       return {
         row: headerRowIdx + 2 + i, // linha real na planilha (o range começa em B1)
         desc: r[col.desc] || "",
@@ -3598,6 +3612,12 @@ function getDividasParsed(){
         numParcelas,
         valorParcela,
         parcelasPagas,
+        parcelasRestantes,
+        vencimentoDia,
+        proximoVencimento,
+        dataQuitacaoPrevista,
+        diasRestantes,
+        mesesRestantes,
         taxaJuros: col.taxaJuros >= 0 ? r[col.taxaJuros] || 0 : 0,
         taxaJurosImplicita,
         status: col.status >= 0 ? r[col.status] || "" : ""
@@ -3684,6 +3704,7 @@ function renderDividas(){
         <div style="height:6px;background:var(--border);border-radius:3px;overflow:hidden;">
           <div style="height:100%;width:${Math.min(pctPago,100)}%;background:${quitada?"var(--green)":"var(--blue)"};border-radius:3px;"></div>
         </div>
+        ${d.dataQuitacaoPrevista ? `<div style="font-size:10.5px;color:var(--muted);margin-top:3px;">quita em ${fmtDate(d.dataQuitacaoPrevista)} · faltam ${d.mesesRestantes} ${d.mesesRestantes===1?"mês":"meses"} (${d.diasRestantes}d)</div>` : ""}
       </td>
       <td data-label="Status"><span class="pill">${d.status || "—"}</span></td>
       <td data-label=""><button class="icon-btn" onclick="openDividaEditForm(${d.row})" title="Editar">✏️</button></td>
@@ -3729,12 +3750,14 @@ function openDividaEditForm(row){
       <div><label>Nº de parcelas</label><input id="dfNumParcelas" type="number" step="1" value="${d.numParcelas}"></div>
       <div><label>Valor da parcela</label><input id="dfValorParcela" type="number" step="0.01" value="${d.valorParcela}"></div>
       <div><label>Parcelas pagas</label><input id="dfParcelasPagas" type="number" step="1" value="${d.parcelasPagas}"></div>
+      <div><label>Dia de vencimento da parcela</label><input id="dfVencimentoDia" type="number" min="1" max="31" value="${d.vencimentoDia || ""}" placeholder="Ex: 10"></div>
       <div>
         <label>Taxa de juros</label>
         <input id="dfTaxaJuros" type="number" step="0.01" value="${saldoAutoCalculado ? d.taxaJurosImplicita.toFixed(2) : d.taxaJuros}">
       </div>
       <div><label>Status</label><input id="dfStatus" value="${d.status}" placeholder="Em aberto / Quitada..."></div>
       ${saldoAutoCalculado ? `<div><label>Juros pagos até agora</label><input type="text" value="${fmtMoney(d.jurosPagos)}" disabled></div>` : ""}
+      ${d.dataQuitacaoPrevista ? `<div><label>Previsão de quitação</label><input type="text" value="${fmtDate(d.dataQuitacaoPrevista)} (${d.mesesRestantes} meses, ${d.diasRestantes} dias)" disabled></div>` : ""}
       <div class="actions">
         <button class="save-btn" onclick="saveDividaEdit(${row})">Salvar alterações</button>
         <button class="cancel-btn" onclick="closeDividaEditForm()">Cancelar</button>
@@ -3754,6 +3777,7 @@ async function saveDividaEdit(row){
     ["numParcelas", "dfNumParcelas", v => parseInt(v, 10) || 0],
     ["valorParcela", "dfValorParcela", v => parseFloat(v) || 0],
     ["parcelasPagas", "dfParcelasPagas", v => parseInt(v, 10) || 0],
+    ["vencimentoDia", "dfVencimentoDia", v => parseInt(v, 10) || 0],
     ["taxaJuros", "dfTaxaJuros", v => parseFloat(v) || 0],
     ["status", "dfStatus", v => v],
   ];
