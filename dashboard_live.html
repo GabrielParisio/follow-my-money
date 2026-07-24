@@ -2397,6 +2397,7 @@ function calcPrevisto(tipo, mesIdx, ano){
 function calcReal(tipo, mesIdx, ano){
   return debitoRows().reduce((s, it) => {
     if(it.tipo !== tipo || !it.dataLanc) return s;
+    if(it.status !== "✅ Pago") return s; // só conta o que já foi confirmado como pago — "Pendente" ainda não é "Real"
     const d = serialToDate(it.dataLanc);
     if(d.getMonth() !== mesIdx || d.getFullYear() !== ano) return s;
     return s + (it.valor || 0);
@@ -4529,7 +4530,11 @@ function renderCharts(){
   const saldo = row(50).map(v => v||0);
   const saldoPrevisto = [...Array(12)].map((_,i) => calcPrevisto("Receita", i, state.year) - calcPrevisto("Despesa", i, state.year));
   const reserva = row(53).map(v => v||0);
-  const meta = row(56).map(v => v||0);
+  // Meta unificada: sempre 12x o Salário Bruto cadastrado (mesma fonte usada no resto do app) — não
+  // lê mais da planilha, que podia ter um valor diferente/desatualizado guardado ali.
+  const salarioBrutoAno = getSalarioBruto();
+  const metaUnica = salarioBrutoAno > 0 ? salarioBrutoAno * 12 : (row(56)[0] || 0); // sem salário cadastrado, cai pro que já estava na planilha
+  const meta = Array(12).fill(metaUnica);
   const mi = state.monthIdx;
 
   const W = 500, H = 260, PAD = 34, PADL = 46;
@@ -4574,6 +4579,11 @@ function renderCharts(){
   function sectionRow(label){
     return `<tr class="section-header"><th>${label}</th>` + MONTHS.map(()=>"<td></td>").join("") + `</tr>`;
   }
+  // Pra valores que são o MESMO número o ano inteiro (como a Meta) — mostra uma vez só, numa
+  // célula mesclada, em vez de repetir o número idêntico em cada uma das 12 colunas.
+  function singleValueRow(label, valor){
+    return `<tr><th>${label}</th><td colspan="12" style="text-align:left;">${fmtMoney(valor)}${getSalarioBruto()>0 ? ' <span style="color:var(--muted);font-size:11px;">(12x salário bruto cadastrado)</span>' : ''}</td></tr>`;
+  }
   const receitaPrevistoArr = [...Array(12)].map((_,i) => calcPrevisto("Receita", i, state.year));
   const despesaPrevistoArr = [...Array(12)].map((_,i) => calcPrevisto("Despesa", i, state.year));
   const tableRows = [
@@ -4587,7 +4597,7 @@ function renderCharts(){
     dataRow("Saldo Real", saldo, {signed:true}),
     sectionRow("Reserva"),
     dataRow("Reserva Emergencial", reserva),
-    dataRow("Meta", meta),
+    singleValueRow("Meta", metaUnica),
   ].join("");
   const tabelaHtml = `
     <table class="monthly">
