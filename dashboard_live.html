@@ -2890,6 +2890,10 @@ const CARD_STYLES_RAW = {
   "mastercard black": { background: "linear-gradient(150deg, #1a1a1a, #000)", tier: 1 },
   // Referência real: prata/cinza metálico, acabamento fosco com textura gravada
   "amex platinum": { background: GRAD_METAL_PLATINUM, light: true, tier: 1 },
+  // Referência real enviada pelo usuário: preto fosco com detalhes dourados/bronze (borda ornamentada, brasão)
+  "bradesco centurion": { background: "linear-gradient(150deg, #0a0908 0%, #1c160a 45%, #050403 100%)", tier: 1 },
+  "amex centurion": { background: "linear-gradient(150deg, #0a0908 0%, #1c160a 45%, #050403 100%)", tier: 1 },
+  "american express centurion": { background: "linear-gradient(150deg, #0a0908 0%, #1c160a 45%, #050403 100%)", tier: 1 },
   "american express platinum": { background: GRAD_METAL_PLATINUM, light: true, tier: 1 },
   // Referência real enviada pelo usuário: azul marinho escuro (não preto), textura levemente fosca
   "amazon prime": { background: "linear-gradient(140deg, #16213e 0%, #0d1428 55%, #1b2a4a 100%)", tier: 1 },
@@ -2902,6 +2906,7 @@ const CARD_STYLES_RAW = {
   // ===== NÍVEL 2 — só o Modelo (usado quando não temos a variante daquele banco específico catalogada) =====
   "visa infinite": { background: "linear-gradient(150deg, #0a1128 0%, #1b2a4a 55%, #0a1128 100%)", tier: 2 },
   "platinum": { background: GRAD_METAL_PLATINUM, light: true, tier: 2 },
+  "centurion": { background: "linear-gradient(150deg, #0a0908 0%, #1c160a 45%, #050403 100%)", tier: 2 },
 
   // ===== NÍVEL 3 — só o Banco (último recurso, quando não sabemos nem o modelo) =====
   "nubank": { background: "linear-gradient(135deg, #9D2FCE 0%, #8A05BE 60%, #6a0d91 100%)", tier: 3 },
