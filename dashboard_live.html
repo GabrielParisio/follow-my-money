@@ -739,6 +739,7 @@
         <h2 style="margin:0;">Lançamentos do mês</h2>
         <div style="display:flex;gap:8px;flex-wrap:wrap;">
           <button class="connect-btn" onclick="analisarCategoriasDebito()">🏷️ Analisar categorias</button>
+          <button class="connect-btn" onclick="corrigirTipoInvestimentoDebito()">🔧 Corrigir aportes/resgates</button>
           <button class="connect-btn" id="novoLancBtn">+ Novo lançamento</button>
         </div>
       </div>
@@ -2882,6 +2883,37 @@ function updateLancBulkBar(){
 // automaticamente usando o mesmo motor de sugestão já usado na importação (histórico categorizado
 // + dicionário de palavras-chave). Nunca sobrescreve uma categoria que já foi escolhida — só
 // preenche o que está em branco.
+// Mesma lógica de palavra-chave do classificarLancamento() (usado na importação), aplicada aqui
+// pra ACHAR lançamentos que JÁ FORAM importados com Tipo errado (Receita/Despesa em vez de
+// Investimento/Resgate Investimento) — corrige o que ficou pra trás antes dessa palavra-chave existir.
+function pareceAporteOuResgate(desc){
+  const d = (desc || "").toLowerCase();
+  return d.indexOf("cdb") !== -1 || d.indexOf("aplicac") !== -1 || d.indexOf("invest") !== -1 ||
+    d.indexOf("rent.inv") !== -1 || d.indexOf("resg") !== -1;
+}
+async function corrigirTipoInvestimentoDebito(){
+  const candidatos = debitoRows().filter(it =>
+    (it.tipo === "Receita" || it.tipo === "Despesa") && pareceAporteOuResgate(it.desc)
+  );
+  if(candidatos.length === 0){
+    showToast("Não achei nenhum aporte/resgate classificado como Receita/Despesa comum", "success");
+    return;
+  }
+  const lista = candidatos.slice(0, 10).map(it => `• ${it.desc} (${fmtMoney(it.valor)})`).join("\n") +
+    (candidatos.length > 10 ? `\n... e mais ${candidatos.length - 10}` : "");
+  const confirmar = confirm(
+    `Encontrei ${candidatos.length} lançamento(s) que parecem aporte/resgate de investimento, mas estão contando como Receita/Despesa comum:\n\n${lista}\n\nReclassificar automaticamente pro tipo certo (Investimento/Resgate Investimento)?`
+  );
+  if(!confirmar) return;
+  const updates = candidatos.map(it => ({
+    range: `Débito!I${it.row}`,
+    value: it.tipo === "Receita" ? "Resgate Investimento" : "Investimento"
+  }));
+  await salvarEAtualizar(async () => {
+    await writeCellsBatch(updates);
+  }, [renderLancamentos, render, renderCharts], `${candidatos.length} lançamento${candidatos.length===1?"":"s"} reclassificado${candidatos.length===1?"":"s"}`);
+}
+
 async function analisarCategoriasDebito(){
   const semCategoria = debitoRows().filter(it => it.desc && !it.categoria);
   if(semCategoria.length === 0){
@@ -5145,8 +5177,10 @@ function parseExtratoDebitoRows(rows){
 
 function classificarLancamento(t){
   const desc = t.historico.toLowerCase();
+  // "resg" pega tanto "Resgate" quanto abreviações como "Resg/vencto" — "invest" sozinho não pega
+  // "Resgate Inv Fac" (só tem "Inv" abreviado, não "Invest" por extenso).
   const isInvest = desc.indexOf("cdb") !== -1 || desc.indexOf("aplicac") !== -1 ||
-    desc.indexOf("invest") !== -1 || desc.indexOf("rent.inv") !== -1;
+    desc.indexOf("invest") !== -1 || desc.indexOf("rent.inv") !== -1 || desc.indexOf("resg") !== -1;
   const isEntrada = t.credito && t.credito !== 0;
   if(isInvest) return isEntrada ? "Resgate Investimento" : "Investimento";
   return isEntrada ? "Receita" : "Despesa";
