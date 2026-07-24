@@ -4717,10 +4717,16 @@ function renderReservaCombo(saldo, saldoPrevisto, reserva, meta, mi){
   const el = document.getElementById("chartReservaCombo");
   if(!el) return;
 
+  // Garante 12 posições mesmo se a planilha estiver vazia (sem isso, reserva.slice(0, mi+1) num
+  // array vazio deixa "projetado" mais curto que 12 posições, e o acesso a pts[mi] mais na frente
+  // quebra com "Cannot read properties of undefined").
+  const reservaSegura = Array.from({ length: 12 }, (_, i) => reserva[i] || 0);
+  const saldoPrevistoSeguro = Array.from({ length: 12 }, (_, i) => saldoPrevisto[i] || 0);
+
   // Reserva real até o mês vigente, depois soma o Saldo Previsto (já calculado pela planilha) mês a mês
-  const projetado = reserva.slice(0, mi+1);
+  const projetado = reservaSegura.slice(0, mi+1);
   for(let i = mi+1; i < 12; i++){
-    projetado.push(projetado[i-1] + (saldoPrevisto[i] || 0));
+    projetado.push(projetado[i-1] + saldoPrevistoSeguro[i]);
   }
   const salarioBruto = getSalarioBruto();
   const metaAno = salarioBruto > 0 ? salarioBruto * 12 : (meta[mi] || meta[0] || 0);
