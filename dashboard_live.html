@@ -537,6 +537,37 @@
   </div>
 
   <div id="view-investimentos" class="view">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+      <h2 style="margin:0;">💰 Investimentos</h2>
+      <button class="connect-btn" onclick="openInvestModal()">Editar</button>
+    </div>
+    <div id="investModal" class="modal-overlay hidden">
+      <div class="modal-box">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
+          <h2 style="margin:0;">Editar investimentos</h2>
+          <button class="icon-btn" style="font-size:20px;" onclick="closeInvestModal()">✕</button>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:12px;">
+          <label>Reserva
+            <input id="investReservaInput" type="number" step="0.01" oninput="updateInvestModalTotal()" style="width:100%;box-sizing:border-box;margin-top:4px;padding:10px 12px;border-radius:8px;border:1px solid var(--border,#444);background:var(--bg2,#1a1a1a);color:inherit;">
+          </label>
+          <label>Renda Fixa
+            <input id="investRendaFixaInput" type="number" step="0.01" oninput="updateInvestModalTotal()" style="width:100%;box-sizing:border-box;margin-top:4px;padding:10px 12px;border-radius:8px;border:1px solid var(--border,#444);background:var(--bg2,#1a1a1a);color:inherit;">
+          </label>
+          <label>Renda Variável
+            <input id="investRendaVariavelInput" type="number" step="0.01" oninput="updateInvestModalTotal()" style="width:100%;box-sizing:border-box;margin-top:4px;padding:10px 12px;border-radius:8px;border:1px solid var(--border,#444);background:var(--bg2,#1a1a1a);color:inherit;">
+          </label>
+          <div style="display:flex;justify-content:space-between;padding-top:8px;border-top:1px solid var(--border,#444);">
+            <span>Total (calculado)</span>
+            <strong id="investModalTotal" style="color:var(--gold);">—</strong>
+          </div>
+          <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:8px;">
+            <button class="icon-btn" onclick="closeInvestModal()">Cancelar</button>
+            <button class="connect-btn" id="investSaveBtn" onclick="saveInvestimentos()">Salvar</button>
+          </div>
+        </div>
+      </div>
+    </div>
     <div class="cards" style="margin-bottom:16px;">
       <div class="card"><div class="accent" style="background:var(--blue)"></div>
         <div class="body"><div class="label">Reserva</div>
@@ -914,7 +945,7 @@ async function loadData(){
       "Cadastro!F4",
       "Lançamentos(fx)!A2:K",
       "Crédito!C8:D8",
-      "Investimentos!C4:C7",
+      "Investimentos!C4:C6",
       "Cadastro!H7:K8",
       "Crédito!B10:I",
       "Cadastro!T6",
@@ -964,6 +995,18 @@ async function writeCell(a1Range, value){
     method: "PUT",
     headers: { Authorization: "Bearer " + accessToken, "Content-Type": "application/json" },
     body: JSON.stringify({ values: [[value]] })
+  });
+  if(!res.ok) throw new Error("Falha ao salvar (" + res.status + ")");
+  return res.json();
+}
+
+// Escreve vários valores de uma coluna de uma vez só (uma requisição, evita escrita parcial se der erro no meio)
+async function writeColumn(a1Range, values){
+  const url = `https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}/values/${encodeURIComponent(a1Range)}?valueInputOption=USER_ENTERED`;
+  const res = await fetch(url, {
+    method: "PUT",
+    headers: { Authorization: "Bearer " + accessToken, "Content-Type": "application/json" },
+    body: JSON.stringify({ values: values.map(v => [v]) })
   });
   if(!res.ok) throw new Error("Falha ao salvar (" + res.status + ")");
   return res.json();
@@ -1535,12 +1578,18 @@ function closeSidebar(){
 }
 
 // ===================== INVESTIMENTOS =====================
+// Converte pra número com segurança — texto/vazio/erro na célula vira 0 em vez de quebrar a conta
+function safeNum(v){
+  const n = Number(v);
+  return Number.isFinite(n) ? n : 0;
+}
+
 function renderInvestimentos(){
   const rows = raw.invest || [];
-  const reserva = (rows[0] && rows[0][0]) || 0;
-  const rendaFixa = (rows[1] && rows[1][0]) || 0;
-  const rendaVariavel = (rows[2] && rows[2][0]) || 0;
-  const total = (rows[3] && rows[3][0]) || (reserva + rendaFixa + rendaVariavel);
+  const reserva = safeNum(rows[0] && rows[0][0]);
+  const rendaFixa = safeNum(rows[1] && rows[1][0]);
+  const rendaVariavel = safeNum(rows[2] && rows[2][0]);
+  const total = reserva + rendaFixa + rendaVariavel;
 
   document.getElementById("iReserva").textContent = fmtMoney(reserva);
   document.getElementById("iRendaFixa").textContent = fmtMoney(rendaFixa);
@@ -1559,6 +1608,47 @@ function renderInvestimentos(){
   legend.innerHTML = parts.map(p =>
     `<span><i style="background:${p.color}"></i>${p.label} — ${fmtPct(p.value/sum)}</span>`
   ).join("");
+}
+
+function openInvestModal(){
+  const rows = raw.invest || [];
+  document.getElementById("investReservaInput").value = safeNum(rows[0] && rows[0][0]);
+  document.getElementById("investRendaFixaInput").value = safeNum(rows[1] && rows[1][0]);
+  document.getElementById("investRendaVariavelInput").value = safeNum(rows[2] && rows[2][0]);
+  updateInvestModalTotal();
+  document.getElementById("investModal").classList.remove("hidden");
+}
+
+function closeInvestModal(){
+  document.getElementById("investModal").classList.add("hidden");
+}
+
+function updateInvestModalTotal(){
+  const reserva = safeNum(document.getElementById("investReservaInput").value);
+  const rendaFixa = safeNum(document.getElementById("investRendaFixaInput").value);
+  const rendaVariavel = safeNum(document.getElementById("investRendaVariavelInput").value);
+  document.getElementById("investModalTotal").textContent = fmtMoney(reserva + rendaFixa + rendaVariavel);
+}
+
+async function saveInvestimentos(){
+  const reserva = safeNum(document.getElementById("investReservaInput").value);
+  const rendaFixa = safeNum(document.getElementById("investRendaFixaInput").value);
+  const rendaVariavel = safeNum(document.getElementById("investRendaVariavelInput").value);
+  const btn = document.getElementById("investSaveBtn");
+  btn.disabled = true;
+  btn.textContent = "Salvando...";
+  try{
+    await writeColumn("Investimentos!C4:C6", [reserva, rendaFixa, rendaVariavel]);
+    raw.invest = [[reserva], [rendaFixa], [rendaVariavel]];
+    renderInvestimentos();
+    closeInvestModal();
+    showToast("Investimentos atualizados", "success");
+  }catch(err){
+    showToast("Erro ao salvar: " + err.message, "error");
+  }finally{
+    btn.disabled = false;
+    btn.textContent = "Salvar";
+  }
 }
 
 // ===================== LANÇAMENTOS =====================
