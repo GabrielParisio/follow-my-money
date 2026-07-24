@@ -410,6 +410,10 @@
   <p>Conecte sua conta Google pra carregar seus dados financeiros.</p>
   <button id="connectBtn">Conectar com Google</button>
   <p id="gateError" style="color:var(--red);"></p>
+  <p style="font-size:11.5px;color:var(--muted);max-width:340px;margin-top:18px;line-height:1.5;">
+    ℹ️ O Google pode mostrar um aviso de "app não verificado" — é esperado numa versão beta,
+    não é um problema de segurança. Clique em <b>"Avançado"</b> e depois em <b>"Ir para Legacy (não seguro)"</b> pra continuar.
+  </p>
 </div>
 
 <div id="picker" class="gate hidden">
@@ -697,6 +701,17 @@
     </div>
   </div>
 
+  <div id="configInicialModal" class="modal-overlay hidden">
+    <div class="modal-box" style="max-width:600px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+        <h2 style="margin:0;">🚀 Configuração Inicial</h2>
+        <button class="icon-btn" style="font-size:20px;" onclick="closeConfigInicialModal()">✕</button>
+      </div>
+      <p style="font-size:12px;color:var(--muted);margin:0 0 16px;">Preenche o que quiser aqui e clica em "Concluir configuração" no final — grava tudo de uma vez.</p>
+      <div id="configInicialBody"></div>
+    </div>
+  </div>
+
   <div id="scoreDetalheModal" class="modal-overlay hidden">
     <div class="modal-box" style="max-width:520px;">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
@@ -785,6 +800,7 @@
         <div style="display:flex;gap:8px;flex-wrap:wrap;">
           <button class="connect-btn" onclick="analisarCategoriasDebito()">🏷️ Analisar categorias</button>
           <button class="connect-btn" onclick="corrigirTipoInvestimentoDebito()">🔧 Corrigir aportes/resgates</button>
+          <button class="connect-btn" onclick="detectarERemoverDuplicatasDebito()">🔍 Detectar e remover duplicatas</button>
           <button class="connect-btn" id="novoLancBtn">+ Novo lançamento</button>
         </div>
       </div>
@@ -929,11 +945,23 @@
         </ul>
       </details>
     </div>
+    <div class="chart-panel" style="border-color:var(--gold);">
+      <h2>🚀 Primeira vez aqui?</h2>
+      <p style="font-size:12.5px;color:var(--muted);margin-top:-6px;margin-bottom:14px;">
+        Preenche tudo de uma vez num formulário só — nome, salário, orçamento, categorias e cartões. Sem precisar mexer em planilha nenhuma.
+      </p>
+      <button class="connect-btn" style="background:var(--gold);color:#1A1917;border:none;font-weight:700;" onclick="openConfigInicialModal()">Começar Configuração Inicial</button>
+    </div>
     <div class="chart-panel">
       <h2>📥 Importar dados</h2>
       <p style="font-size:12.5px;color:var(--muted);margin-top:-6px;margin-bottom:14px;">
         Roda tudo aqui no navegador — não depende mais do Apps Script da planilha. A coluna "Categoria" fica em branco de propósito; escolha depois no menu suspenso de cada linha.
       </p>
+      <div style="background:rgba(232,170,61,.08);border:1px solid rgba(232,170,61,.3);border-radius:10px;padding:12px 14px;margin-bottom:16px;font-size:12.5px;line-height:1.6;">
+        ⚠️ <b>Fase beta:</b> a leitura automática hoje foi construída em cima do formato de arquivo do <b>Bradesco</b> especificamente (é o único banco testado até agora). Com outro banco, é <b>provável que a importação não funcione</b> — o app foi desenhado pra procurar frases e colunas exatas do extrato do Bradesco.
+        <br><br>
+        Mesmo assim, <b>incentivamos você a testar com o extrato do seu banco</b> — é assim que a gente descobre o que precisa ajustar. Se der erro (ou importar tudo errado), <b>tira um print da tela e me manda</b> — isso ajuda bastante a expandir o suporte pra outros bancos.
+      </div>
       <div class="edit-form" style="margin-bottom:0;">
         <div>
           <label>Fatura de cartão (CSV)</label>
@@ -1241,12 +1269,11 @@ setInterval(updateLastUpdatedLabel, 30000);
 async function loadData(){
   setLoading(true);
   try{
-    const [balanco, cadastro, orcadoTotal, lanc, credito, invest, cartoes, compras, nomeUsuario, debito, dividas, salarioBruto, reservaInicial] = await fetchRanges([
+    const [balanco, cadastro, orcadoTotal, lanc, invest, cartoes, compras, nomeUsuario, debito, dividas, salarioBruto, reservaInicial] = await fetchRanges([
       "Balanço!D44:O56",
       "Cadastro!B7:F60",
       "Cadastro!F4",
       "Lançamentos(fx)!A2:K",
-      "Crédito!C8:D8",
       "Investimentos!C4:C7",
       "Cadastro!H7:K20",
       "Crédito!B10:I",
@@ -1256,7 +1283,7 @@ async function loadData(){
       "Cadastro!T8",
       "Cadastro!T10"
     ]);
-    raw = { balanco, cadastro, orcadoTotal, lanc, credito, invest, cartoes, compras, nomeUsuario, debito, dividas, salarioBruto, reservaInicial };
+    raw = { balanco, cadastro, orcadoTotal, lanc, invest, cartoes, compras, nomeUsuario, debito, dividas, salarioBruto, reservaInicial };
     state.lastUpdated = Date.now();
     updateLastUpdatedLabel();
     setupSelectors();
@@ -1428,7 +1455,7 @@ function setupSelectors(){
 }
 
 function render(){
-  const { balanco, cadastro, orcadoTotal, lanc, credito } = raw;
+  const { balanco, cadastro, orcadoTotal, lanc } = raw;
   const mi = state.monthIdx;
 
   // Balanço!D44:O56 -> row 44 is offset 0 (Real/Reserva/Meta ainda vêm da planilha; Previsto já migrado pro app)
@@ -1629,7 +1656,7 @@ function renderResumo(){
   const totalDevedor = dividasAtivas.reduce((s,d) => s + d.saldoDevedor, 0);
   const totalParcelaMensalDividas = dividasAtivas.reduce((s,d) => s + d.valorParcela, 0);
 
-  const faturaValor = (raw.credito[0] && raw.credito[0][1]) || 0;
+  const faturaValor = (raw.cartoes || []).filter(r => r[0]).reduce((s, c) => s + calcularValorFaturaCartaoMes(c[0], mi, state.year), 0);
   const numCartoes = (raw.cartoes || []).filter(r => r[0]).length;
 
   // Cards de atalho pras outras abas — altura fixa (mesmo padrão do resto do app), só cresce na horizontal.
@@ -2774,6 +2801,114 @@ function faixaScore(score){
   if(score >= 500) return { label: "Atenção", emoji: "🟠", cor: "#E8823D" };
   if(score >= 300) return { label: "Risco", emoji: "🔴", cor: "var(--red)" };
   return { label: "Crítico", emoji: "⚫", cor: "#8a2f2f" };
+}
+
+// ===================== CONFIGURAÇÃO INICIAL (sem precisar de script na planilha) =====================
+const CATEGORIAS_PADRAO = [
+  "🏠 Moradia", "🛒 Mercado", "🍔 Comida fora", "🎮 Lazer", "🚗 Transporte",
+  "💊 Saúde", "🎁 Presente", "📄 Impostos", "🛠️ Serviços/Utilidades",
+  "🔄 Transferência", "📋 Fatura do Cartão", "💰 Receita",
+  "📈 Investimento", "📌 Renda Fixa", "📊 Renda Variável", "🚨 Reserva de Emergência",
+];
+function openConfigInicialModal(){
+  const nome = (raw.nomeUsuario && raw.nomeUsuario[0] && raw.nomeUsuario[0][0]) || "";
+  const salario = getSalarioBruto();
+  const reserva = getReservaInicial();
+  const orcadoTotalAtual = (raw.orcadoTotal && raw.orcadoTotal[0] && raw.orcadoTotal[0][0]) || 0;
+  const categoriasExistentes = getCadastroCategoriasParsed();
+  const cartoesExistentes = getCadastroCartoesParsed();
+
+  // Usa categorias já existentes se tiver; senão, começa com a lista padrão
+  const categoriasIniciais = categoriasExistentes.length > 0
+    ? categoriasExistentes.map(c => ({ nome: c.nome, orcado: c.orcado }))
+    : CATEGORIAS_PADRAO.map(nome => ({ nome, orcado: 0 }));
+
+  const linhasCategoria = categoriasIniciais.map((c, i) => `
+    <div style="display:flex;gap:8px;margin-bottom:6px;">
+      <input class="ci-cat-nome" value="${c.nome}" style="flex:2;">
+      <input class="ci-cat-orcado" type="number" step="0.01" value="${c.orcado || 0}" style="flex:1;">
+    </div>`).join("");
+
+  const linhasCartao = Array.from({ length: Math.max(3, cartoesExistentes.length) }, (_, i) => {
+    const c = cartoesExistentes[i] || { nome: "", bandeira: "", vencimento: "", ultimosDigitos: "" };
+    return `
+    <div style="display:flex;gap:6px;margin-bottom:6px;">
+      <input class="ci-card-nome" placeholder="Nome" value="${c.nome || ""}" style="flex:2;">
+      <input class="ci-card-banco" placeholder="Banco" value="${c.bandeira || ""}" style="flex:2;">
+      <input class="ci-card-dia" placeholder="Dia" type="number" min="1" max="31" value="${c.vencimento || ""}" style="flex:1;">
+      <input class="ci-card-digitos" placeholder="Últ. 4 díg." value="${c.ultimosDigitos || ""}" style="flex:1;">
+    </div>`;
+  }).join("");
+
+  document.getElementById("configInicialBody").innerHTML = `
+    <div class="edit-form" style="margin-bottom:16px;">
+      <div><label>Nome completo</label><input id="ciNome" value="${nome}"></div>
+      <div><label>Salário bruto mensal</label><input id="ciSalario" type="number" step="0.01" value="${salario || 0}"></div>
+      <div><label>Reserva já acumulada</label><input id="ciReserva" type="number" step="0.01" value="${reserva || 0}"></div>
+      <div><label>Orçado total (mensal)</label><input id="ciOrcadoTotal" type="number" step="0.01" value="${orcadoTotalAtual || 0}"></div>
+    </div>
+    <h3 style="font-size:13.5px;margin:0 0 8px;">Categorias e orçamento mensal</h3>
+    <div id="ciCategorias" style="max-height:220px;overflow-y:auto;margin-bottom:16px;">${linhasCategoria}</div>
+    <button class="connect-btn" style="font-size:12px;margin-bottom:16px;" onclick="adicionarLinhaCategoriaConfigInicial()">+ Adicionar categoria</button>
+    <h3 style="font-size:13.5px;margin:0 0 8px;">Cartões de crédito (opcional, pode deixar em branco)</h3>
+    <div id="ciCartoes" style="margin-bottom:16px;">${linhasCartao}</div>
+    <div class="actions">
+      <button class="save-btn" onclick="salvarConfigInicial()">✅ Concluir configuração</button>
+      <button class="cancel-btn" onclick="closeConfigInicialModal()">Cancelar</button>
+    </div>`;
+  document.getElementById("configInicialModal").classList.remove("hidden");
+}
+function adicionarLinhaCategoriaConfigInicial(){
+  const el = document.getElementById("ciCategorias");
+  el.insertAdjacentHTML("beforeend", `
+    <div style="display:flex;gap:8px;margin-bottom:6px;">
+      <input class="ci-cat-nome" placeholder="Nome da categoria" style="flex:2;">
+      <input class="ci-cat-orcado" type="number" step="0.01" value="0" style="flex:1;">
+    </div>`);
+}
+async function salvarConfigInicial(){
+  const nome = document.getElementById("ciNome").value.trim();
+  const salario = parseFloat(document.getElementById("ciSalario").value) || 0;
+  const reserva = parseFloat(document.getElementById("ciReserva").value) || 0;
+  const orcadoTotal = parseFloat(document.getElementById("ciOrcadoTotal").value) || 0;
+
+  const updates = [
+    { range: "Cadastro!T6", value: nome },
+    { range: "Cadastro!T8", value: salario },
+    { range: "Cadastro!T10", value: reserva },
+    { range: "Cadastro!F4", value: orcadoTotal },
+  ];
+
+  const catNomes = [...document.querySelectorAll(".ci-cat-nome")].map(el => el.value.trim());
+  const catOrcados = [...document.querySelectorAll(".ci-cat-orcado")].map(el => parseFloat(el.value) || 0);
+  catNomes.forEach((catNome, i) => {
+    if(!catNome) return;
+    updates.push({ range: `Cadastro!B${8+i}`, value: catNome });
+    updates.push({ range: `Cadastro!F${8+i}`, value: catOrcados[i] });
+  });
+
+  const cardNomes = [...document.querySelectorAll(".ci-card-nome")].map(el => el.value.trim());
+  const cardBancos = [...document.querySelectorAll(".ci-card-banco")].map(el => el.value.trim());
+  const cardDias = [...document.querySelectorAll(".ci-card-dia")].map(el => el.value.trim());
+  const cardDigitos = [...document.querySelectorAll(".ci-card-digitos")].map(el => el.value.trim());
+  let linhaCartao = 8;
+  cardNomes.forEach((cardNome, i) => {
+    if(!cardNome) return;
+    updates.push({ range: `Cadastro!H${linhaCartao}`, value: cardNome });
+    updates.push({ range: `Cadastro!I${linhaCartao}`, value: cardBancos[i] });
+    updates.push({ range: `Cadastro!J${linhaCartao}`, value: cardDias[i] });
+    updates.push({ range: `Cadastro!K${linhaCartao}`, value: cardDigitos[i] });
+    linhaCartao++;
+  });
+
+  await salvarEAtualizar(async () => {
+    await writeCellsBatch(updates);
+    closeConfigInicialModal();
+  }, [renderCadastro, render, renderCharts], "✅ Configuração salva! Você já pode usar o app normalmente.", "Não foi possível salvar a configuração");
+}
+function closeConfigInicialModal(){
+  document.getElementById("configInicialModal").classList.add("hidden");
+  document.getElementById("configInicialBody").innerHTML = "";
 }
 
 function openScoreDetalheModal(){
@@ -5015,6 +5150,46 @@ function setCreditSortOrder(valor){
   renderCredito();
 }
 
+// Mesmo princípio do getGruposCompraDuplicada (Crédito), aplicado à aba Débito — mesma data,
+// descrição e valor conta como duplicata.
+function getGruposLancamentoDuplicado(){
+  const grupos = {};
+  debitoRows().forEach(it => {
+    if(!it.desc || !it.dataVenc) return;
+    const key = chaveTransacaoImport(fmtDataBR(serialToDate(it.dataVenc)), it.desc, it.valor || 0);
+    if(!grupos[key]) grupos[key] = [];
+    grupos[key].push({ row: it.row, categoria: it.categoria || "" });
+  });
+  return Object.values(grupos).filter(g => g.length > 1);
+}
+async function detectarERemoverDuplicatasDebito(){
+  const grupos = getGruposLancamentoDuplicado();
+  if(grupos.length === 0){
+    showToast("Nenhuma duplicata encontrada (mesma data, descrição e valor)", "success");
+    return;
+  }
+  const totalRemover = grupos.reduce((s,g) => s + (g.length - 1), 0);
+  const confirmar = confirm(
+    `Encontrei ${grupos.length} grupo(s) de lançamentos duplicados (mesma data, descrição e valor), ` +
+    `totalizando ${totalRemover} linha(s) a remover.\n\n` +
+    `Em cada grupo, mantenho a cópia que já tem categoria preenchida (ou a primeira, se nenhuma tiver) ` +
+    `e removo as outras.\n\nConfirma a remoção? Essa ação não pode ser desfeita.`
+  );
+  if(!confirmar) return;
+
+  await salvarEAtualizar(async () => {
+    const rowsParaRemover = [];
+    grupos.forEach(g => {
+      const idxComCategoria = g.findIndex(item => item.categoria);
+      const manterIdx = idxComCategoria !== -1 ? idxComCategoria : 0;
+      g.forEach((item, idx) => { if(idx !== manterIdx) rowsParaRemover.push(item.row); });
+    });
+    const colunas = ["B","C","D","E","F","G","H","I","J","K"];
+    const updates = rowsParaRemover.flatMap(row => colunas.map(col => ({ range: `Débito!${col}${row}`, value: "" })));
+    await writeCellsBatch(updates);
+  }, [renderLancamentos], `${totalRemover} linha(s) duplicada(s) removida(s)`, "Não foi possível remover as duplicatas");
+}
+
 async function detectarERemoverDuplicatas(){
   const grupos = getGruposCompraDuplicada();
   if(grupos.length === 0){
@@ -6137,6 +6312,7 @@ function setupModalOutsideClickClose(){
     creditEditModal: closeCreditEditForm,
     pdfPreviewModal: closePdfPreviewModal,
     scoreDetalheModal: closeScoreDetalheModal,
+    configInicialModal: closeConfigInicialModal,
     lancEditModal: closeForm,
     simuladorQuitacaoModal: closeSimuladorQuitacao,
     lancarFaturaModal: closeLancarFaturaModal,
