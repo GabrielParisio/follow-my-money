@@ -69,7 +69,7 @@
   [data-theme="light"] .sidebar .profile-hint{ color:#E3D3B0; }
   [data-theme="light"] .sidebar .tabs{ color:#E3D3B0; }
   [data-theme="light"] .sidebar .tabs span:hover{ color:#FFFFFF; }
-  [data-theme="light"] .sidebar .tabs .active{ color:#FFFFFF; }
+  [data-theme="light"] .sidebar .tabs .active{ color:#FFFFFF; background:var(--deep-green); }
   [data-theme="light"] .sidebar #lastUpdated{ color:#E3D3B0 !important; }
   .main-content{flex:1;min-width:0;padding:24px 24px 60px;}
   .brand{font-weight:700;font-size:17px;display:flex;align-items:center;gap:9px;margin-bottom:28px;padding:0 8px;color:var(--gold);}
@@ -1499,14 +1499,17 @@ function render(){
   // ---- Score de Saúde Financeira ----
   const cScoreEl = document.getElementById("cScoreSaude");
   if(cScoreEl){
-    const { score, notas, delta } = calcularScoreSaudeFinanceira();
-    window._scoreSaudeAtual = { score, notas, delta };
+    const { score, notas, delta } = calcularScoreSaudeFinanceira(mi, state.year);
+    const mediaAcumulada = calcularScoreMediaAcumulada(mi, state.year);
+    window._scoreSaudeAtual = { score, notas, delta, mediaAcumulada };
     const faixa = faixaScore(score);
     cScoreEl.textContent = score;
     cScoreEl.style.color = faixa.cor;
     const deltaTexto = delta ? ` · ${delta.deltaScore >= 0 ? "+" : ""}${delta.deltaScore} nos últimos 30 dias` : "";
+    const mediaTexto = mediaAcumulada && mediaAcumulada.mesesConsiderados > 1
+      ? ` · média Jan-${MONTHS[mi]}: <b>${mediaAcumulada.media}</b>` : "";
     document.getElementById("cScoreSaudeSub").innerHTML =
-      `<span style="color:${faixa.cor};font-weight:700;">${faixa.emoji} ${faixa.label}</span>${deltaTexto} · toque no card pra ver o detalhamento`;
+      `<span style="color:${faixa.cor};font-weight:700;">${faixa.emoji} ${faixa.label}</span>${deltaTexto}${mediaTexto} · toque no card pra ver o detalhamento`;
     const itens = [
       { label: "Fluxo de Caixa", nota: notas.fluxo },
       { label: "Poupança", nota: notas.poupanca },
@@ -1679,11 +1682,12 @@ function renderBenchmark(mi){
 function renderCategorias(lanc, mi){
   renderBenchmark(mi);
   const totals = {};
-  lanc.forEach(r => {
-    const categoria = r[5], tipo = r[6], valor = r[7], mes = r[9], ano = r[10];
-    if(!categoria || tipo !== "Despesa") return;
-    if((mes - 1) !== mi || ano !== state.year) return;
-    totals[categoria] = (totals[categoria] || 0) + (valor || 0);
+  debitoRows().forEach(it => {
+    if(!it.categoria || it.tipo !== "Despesa" || !it.dataVenc) return;
+    if(ehCategoriaTransferencia(it.categoria) || ehCategoriaFaturaCartao(it.categoria)) return;
+    const d = serialToDate(it.dataVenc);
+    if(d.getMonth() !== mi || d.getFullYear() !== state.year) return;
+    totals[it.categoria] = (totals[it.categoria] || 0) + (it.valor || 0);
   });
   const sorted = Object.entries(totals).sort((a,b) => b[1]-a[1]).slice(0,6);
   const el = document.getElementById("catList");
@@ -1700,16 +1704,18 @@ function renderCategorias(lanc, mi){
 // ===================== MODAL "GASTOS POR CATEGORIA" (gráfico donut, mesmo estilo da aba Crédito) =====================
 let categoriaDonutView = "mes";
 
-// Soma Débito (lanc) + Crédito (compras) por categoria, num intervalo de meses [mesIni..mesFim] do state.year
+// Soma Débito + Crédito por categoria, num intervalo de meses [mesIni..mesFim] do state.year —
+// só Despesa de verdade (exclui Transferência e Fatura do Cartão, que não são categorias de gasto).
 function gastosPorCategoriaCombinado(mesIni, mesFim){
   const totals = {};
-  (raw.lanc || []).forEach(r => {
-    const categoria = r[5], tipo = r[6], valor = r[7], mes = r[9], ano = r[10];
-    if(!categoria || tipo !== "Despesa") return;
-    if(ano !== state.year) return;
-    const mIdx = mes - 1;
+  debitoRows().forEach(it => {
+    if(!it.categoria || it.tipo !== "Despesa" || !it.dataVenc) return;
+    if(ehCategoriaTransferencia(it.categoria) || ehCategoriaFaturaCartao(it.categoria)) return;
+    const d = serialToDate(it.dataVenc);
+    if(d.getFullYear() !== state.year) return;
+    const mIdx = d.getMonth();
     if(mIdx < mesIni || mIdx > mesFim) return;
-    totals[categoria] = (totals[categoria] || 0) + (valor || 0);
+    totals[it.categoria] = (totals[it.categoria] || 0) + (it.valor || 0);
   });
   (raw.compras || []).filter(c => c[2] && c[7]).forEach(c => {
     const d = serialToDate(c[7]);
@@ -1987,11 +1993,12 @@ function renderAlertas(lanc, mi){
 
   const gastoPorCategoriaMes = (targetMi, targetYear) => {
     const map = {};
-    lanc.forEach(r => {
-      const categoria = r[5], tipo = r[6], valor = r[7], mes = r[9], ano = r[10];
-      if(!categoria || tipo !== "Despesa") return;
-      if((mes-1) !== targetMi || ano !== targetYear) return;
-      map[categoria] = (map[categoria] || 0) + (valor || 0);
+    debitoRows().forEach(it => {
+      if(!it.categoria || it.tipo !== "Despesa" || !it.dataVenc) return;
+      if(ehCategoriaTransferencia(it.categoria) || ehCategoriaFaturaCartao(it.categoria)) return;
+      const d = serialToDate(it.dataVenc);
+      if(d.getMonth() !== targetMi || d.getFullYear() !== targetYear) return;
+      map[it.categoria] = (map[it.categoria] || 0) + (it.valor || 0);
     });
     return map;
   };
@@ -2054,11 +2061,12 @@ function renderAlertas(lanc, mi){
 
 function renderOrcadoReal(lanc, mi){
   const gastoPorCategoria = {};
-  lanc.forEach(r => {
-    const categoria = r[5], tipo = r[6], valor = r[7], mes = r[9], ano = r[10];
-    if(!categoria || tipo !== "Despesa") return;
-    if((mes - 1) !== mi || ano !== state.year) return;
-    gastoPorCategoria[categoria] = (gastoPorCategoria[categoria] || 0) + (valor || 0);
+  debitoRows().forEach(it => {
+    if(!it.categoria || it.tipo !== "Despesa" || !it.dataVenc) return;
+    if(ehCategoriaTransferencia(it.categoria) || ehCategoriaFaturaCartao(it.categoria)) return;
+    const d = serialToDate(it.dataVenc);
+    if(d.getMonth() !== mi || d.getFullYear() !== state.year) return;
+    gastoPorCategoria[it.categoria] = (gastoPorCategoria[it.categoria] || 0) + (it.valor || 0);
   });
   // Inclui compras parceladas/à vista no cartão de crédito com vencimento neste mês
   (raw.compras || []).filter(c => c[2] && c[7]).forEach(c => {
@@ -2097,10 +2105,10 @@ function renderOrcadoReal(lanc, mi){
 
 function renderVencimentos(lanc){
   const today = new Date(); today.setHours(0,0,0,0);
-  const items = lanc
-    .filter(r => r[8] !== "✅ Pago" && r[1])
-    .map(r => ({ date: serialToDate(r[1]), desc: r[2] }))
-    .filter(r => r.date >= today)
+  const items = debitoRows()
+    .filter(it => it.status !== "✅ Pago" && it.dataVenc && it.tipo !== "Receita")
+    .map(it => ({ date: serialToDate(it.dataVenc), desc: it.desc }))
+    .filter(it => it.date >= today)
     .sort((a,b) => a.date - b.date)
     .slice(0,4);
   const el = document.getElementById("vencList");
@@ -2403,6 +2411,14 @@ function debitoRows(){
 function ehCategoriaTransferencia(categoria){
   return normalizeCatName(categoria || "").includes("transferencia");
 }
+// Fatura do Cartão é uma CONSOLIDADORA de pagamento (o pagamento do total das compras já feitas no
+// cartão, cada uma com sua própria categoria) — não é ela mesma "um gasto de categoria X". Por isso
+// fica fora do detalhamento "Gastos por categoria" (senão duplicaria: a compra individual já conta
+// na categoria dela, e a fatura contaria de novo como uma categoria à parte). Continua contando
+// normalmente na Despesa Real total, já que é dinheiro que realmente saiu da conta.
+function ehCategoriaFaturaCartao(categoria){
+  return normalizeCatName(categoria || "").includes("fatura");
+}
 
 function calcPrevisto(tipo, mesIdx, ano){
   return debitoRows().reduce((s, it) => {
@@ -2467,7 +2483,7 @@ function faixaScore(score){
 function openScoreDetalheModal(){
   const dados = window._scoreSaudeAtual;
   if(!dados) return;
-  const { score, notas, delta } = dados;
+  const { score, notas, delta, mediaAcumulada } = dados;
   const faixa = faixaScore(score);
   const componentes = [
     { chave: "fluxo", label: "Fluxo de Caixa", peso: 22, nota: notas.fluxo,
@@ -2482,6 +2498,11 @@ function openScoreDetalheModal(){
       desc: "Patrimônio líquido positivo (60 pts) + cresceu nos últimos 12 meses (40 pts)." },
   ];
   const nomesPilar = { fluxo: "Fluxo de Caixa", poupanca: "Poupança", endividamento: "Endividamento", liquidez: "Liquidez", patrimonio: "Patrimônio" };
+  const mediaHtml = mediaAcumulada && mediaAcumulada.mesesConsiderados > 1 ? `
+    <div style="display:flex;justify-content:space-between;align-items:center;background:var(--card);border:1px solid var(--border);border-radius:10px;padding:10px 14px;margin-bottom:12px;">
+      <span style="font-size:12.5px;color:var(--muted);">Média acumulada (Jan-${MONTHS[dados.mesIdx ?? new Date().getMonth()]}, ${mediaAcumulada.mesesConsiderados} meses)</span>
+      <span style="font-size:15px;font-weight:700;color:${faixaScore(mediaAcumulada.media).cor};">${mediaAcumulada.media}</span>
+    </div>` : "";
   const deltaHtml = delta ? `
     <div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:12px 14px;margin-bottom:18px;">
       <div style="font-size:13px;font-weight:600;margin-bottom:8px;">
@@ -2500,6 +2521,7 @@ function openScoreDetalheModal(){
       <div style="font-size:13px;color:${faixa.cor};font-weight:600;">${faixa.emoji} ${faixa.label}</div>
       <div style="font-size:11.5px;color:var(--muted);margin-top:4px;">Escala de 0 a 1000, mesmo formato de um score de crédito</div>
     </div>
+    ${mediaHtml}
     ${deltaHtml}
     ${componentes.map(c => {
       const cor = c.nota >= 70 ? "var(--green)" : c.nota >= 40 ? "var(--yellow)" : "var(--red)";
@@ -2540,11 +2562,13 @@ function interpolarNota(valor, pontos){
 // Score de Saúde Financeira — 5 pilares (Comportamento Financeiro fica pra depois; o peso dele foi
 // redistribuído proporcionalmente entre os outros 5, senão o score nunca chegaria em 1000).
 // Pesos: Fluxo de Caixa 22% · Poupança 22% · Endividamento 22% · Liquidez 17% · Patrimônio 17%
-function calcularScoreSaudeFinanceira(){
+function calcularScoreSaudeFinanceira(mesIdx, ano){
   const hoje = new Date();
-  const mi = hoje.getMonth(), ano = hoje.getFullYear();
+  const mi = mesIdx !== undefined ? mesIdx : hoje.getMonth();
+  ano = ano !== undefined ? ano : hoje.getFullYear();
+  const ehMesAtualReal = mi === hoje.getMonth() && ano === hoje.getFullYear();
 
-  // Médias dos últimos 6 meses (usadas em Fluxo de Caixa e Liquidez)
+  // Médias dos 6 meses anteriores ao mês calculado (usadas em Fluxo de Caixa e Liquidez)
   let somaSaldo6m = 0, somaReceita6m = 0, somaDespesa6m = 0, mesesComDado6m = 0;
   for(let i = 1; i <= 6; i++){
     const d = new Date(ano, mi - i, 1);
@@ -2554,17 +2578,17 @@ function calcularScoreSaudeFinanceira(){
     somaSaldo6m += (r - de); somaReceita6m += r; somaDespesa6m += de; mesesComDado6m++;
   }
 
-  // ---- 1) Fluxo de Caixa (peso 22%) — saldo médio dos últimos 6 meses, como % da receita média
+  // ---- 1) Fluxo de Caixa (peso 22%) — saldo médio dos 6 meses anteriores, como % da receita média
   const percSaldoMedio = somaReceita6m > 0 ? (somaSaldo6m / somaReceita6m * 100) : 0;
   const notaFluxo = interpolarNota(percSaldoMedio, [[-50,0],[0,50],[5,70],[10,85],[20,100]]);
 
-  // ---- 2) Capacidade de Poupança (peso 22%) — índice de poupança do mês atual
+  // ---- 2) Capacidade de Poupança (peso 22%) — índice de poupança do mês calculado
   const receitaReal = calcReal("Receita", mi, ano);
   const despesaReal = calcReal("Despesa", mi, ano);
   const indicePoupanca = receitaReal > 0 ? ((receitaReal - despesaReal) / receitaReal * 100) : 0;
   const notaPoupanca = interpolarNota(indicePoupanca, [[0,0],[5,20],[10,40],[15,60],[20,80],[25,90],[30,100]]);
 
-  // ---- 3) Endividamento (peso 22%) — comprometimento de renda (parcelas fixas / renda)
+  // ---- 3) Endividamento (peso 22%) — comprometimento de renda (parcelas fixas / renda) do mês calculado
   const dividasAtivas = getDividasParsed().filter(d => !isDividaQuitada(d));
   const dividasParcelaMensal = dividasAtivas.reduce((s,d) => s + (d.valorParcela||0), 0);
   const inicioMes = new Date(ano, mi, 1), fimMes = new Date(ano, mi+1, 1);
@@ -2578,18 +2602,18 @@ function calcularScoreSaudeFinanceira(){
   const notaEndividamento = interpolarNota(comprometimento, [[0,100],[20,100],[30,85],[40,60],[50,30],[100,0]]);
 
   // ---- 4) Liquidez (peso 17%) — Reserva ÷ despesa mensal média = meses de sobrevivência
+  // (usa a reserva ATUAL, já que o histórico mês a mês do saldo da reserva não é mais reconstruído)
   const reservaAtual = calcSaldoInvestimento("Reserva de Emergência");
   const despesaMediaMensal = mesesComDado6m > 0 ? (somaDespesa6m / mesesComDado6m) : 0;
   const mesesSobrevivencia = despesaMediaMensal > 0 ? (reservaAtual / despesaMediaMensal) : (reservaAtual > 0 ? 12 : 0);
   const notaLiquidez = interpolarNota(mesesSobrevivencia, [[0,0],[1,27],[3,67],[6,87],[12,100]]);
 
-  // ---- 5) Patrimônio (peso 17%) — patrimônio líquido positivo + cresceu nos últimos 12 meses
-  // (o critério "cresce acima da inflação" fica pra depois — precisa de um dado externo, o IPCA,
-  // que o app ainda não busca)
+  // ---- 5) Patrimônio (peso 17%) — patrimônio líquido positivo + cresceu nos 12 meses antes do mês calculado
   const totalAtivos = calcSaldoInvestimento("Reserva de Emergência") + calcSaldoInvestimento("Renda Fixa") + calcSaldoInvestimento("Renda Variável");
   const totalDividas = dividasAtivas.reduce((s,d) => s + (d.saldoDevedor||0), 0);
   const patrimonioPositivo = (totalAtivos - totalDividas) > 0;
   const dozeAtras = new Date(ano, mi - 12, 1);
+  const fimDoMesCalculado = new Date(ano, mi + 1, 0, 23, 59, 59);
   let aportesLiquidos12m = 0;
   debitoRows().forEach(it => {
     if(!it.dataVenc) return;
@@ -2597,7 +2621,7 @@ function calcularScoreSaudeFinanceira(){
     const ehBucketPatrimonio = ["reserva de emergencia","renda fixa","renda variavel"].some(c => catNorm === normalizeCatName(c));
     if(!ehBucketPatrimonio) return;
     const d = serialToDate(it.dataVenc);
-    if(d < dozeAtras) return;
+    if(d < dozeAtras || d > fimDoMesCalculado) return;
     if(it.tipo === "Investimento") aportesLiquidos12m += (it.valor || 0);
     if(it.tipo === "Resgate Investimento") aportesLiquidos12m -= (it.valor || 0);
   });
@@ -2622,10 +2646,30 @@ function calcularScoreSaudeFinanceira(){
   };
   const score = Math.round(notaFinal0a100 * 10); // escala 0-1000, igual score de crédito
 
-  const delta = calcularDeltaScore(score, notas);
-  salvarSnapshotScore(score, notas);
+  // Só grava retrato/compara variação quando o mês calculado é o mês real de hoje — não faz sentido
+  // "variação nos últimos 30 dias" pra um score recalculado de um mês passado que você está navegando.
+  let delta = null;
+  if(ehMesAtualReal){
+    delta = calcularDeltaScore(score, notas);
+    salvarSnapshotScore(score, notas);
+  }
 
-  return { score, notas, pesos, delta, mesesSobrevivencia };
+  return { score, notas, pesos, delta, mesesSobrevivencia, mesIdx: mi, ano };
+}
+
+// Média do Score de Saúde Financeira acumulada de Janeiro até o mês informado (mesmo ano) — mesmo
+// princípio já usado no Índice de Poupança acumulado. Pula meses sem nenhum lançamento (receita e
+// despesa ambos zerados), pra não puxar a média artificialmente pra baixo.
+function calcularScoreMediaAcumulada(mesIdx, ano){
+  const scores = [];
+  for(let m = 0; m <= mesIdx; m++){
+    const r = calcReal("Receita", m, ano);
+    const de = calcReal("Despesa", m, ano);
+    if(r === 0 && de === 0) continue;
+    scores.push(calcularScoreSaudeFinanceira(m, ano).score);
+  }
+  if(scores.length === 0) return null;
+  return { media: Math.round(scores.reduce((s,v) => s+v, 0) / scores.length), mesesConsiderados: scores.length };
 }
 
 // Guarda um "retrato" do score de hoje no localStorage (no máximo 1 por dia) — histórico usado
