@@ -58,6 +58,9 @@
     border-right:1px solid var(--border);
     display:flex;flex-direction:column;padding:22px 16px;position:sticky;top:0;height:100vh;overflow-y:auto;
   }
+  [data-theme="light"] .sidebar{
+    background:linear-gradient(165deg,var(--wood) 0%,#7a5f47 60%,var(--panel) 160%);
+  }
   .main-content{flex:1;min-width:0;padding:24px 24px 60px;}
   .brand{font-weight:700;font-size:17px;display:flex;align-items:center;gap:9px;margin-bottom:28px;padding:0 8px;color:var(--gold);}
   .brand span{color:var(--gold);}
@@ -421,7 +424,6 @@
       <span data-view="lancamentos">🧾 <b>Débito</b></span>
       <span data-view="credito">💳 <b>Crédito</b></span>
       <span data-view="dividas">📋 <b>Dívidas</b></span>
-      <span data-view="cadastro">⚙️ <b>Cadastro</b></span>
     </div>
     <div class="sidebar-footer">
       <div id="lastUpdated" style="font-size:11px;color:var(--muted);margin-bottom:10px;"></div>
@@ -703,9 +705,12 @@
       <input id="lancSearchInput" type="text" placeholder="🔎 Buscar por descrição..." style="width:100%;background:var(--panel);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:9px 12px;font-size:13px;margin-bottom:14px;">
       <div id="lancBulkBar" class="hidden" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:12px;padding:10px 14px;background:var(--card);border:1px solid var(--border);border-radius:10px;">
         <span id="lancBulkCount" style="font-size:13px;color:var(--muted);"></span>
-        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+          <select id="lancBulkCategoriaSelect" style="background:var(--panel);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:7px 9px;font-size:13px;"></select>
+          <button class="connect-btn" onclick="bulkCategorizarLancamentos()">Categorizar selecionadas</button>
           <button class="connect-btn" onclick="bulkMarkLancamentos(true)">✅ Marcar como pago</button>
           <button class="connect-btn" onclick="bulkMarkLancamentos(false)">Marcar como pendente</button>
+          <button class="connect-btn" style="color:var(--red);border-color:var(--red);" onclick="bulkExcluirLancamentos()">🗑️ Excluir selecionadas</button>
         </div>
       </div>
       <div id="novoLancForm" class="hidden"></div>
@@ -2138,10 +2143,15 @@ function setupTabs(){
   });
 }
 
-// Chamado pelo bloco de perfil na sidebar — simula o clique na aba Cadastro
+// Chamado pelo bloco de perfil na sidebar — troca pra visão Cadastro diretamente
+// (não depende mais de existir uma aba "Cadastro" na barra de abas, já que ela foi removida de lá).
 function goToCadastro(){
-  const tab = document.querySelector('.tabs [data-view="cadastro"]');
-  if(tab) tab.click();
+  document.querySelectorAll(".tabs [data-view]").forEach(t => t.classList.remove("active"));
+  document.querySelectorAll(".view").forEach(v => v.classList.remove("active"));
+  const view = document.getElementById("view-cadastro");
+  if(view) view.classList.add("active");
+  closeSidebar();
+  if(raw) renderCadastro();
 }
 
 function setupSidebarToggle(){
@@ -2383,6 +2393,18 @@ function updateLancBulkBar(){
   bar.classList.toggle("hidden", count === 0);
   const countEl = document.getElementById("lancBulkCount");
   if(countEl) countEl.textContent = count + " selecionado" + (count===1?"":"s");
+  const sel = document.getElementById("lancBulkCategoriaSelect");
+  if(sel && count > 0) sel.innerHTML = categoriaOptions(null);
+}
+async function bulkCategorizarLancamentos(){
+  const rows = Array.from(lancSelectedRows);
+  if(rows.length === 0) return;
+  const categoria = document.getElementById("lancBulkCategoriaSelect").value;
+  if(!categoria){ showToast("Escolha uma categoria primeiro", "error"); return; }
+  await salvarEAtualizar(async () => {
+    await writeCellsBatch(rows.map(row => ({ range: `Débito!H${row}`, value: categoria })));
+    lancSelectedRows.clear();
+  }, [renderLancamentos], `${rows.length} lançamento${rows.length===1?"":"s"} categorizado${rows.length===1?"":"s"}`, "Não foi possível categorizar em lote");
 }
 async function bulkMarkLancamentos(marcarPago){
   const rows = Array.from(lancSelectedRows);
@@ -2398,6 +2420,20 @@ async function bulkMarkLancamentos(marcarPago){
   }catch(err){
     showToast("Não foi possível atualizar em lote: " + err.message, "error");
   }
+}
+
+async function bulkExcluirLancamentos(){
+  const rows = Array.from(lancSelectedRows);
+  if(rows.length === 0) return;
+  if(!confirm(`Excluir ${rows.length} lançamento${rows.length===1?"":"s"} selecionado${rows.length===1?"":"s"}? Essa ação não pode ser desfeita.`)) return;
+  await salvarEAtualizar(async () => {
+    // Uma única requisição em lote (limpando B:K de cada linha) em vez de uma chamada por linha —
+    // mesmo padrão já usado na exclusão em lote da aba Crédito.
+    const colunas = ["B","C","D","E","F","G","H","I","J","K"];
+    const updates = rows.flatMap(row => colunas.map(col => ({ range: `Débito!${col}${row}`, value: "" })));
+    await writeCellsBatch(updates);
+    lancSelectedRows.clear();
+  }, [renderLancamentos, renderCredito, refreshCalendarIfOpen], `${rows.length} lançamento${rows.length===1?"":"s"} excluído${rows.length===1?"":"s"}`, "Não foi possível excluir em lote");
 }
 
 async function toggleStatus(row, isPago){
