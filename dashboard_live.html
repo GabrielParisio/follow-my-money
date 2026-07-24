@@ -61,6 +61,16 @@
   [data-theme="light"] .sidebar{
     background:linear-gradient(165deg,#8a6f52 0%,#c4a878 55%,var(--panel) 150%);
   }
+  /* --gold e --muted normais são escuros de propósito (pra contrastar em fundo branco) — mas aqui o
+     fundo é o degradê marrom da própria barra, então usamos tons claros específicos só pra ela. */
+  [data-theme="light"] .sidebar .brand,
+  [data-theme="light"] .sidebar .brand span{ color:#F5EBD3; }
+  [data-theme="light"] .sidebar .profile-name{ color:#FBF8F0; }
+  [data-theme="light"] .sidebar .profile-hint{ color:#E3D3B0; }
+  [data-theme="light"] .sidebar .tabs{ color:#E3D3B0; }
+  [data-theme="light"] .sidebar .tabs span:hover{ color:#FFFFFF; }
+  [data-theme="light"] .sidebar .tabs .active{ color:#FFFFFF; }
+  [data-theme="light"] .sidebar #lastUpdated{ color:#E3D3B0 !important; }
   .main-content{flex:1;min-width:0;padding:24px 24px 60px;}
   .brand{font-weight:700;font-size:17px;display:flex;align-items:center;gap:9px;margin-bottom:28px;padding:0 8px;color:var(--gold);}
   .brand span{color:var(--gold);}
