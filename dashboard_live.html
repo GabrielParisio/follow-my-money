@@ -4,6 +4,14 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Follow My Money — Dashboard</title>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#1A1917">
+<link rel="icon" type="image/png" href="icons/icon-192.png">
+<!-- Tags específicas do iOS/Safari — o Android já usa o manifest.json acima -->
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Follow My Money">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 <style>
   :root{
@@ -21,6 +29,20 @@
     --gold:#E8DCC0;
     --deep-green:#25392F;
     --wood:#4A3728;
+  }
+  [data-theme="light"]{
+    --bg:#F5F3EE;
+    --panel:#FFFFFF;
+    --card:#FFFFFF;
+    --border:#E2DDD2;
+    --text:#28261F;
+    --muted:#75705F;
+    --green:#1F7A44;
+    --red:#C23B34;
+    --blue:#3D6FA0;
+    --yellow:#B9800E;
+    --purple:#7A5A9E;
+    --gold:#8A6A1F;
   }
   *{box-sizing:border-box;}
   body{
@@ -418,6 +440,7 @@
         <div style="display:flex;align-items:center;gap:8px;">
           <h1 id="greeting" style="margin-bottom:0;">Olá</h1>
           <button id="toggleValoresBtn" class="icon-round-btn" onclick="toggleValoresOcultos()" title="Ocultar valores" style="width:30px;height:30px;font-size:13px;flex-shrink:0;">👁️</button>
+          <button id="toggleThemeBtn" class="icon-round-btn" onclick="toggleTheme()" title="Alternar tema claro/escuro" style="width:30px;height:30px;font-size:13px;flex-shrink:0;">🌙</button>
         </div>
         <div class="subtitle">
           <span id="summaryLine">Aqui está o resumo</span>
@@ -465,6 +488,20 @@
             <span><i style="background:var(--blue)"></i>Reserva real</span>
             <span><i style="background:var(--muted)"></i>Projeção</span>
             <span><i style="background:var(--muted);opacity:.6;"></i>Meta (benchmark)</span>
+          </div>
+        </div>
+        <div class="chart-panel">
+          <h2>Índice de poupança — últimos 12 meses</h2>
+          <div id="chartTaxaPoupanca12m"></div>
+          <div class="legend">
+            <span><i style="background:var(--green)"></i>% da receita que sobrou naquele mês</span>
+          </div>
+        </div>
+        <div class="chart-panel">
+          <h2>Reserva de Emergência — últimos 12 meses</h2>
+          <div id="chartReserva12m"></div>
+          <div class="legend">
+            <span><i style="background:var(--blue)"></i>Saldo acumulado no fim de cada mês</span>
           </div>
         </div>
       </div>
@@ -828,6 +865,17 @@
     </div>
 
     <div class="chart-panel">
+      <h2>🚨 Reserva inicial</h2>
+      <p style="font-size:12.5px;color:var(--muted);margin-top:-6px;margin-bottom:14px;">
+        O saldo de Reserva de Emergência que você já tinha guardado <b>antes</b> de começar a usar o app. Serve de ponto de partida — o cálculo de patrimônio soma os lançamentos de Investimento/Resgate a partir daqui, em vez de começar do zero.
+      </p>
+      <div class="edit-form" style="margin-bottom:0;">
+        <div><label>Reserva já acumulada</label><input id="cadReservaInicial" type="number" step="0.01" placeholder="0.00"></div>
+        <div class="actions"><button class="save-btn" onclick="saveCadastroReservaInicial()">Salvar</button></div>
+      </div>
+    </div>
+
+    <div class="chart-panel">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
         <h2 style="margin:0;">🏷️ Orçamento por categoria</h2>
         <button class="connect-btn" onclick="addCadastroCategoria()">+ Nova categoria</button>
@@ -1075,7 +1123,7 @@ setInterval(updateLastUpdatedLabel, 30000);
 async function loadData(){
   setLoading(true);
   try{
-    const [balanco, cadastro, orcadoTotal, lanc, credito, invest, cartoes, compras, nomeUsuario, debito, dividas, salarioBruto] = await fetchRanges([
+    const [balanco, cadastro, orcadoTotal, lanc, credito, invest, cartoes, compras, nomeUsuario, debito, dividas, salarioBruto, reservaInicial] = await fetchRanges([
       "Balanço!D44:O56",
       "Cadastro!B7:F60",
       "Cadastro!F4",
@@ -1087,9 +1135,10 @@ async function loadData(){
       "Cadastro!T6",
       "Débito!B1:K",
       "Dívidas!B1:M",
-      "Cadastro!T8"
+      "Cadastro!T8",
+      "Cadastro!T10"
     ]);
-    raw = { balanco, cadastro, orcadoTotal, lanc, credito, invest, cartoes, compras, nomeUsuario, debito, dividas, salarioBruto };
+    raw = { balanco, cadastro, orcadoTotal, lanc, credito, invest, cartoes, compras, nomeUsuario, debito, dividas, salarioBruto, reservaInicial };
     state.lastUpdated = Date.now();
     updateLastUpdatedLabel();
     setupSelectors();
@@ -1265,7 +1314,7 @@ function render(){
   const mi = state.monthIdx;
 
   // Balanço!D44:O56 -> row 44 is offset 0 (Real/Reserva/Meta ainda vêm da planilha; Previsto já migrado pro app)
-  const row = (n) => balanco[n - 44] || [];
+  const row = (n) => rowComRealCalculado(n, balanco, state.year);
   const receitaPrevisto = calcPrevisto("Receita", mi, state.year);
   const despesaPrevisto = calcPrevisto("Despesa", mi, state.year);
   const saldoPrevisto = receitaPrevisto - despesaPrevisto;
@@ -1366,6 +1415,23 @@ function render(){
       `${fmtMoney(totalAtivos)} em ativos (Reserva + Renda Fixa + Renda Variável) · descontando dívidas: ${fmtMoney(patrimonioDescontado)}`;
   }
 
+  // ---- Projeção "se continuar assim" (média de saldo dos últimos meses, projetada 12 meses à frente) ----
+  const cProjecaoEl = document.getElementById("cProjecaoPatrimonio");
+  if(cProjecaoEl){
+    const { mediaSaldo, mesesConsiderados } = calcularMediaSaldoMensal();
+    if(mesesConsiderados === 0){
+      cProjecaoEl.textContent = "—";
+      document.getElementById("cProjecaoPatrimonioSub").textContent = "Sem histórico suficiente ainda";
+    } else {
+      const projecao12m = totalAtivos + mediaSaldo * 12;
+      cProjecaoEl.textContent = fmtMoney(projecao12m);
+      cProjecaoEl.style.color = projecao12m >= totalAtivos ? "var(--purple)" : "var(--red)";
+      const projecao6m = totalAtivos + mediaSaldo * 6;
+      document.getElementById("cProjecaoPatrimonioSub").textContent =
+        `Média de ${fmtMoney(mediaSaldo)}/mês (últimos ${mesesConsiderados} meses) · em 6 meses: ${fmtMoney(projecao6m)}`;
+    }
+  }
+
   renderCategorias(lanc, mi);
   renderVencimentos(lanc);
   renderOrcadoReal(lanc, mi);
@@ -1392,7 +1458,7 @@ function renderResumo(){
   if(!raw) return;
   setupResumoToggle();
   const mi = state.monthIdx;
-  const row = (n) => raw.balanco[n-44] || [];
+  const row = (n) => rowComRealCalculado(n, raw.balanco, state.year);
   const receitaReal = row(48)[mi] || 0;
   const despesaReal = row(49)[mi] || 0;
   const saldoReal = row(50)[mi] || 0;
@@ -1468,6 +1534,18 @@ function greetingWord(){
 }
 
 // Oculta/mostra todos os valores monetários do app (privacidade em tela compartilhada) — mexe direto no fmtMoney/fmtPct
+// Tema claro/escuro — persiste no localStorage, aplica via atributo data-theme na tag <html>
+function aplicarTema(tema){
+  document.documentElement.setAttribute("data-theme", tema);
+  const btn = document.getElementById("toggleThemeBtn");
+  if(btn) btn.textContent = tema === "light" ? "☀️" : "🌙";
+  localStorage.setItem("ftm_tema", tema);
+}
+function toggleTheme(){
+  const atual = document.documentElement.getAttribute("data-theme") === "light" ? "dark" : "light";
+  aplicarTema(atual);
+}
+
 function toggleValoresOcultos(){
   valoresOcultos = !valoresOcultos;
   localStorage.setItem("ftm_valores_ocultos", valoresOcultos ? "1" : "0");
@@ -1777,7 +1855,7 @@ function renderAlertas(lanc, mi){
   });
 
   // 3) Déficit no mês (despesa > receita)
-  const row = (n) => (raw.balanco[n-44] || []);
+  const row = (n) => rowComRealCalculado(n, raw.balanco, state.year);
   const receitaReal = row(48)[mi] || 0, despesaReal = row(49)[mi] || 0;
   if(despesaReal > receitaReal && receitaReal > 0){
     alertas.push({ id: `deficit-${mi}-${state.year}`, type: "danger", icon: "📉",
@@ -2153,6 +2231,99 @@ function calcPrevisto(tipo, mesIdx, ano){
   }, 0);
 }
 
+// "Real" migrado da planilha (antes lia direto da célula D48:O50 do Balanço, calculada por fórmula
+// lá dentro) — agora calculado direto da aba Débito, igual ao Previsto, só que pela DATA DE
+// LANÇAMENTO (o que realmente aconteceu) em vez da data de vencimento (o que estava previsto).
+function calcReal(tipo, mesIdx, ano){
+  return debitoRows().reduce((s, it) => {
+    if(it.tipo !== tipo || !it.dataLanc) return s;
+    const d = serialToDate(it.dataLanc);
+    if(d.getMonth() !== mesIdx || d.getFullYear() !== ano) return s;
+    return s + (it.valor || 0);
+  }, 0);
+}
+function calcRealAno(tipo, ano){
+  return Array.from({ length: 12 }, (_, mi) => calcReal(tipo, mi, ano));
+}
+
+// Janela de 12 meses rolante contando pra trás a partir do mês atual (não o mês em exibição no
+// app) — pode atravessar virada de ano (ex: Ago/2025 até Jul/2026).
+function getUltimos12Meses(){
+  const hoje = new Date();
+  return Array.from({ length: 12 }, (_, k) => {
+    const i = 11 - k;
+    const d = new Date(hoje.getFullYear(), hoje.getMonth() - i, 1);
+    return { mesIdx: d.getMonth(), ano: d.getFullYear(), label: MONTHS[d.getMonth()] };
+  });
+}
+
+// Índice de poupança de UM mês específico: (receita - despesa) / receita. Retorna null quando não
+// há receita no mês (evita divisão por zero e "100% de poupança" enganoso pra mês sem dado).
+function calcTaxaPoupancaMes(mesIdx, ano){
+  const receita = calcReal("Receita", mesIdx, ano);
+  const despesa = calcReal("Despesa", mesIdx, ano);
+  if(receita <= 0) return null;
+  return (receita - despesa) / receita * 100;
+}
+
+// Saldo da Reserva de Emergência TAL COMO ESTAVA no fim de um mês específico (não o saldo atual) —
+// mesma lógica do calcSaldoInvestimento, só que ignorando lançamentos posteriores àquele mês.
+function calcSaldoInvestimentoAteMes(categoriaAlvo, mesIdx, ano){
+  const alvoNorm = normalizeCatName(categoriaAlvo);
+  const fimDoMes = new Date(ano, mesIdx + 1, 0, 23, 59, 59);
+  const items = debitoRows()
+    .filter(it => normalizeCatName(it.categoria) === alvoNorm)
+    .filter(it => it.tipo === "Investimento" || it.tipo === "Resgate Investimento")
+    .filter(it => it.dataVenc)
+    .filter(it => serialToDate(it.dataVenc) <= fimDoMes)
+    .sort((a,b) => a.dataVenc - b.dataVenc);
+
+  let baseline = alvoNorm === normalizeCatName("Reserva de Emergência") ? getReservaInicial() : 0;
+  let startIdx = 0;
+  for(let i = items.length - 1; i >= 0; i--){
+    if(/ajuste saldo total/i.test(items[i].desc || "")){
+      baseline = items[i].valor || 0;
+      startIdx = i + 1;
+      break;
+    }
+  }
+  return items.slice(startIdx).reduce((s, it) => {
+    if(it.tipo === "Investimento") return s + (it.valor || 0);
+    if(it.tipo === "Resgate Investimento") return s - (it.valor || 0);
+    return s;
+  }, baseline);
+}
+
+// Média de saldo real (receita - despesa) dos últimos meses com movimentação — usada na projeção
+// "se continuar assim". Olha até 6 meses pra trás a partir do mês atual (hoje, não do mês em
+// exibição no app), pulando meses sem nenhum lançamento (evita puxar a média pra baixo à toa).
+function calcularMediaSaldoMensal(janelaMeses = 6){
+  const hoje = new Date();
+  const saldos = [];
+  for(let i = 1; i <= janelaMeses; i++){
+    const d = new Date(hoje.getFullYear(), hoje.getMonth() - i, 1);
+    const receita = calcReal("Receita", d.getMonth(), d.getFullYear());
+    const despesa = calcReal("Despesa", d.getMonth(), d.getFullYear());
+    if(receita === 0 && despesa === 0) continue; // mês sem nenhum lançamento, ignora
+    saldos.push(receita - despesa);
+  }
+  if(saldos.length === 0) return { mediaSaldo: 0, mesesConsiderados: 0 };
+  const mediaSaldo = saldos.reduce((s, v) => s + v, 0) / saldos.length;
+  return { mediaSaldo, mesesConsiderados: saldos.length };
+}
+// Substitui a leitura de raw.balanco pras linhas 48/49/50 (Real) por cálculo direto — as outras
+// linhas (Reserva, Meta) continuam vindo da planilha por enquanto.
+function rowComRealCalculado(n, balancoRaw, ano){
+  if(n === 48 || n === 49 || n === 50){
+    const receitaArr = calcRealAno("Receita", ano);
+    const despesaArr = calcRealAno("Despesa", ano);
+    if(n === 48) return receitaArr;
+    if(n === 49) return despesaArr;
+    return receitaArr.map((r, i) => r - despesaArr[i]);
+  }
+  return balancoRaw[n - 44] || [];
+}
+
 // Saldo de um "balde" de investimento (Reserva de Emergência / Renda Fixa / Renda Variável), calculado a partir
 // dos lançamentos tipo Investimento/Resgate Investimento na aba Débito. Um lançamento com descrição
 // "Ajuste Saldo total" funciona como reinício: o saldo passa a ser esse valor, e só soma o que vier depois dele.
@@ -2164,7 +2335,10 @@ function calcSaldoInvestimento(categoriaAlvo){
     .filter(it => it.dataVenc)
     .sort((a,b) => a.dataVenc - b.dataVenc);
 
-  let baseline = 0;
+  // Baseline padrão: 0, exceto pra Reserva de Emergência, que parte da "Reserva Inicial" cadastrada
+  // (o que você já tinha guardado antes de começar a usar o app) — só entra se não existir nenhum
+  // "Ajuste Saldo total" mais recente, que sempre tem prioridade por ser uma correção mais específica.
+  let baseline = alvoNorm === normalizeCatName("Reserva de Emergência") ? getReservaInicial() : 0;
   let startIdx = 0;
   for(let i = items.length - 1; i >= 0; i--){
     if(/ajuste saldo total/i.test(items[i].desc || "")){
@@ -3068,6 +3242,11 @@ async function saveDividaEdit(row){
 function getSalarioBruto(){
   return (raw.salarioBruto && raw.salarioBruto[0] && raw.salarioBruto[0][0]) || 0;
 }
+// Saldo de Reserva de Emergência que você já tinha ANTES de começar a usar o app — serve de ponto de
+// partida pro cálculo (calcSaldoInvestimento), pra não começar do zero e ignorar reserva pré-existente.
+function getReservaInicial(){
+  return (raw.reservaInicial && raw.reservaInicial[0] && raw.reservaInicial[0][0]) || 0;
+}
 
 function renderCadastro(){
   if(!raw) return;
@@ -3077,6 +3256,9 @@ function renderCadastro(){
   const salario = getSalarioBruto();
   const salarioInput = document.getElementById("cadSalarioBruto");
   if(salarioInput && document.activeElement !== salarioInput) salarioInput.value = salario || "";
+  const reservaInicial = getReservaInicial();
+  const reservaInicialInput = document.getElementById("cadReservaInicial");
+  if(reservaInicialInput && document.activeElement !== reservaInicialInput) reservaInicialInput.value = reservaInicial || "";
   renderCadCategoriasTable();
   renderCadCartoesTable();
   renderCartoesOrfaosAviso();
@@ -3089,6 +3271,10 @@ async function saveCadastroPerfil(){
 async function saveCadastroSalario(){
   const valor = parseFloat(document.getElementById("cadSalarioBruto").value) || 0;
   await salvarEAtualizar(() => writeCell("Cadastro!T8", valor), [renderCadastro, renderCharts, render], "Salário bruto atualizado");
+}
+async function saveCadastroReservaInicial(){
+  const valor = parseFloat(document.getElementById("cadReservaInicial").value) || 0;
+  await salvarEAtualizar(() => writeCell("Cadastro!T10", valor), [renderCadastro, renderCharts, render], "Reserva inicial atualizada");
 }
 
 // ---- Orçamento por categoria (Cadastro!B7:F60) ----
@@ -3323,6 +3509,66 @@ async function saveCadastroCartaoNovo(row){
 async function deleteCadCartao(row){
   if(!confirm("Remover esse cartão? As compras já lançadas continuam existindo, só o cartão some da lista.")) return;
   await salvarEAtualizar(() => clearRange(`Cadastro!H${row}:K${row}`), [renderCadastro], "Cartão removido", "Não foi possível remover");
+}
+
+// Gráfico de linha do índice de poupança nos últimos 12 meses (janela rolante a partir de hoje).
+// Meses sem receita (sem dado) ficam com um buraco na linha em vez de aparecer como 0% enganoso.
+function renderGraficoTaxaPoupanca12m(){
+  const meses = getUltimos12Meses();
+  const valores = meses.map(m => calcTaxaPoupancaMes(m.mesIdx, m.ano));
+  const validos = valores.filter(v => v !== null);
+  const W = 500, H = 220, PAD = 28, PADL = 46;
+  const stepX = (W - PADL - 14) / 11;
+  if(validos.length === 0){
+    document.getElementById("chartTaxaPoupanca12m").innerHTML = `<p class="empty" style="font-size:12.5px;">Sem dados suficientes ainda</p>`;
+    return;
+  }
+  const min = Math.min(0, ...validos) - 5;
+  const max = Math.max(0, ...validos) + 5;
+
+  let svg = yAxis(min, max, W, H, PAD, PAD, PADL, 4);
+  const yZero = H - PAD - ((0 - min) / (max - min)) * (H - PAD*2);
+  svg += `<line x1="${PADL}" y1="${yZero}" x2="${W-14}" y2="${yZero}" stroke="#544f43" stroke-width="1.5" stroke-dasharray="3,3"/>`;
+
+  const pontos = [];
+  valores.forEach((v, i) => {
+    if(v === null) return;
+    pontos.push({ x: PADL + i*stepX, y: H - PAD - ((v - min)/(max-min)) * (H - PAD*2), v, i });
+  });
+  if(pontos.length > 1) svg += svgLine(pontos, "var(--green)", W, H, true);
+  pontos.forEach(p => {
+    const tipHtml = `<b>${meses[p.i].label}</b><br>Poupou ${p.v.toFixed(1)}% da receita`;
+    svg += `<circle cx="${p.x}" cy="${p.y}" r="4" fill="var(--green)" style="cursor:pointer;" onmousemove="showChartTooltip(event, '${tipHtml}')" onmouseleave="hideChartTooltip()"/>`;
+  });
+  meses.forEach((m, i) => {
+    svg += `<text x="${PADL + i*stepX}" y="${H-8}" font-size="9" fill="#9C968A" text-anchor="middle">${m.label}</text>`;
+  });
+  document.getElementById("chartTaxaPoupanca12m").innerHTML = `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;max-height:280px;">${svg}</svg>`;
+}
+
+// Gráfico de linha do saldo da Reserva de Emergência nos últimos 12 meses — usa o saldo TAL COMO
+// ESTAVA no fim de cada mês (não o atual), pra mostrar a evolução real, não uma linha reta.
+function renderGraficoReserva12m(){
+  const meses = getUltimos12Meses();
+  const valores = meses.map(m => calcSaldoInvestimentoAteMes("Reserva de Emergência", m.mesIdx, m.ano));
+  const W = 500, H = 220, PAD = 28, PADL = 46;
+  const stepX = (W - PADL - 14) / 11;
+  const max = Math.max(...valores, 1) * 1.15;
+  const min = Math.min(0, ...valores);
+
+  let svg = yAxis(min, max, W, H, PAD, PAD, PADL, 4);
+  const pontos = valores.map((v, i) => ({
+    x: PADL + i*stepX, y: H - PAD - ((v - min)/(max-min)) * (H - PAD*2), v, i
+  }));
+  svg += svgLine(pontos, "var(--blue)", W, H, true);
+  pontos.forEach(p => {
+    const tipHtml = `<b>${meses[p.i].label}</b><br>${fmtMoney(p.v)}`;
+    svg += `<circle cx="${p.x}" cy="${p.y}" r="4" fill="var(--blue)" style="cursor:pointer;" onmousemove="showChartTooltip(event, '${tipHtml}')" onmouseleave="hideChartTooltip()"/>`;
+  });
+  meses.forEach((m, i) => {
+    svg += `<text x="${PADL + i*stepX}" y="${H-8}" font-size="9" fill="#9C968A" text-anchor="middle">${m.label}</text>`;
+  });
+  document.getElementById("chartReserva12m").innerHTML = `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;max-height:280px;">${svg}</svg>`;
 }
 
 function renderReservaCombo(saldo, saldoPrevisto, reserva, meta, mi){
@@ -3900,6 +4146,9 @@ function renderBalancoCardsShell(){
     { id:"cPatrimonio", cardClass:"patrimonio-card detalhado-only", accent:"var(--gold)", label:"Patrimônio Acumulado",
       tip:"Tudo que você tem acumulado (Reserva + Renda Fixa + Renda Variável). Não desconta dívidas — veja o valor descontado no texto abaixo.",
       valueStyle:"font-size:24px;" },
+    { id:"cProjecaoPatrimonio", cardClass:"detalhado-only", accent:"var(--purple)", label:"Projeção em 12 meses",
+      tip:"Se sua média de saldo mensal dos últimos meses continuar igual, é aproximadamente onde seu patrimônio estaria daqui a 12 meses. Só uma estimativa — não considera rendimento de investimento, só o quanto sobra todo mês.",
+      valueStyle:"color:var(--purple);font-size:22px;" },
     { id:"cReceita", accent:"var(--green)", label:"Receita do mês", valueStyle:"color:var(--green)" },
     { id:"cDespesa", accent:"var(--red)", label:"Despesa do mês", valueStyle:"color:var(--red)" },
     { id:"cSaldo", accent:"var(--blue)", label:"Saldo do mês" },
@@ -3935,7 +4184,7 @@ function renderBalancoCardsShell(){
 }
 
 function renderCharts(){
-  const row = (n) => raw.balanco[n - 44] || [];
+  const row = (n) => rowComRealCalculado(n, raw.balanco, state.year);
   const receita = row(48).map(v => v||0);
   const despesa = row(49).map(v => v||0);
   const saldo = row(50).map(v => v||0);
@@ -3971,6 +4220,8 @@ function renderCharts(){
     `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;max-height:340px;">${bars}</svg>`;
 
   renderReservaCombo(saldo, saldoPrevisto, reserva, meta, mi);
+  renderGraficoTaxaPoupanca12m();
+  renderGraficoReserva12m();
 
   // ---- Tabela detalhamento mensal (transposta, como na planilha) ----
   const curM = mi;
@@ -4919,6 +5170,10 @@ function setupModalOutsideClickClose(){
 }
 
 window.onload = () => {
+  aplicarTema(localStorage.getItem("ftm_tema") || "dark");
+  if("serviceWorker" in navigator){
+    navigator.serviceWorker.register("service-worker.js").catch(() => {}); // se falhar, o app continua funcionando normal, só sem instalação
+  }
   document.querySelectorAll(".brand-logo").forEach(img => img.src = LOGO_DATA_URI);
   renderBalancoCardsShell();
   setupModalOutsideClickClose();
