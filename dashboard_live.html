@@ -475,6 +475,7 @@
       <div class="seg-toggle" id="resumoModoToggle">
         <button class="seg-btn active" data-modo="resumido">Resumido</button>
         <button class="seg-btn" data-modo="detalhado">Detalhado</button>
+        <button class="seg-btn" data-modo="essencial">Essencial</button>
       </div>
     </div>
 
@@ -482,6 +483,15 @@
     <div class="cards" id="balancoCards"></div>
     <div id="resumoExtra">
       <div class="skeleton-row"><span class="skeleton" style="width:100%;"></span></div>
+    </div>
+
+    <!-- Modo Essencial: só o mínimo pra responder "posso gastar hoje?" numa olhada -->
+    <div id="resumoEssencial" class="hidden" style="text-align:center;padding:50px 20px;">
+      <div id="essencialPodeGastar" style="font-size:22px;font-weight:700;margin-bottom:18px;"></div>
+      <div id="essencialSaldo" style="font-size:46px;font-weight:700;line-height:1.1;"></div>
+      <div style="font-size:12.5px;color:var(--muted);margin-bottom:34px;">saldo do mês</div>
+      <div id="essencialScore" style="font-size:34px;font-weight:700;"></div>
+      <div style="font-size:12.5px;color:var(--muted);">score de saúde financeira</div>
     </div>
 
     <!-- Só no modo Detalhado: o que antes era a aba Balanço -->
@@ -622,6 +632,17 @@
         <button class="icon-btn" style="font-size:20px;" onclick="closeDividaEditForm()">✕</button>
       </div>
       <div id="dividaFormBody"></div>
+    </div>
+  </div>
+
+  <div id="simuladorQuitacaoModal" class="modal-overlay hidden">
+    <div class="modal-box">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+        <h2 style="margin:0;">💡 Quitação antecipada</h2>
+        <button class="icon-btn" style="font-size:20px;" onclick="closeSimuladorQuitacao()">✕</button>
+      </div>
+      <p id="simuladorQuitacaoDivida" style="font-size:12.5px;color:var(--muted);margin:0 0 14px;"></p>
+      <div id="simuladorQuitacaoBody"></div>
     </div>
   </div>
 
@@ -796,7 +817,14 @@
           </div>
         </div>
         <div class="chart-panel" style="margin-top:16px;">
-          <div class="label" id="ccFaturaLabel" style="color:var(--muted);font-size:11px;font-weight:700;text-transform:uppercase;">Fatura em aberto</div>
+          <div style="display:flex;justify-content:space-between;align-items:center;">
+            <div class="label" id="ccFaturaLabel" style="color:var(--muted);font-size:11px;font-weight:700;text-transform:uppercase;">Fatura em aberto</div>
+            <div style="display:flex;align-items:center;gap:8px;">
+              <button class="icon-btn" onclick="navegarMesCredito(-1)" title="Mês anterior" style="font-size:15px;">◀</button>
+              <span id="ccFaturaMesLabel" style="font-size:11.5px;color:var(--muted);min-width:70px;text-align:center;"></span>
+              <button class="icon-btn" onclick="navegarMesCredito(1)" title="Próximo mês" style="font-size:15px;">▶</button>
+            </div>
+          </div>
           <div class="value" id="ccFatura" style="font-size:26px;font-weight:700;color:var(--purple);margin:6px 0;">—</div>
           <div class="sub" id="ccFaturaSub" style="color:var(--muted);font-size:12px;"></div>
           <button class="connect-btn" id="ccLancarFaturaBtn" style="margin-top:10px;width:100%;" onclick="abrirLancarFaturaModal()">💳 Lançar pagamento desta fatura</button>
@@ -847,6 +875,11 @@
 
   <div id="view-dividas" class="view">
     <div id="dividasCards" class="cards" style="margin-bottom:16px;"></div>
+    <div class="chart-panel" id="dividasTimelinePanel" style="margin-bottom:16px;">
+      <h2>📆 Linha do tempo de quitação</h2>
+      <p style="font-size:12px;color:var(--muted);margin-top:-6px;margin-bottom:12px;">Só aparecem aqui as dívidas com "Dia de vencimento" preenchido — é o que permite calcular quando cada uma termina.</p>
+      <div id="dividasTimeline"></div>
+    </div>
     <div class="chart-panel">
       <h2>Dívidas</h2>
       <div id="dividasTable" style="overflow-x:auto;"></div>
@@ -1620,9 +1653,27 @@ function renderResumo(){
   // Modo Detalhado = os gráficos e tabelas que antes viviam sozinhos na aba Balanço
   const detalhadoEl = document.getElementById("resumoDetalhado");
   const isDetalhado = resumoModo === "detalhado";
+  const isEssencial = resumoModo === "essencial";
   detalhadoEl.classList.toggle("hidden", !isDetalhado);
   document.querySelectorAll("#balancoCards .detalhado-only").forEach(card => card.classList.toggle("hidden", !isDetalhado));
   if(isDetalhado) renderCharts();
+
+  // Modo Essencial: some com tudo, mostra só 2-3 números — pra quem só quer saber "posso gastar hoje?"
+  document.getElementById("balancoCards").classList.toggle("hidden", isEssencial);
+  document.getElementById("resumoExtra").classList.toggle("hidden", isEssencial);
+  document.getElementById("resumoEssencial").classList.toggle("hidden", !isEssencial);
+  if(isEssencial){
+    const corSaldo = saldoReal >= 0 ? "var(--green)" : "var(--red)";
+    document.getElementById("essencialSaldo").textContent = fmtMoney(saldoReal);
+    document.getElementById("essencialSaldo").style.color = corSaldo;
+    document.getElementById("essencialPodeGastar").textContent = saldoReal >= 0 ? "✅ Pode gastar" : "⚠️ Segura o gasto";
+    document.getElementById("essencialPodeGastar").style.color = corSaldo;
+    const { score } = calcularScoreSaudeFinanceira(mi, state.year);
+    const faixa = faixaScore(score);
+    const scoreEl = document.getElementById("essencialScore");
+    scoreEl.textContent = `${faixa.emoji} ${score}`;
+    scoreEl.style.color = faixa.cor;
+  }
 }
 
 function greetingWord(){
@@ -1975,7 +2026,13 @@ function gerarAlertasFatura(){
       if(pagamentoExistente && diferenca <= 0.01) return; // totalmente paga, sem alerta
 
       const dataVencimentoFatura = new Date(ano, mesIdx, diaVenc);
-      if(dataVencimentoFatura < hoje){
+      if(pagamentoExistente){
+        // Já existe um pagamento lançado pra esse cartão+mês, mas o valor não bate com o total da
+        // fatura — pode ser gasto novo depois do pagamento, ou erro de digitação. Isso é reconciliação,
+        // diferente de "esqueceu de pagar" (o alerta abaixo), então avisa sempre, não só quando atrasa.
+        alertasFatura.push({ id: `fatura-reconciliacao-${nomeCartao}-${mesIdx}-${ano}`, type: dataVencimentoFatura < hoje ? "danger" : "warn", icon: "🔍",
+          html: `<b>${nomeCartao}</b> — pagamento de ${nomeMes}/${ano} não bate com a fatura: pago ${fmtMoney(valorPago)} de ${fmtMoney(faturaValor)} (falta ${fmtMoney(diferenca)})` });
+      } else if(dataVencimentoFatura < hoje){
         alertasFatura.push({ id: `fatura-atrasada-${nomeCartao}-${mesIdx}-${ano}`, type: "danger", icon: "💳",
           html: `<b>${nomeCartao}</b> — fatura de ${nomeMes}/${ano} atrasada: ${fmtMoney(diferenca)}` });
       } else if(dataVencimentoFatura <= em3Dias){
@@ -3472,6 +3529,25 @@ function isCompraParcelada(c){
   return totalParcelasNum > 1;
 }
 
+// Setas de mês na tela do cartão — fazem exatamente o mesmo que clicar num pill de mês lá em cima,
+// só que sem precisar rolar a tela até lá. Troca o mesmo estado global (state.monthIdx/year), então
+// fica sincronizado com o resto do app.
+function navegarMesCredito(delta){
+  let novoMes = state.monthIdx + delta;
+  let novoAno = state.year;
+  if(novoMes < 0){ novoMes = 11; novoAno -= 1; }
+  else if(novoMes > 11){ novoMes = 0; novoAno += 1; }
+  state.monthIdx = novoMes;
+  state.year = novoAno;
+  const yearSelEl = document.getElementById("yearSelect");
+  if(yearSelEl) yearSelEl.value = novoAno;
+  updateMonthRuler();
+  render();
+  if(raw) renderCharts();
+  if(raw) renderLancamentos();
+  if(raw) renderCredito();
+}
+
 function comprasDoCartao(nomeCartao){
   const todasCompras = (raw.compras || []).filter(r => r[2]);
   return todasCompras.filter(c => {
@@ -3548,6 +3624,102 @@ function calcSaldoDevedorAmortizado(valorInicial, valorParcela, numParcelas, par
   if(parcelasPagas >= numParcelas) return 0;
   const i = taxaImplicita(valorInicial, valorParcela, numParcelas);
   return pvAnnuity(i, numParcelas - parcelasPagas, valorParcela);
+}
+
+// Simulador "e se eu pagasse R$X a mais por mês nessa dívida": usa a mesma taxa implícita já
+// calculada, recalcula quantos meses faltariam com o pagamento maior, e compara o juro total pago
+// nos dois cenários. Fórmula padrão de amortização (não é aproximação): n = -ln(1 - i·P/A) / ln(1+i).
+function simularQuitacaoAntecipada(divida, aporteExtra){
+  const P = divida.saldoDevedor;
+  const i = (divida.saldoDevedorAutoCalculado ? divida.taxaJurosImplicita : divida.taxaJuros) / 100;
+  const pagamentoOriginal = divida.valorParcela;
+  const pagamentoNovo = pagamentoOriginal + (aporteExtra || 0);
+  if(P <= 0 || pagamentoOriginal <= 0) return null;
+
+  function mesesParaQuitar(pagamento){
+    if(pagamento <= 0) return null;
+    if(i <= 0) return Math.ceil(P / pagamento);
+    if(pagamento <= i * P) return null; // pagamento não cobre nem o juro do mês — nunca quita nesse ritmo
+    const n = -Math.log(1 - (i * P) / pagamento) / Math.log(1 + i);
+    return Math.ceil(n);
+  }
+
+  const mesesOriginal = mesesParaQuitar(pagamentoOriginal);
+  const mesesNovo = mesesParaQuitar(pagamentoNovo);
+  if(mesesOriginal === null || mesesNovo === null) return null;
+
+  const totalPagoOriginal = mesesOriginal * pagamentoOriginal;
+  const totalPagoNovo = mesesNovo * pagamentoNovo;
+  const jurosOriginal = totalPagoOriginal - P;
+  const jurosNovo = totalPagoNovo - P;
+
+  return {
+    mesesOriginal, mesesNovo,
+    mesesAntecipados: mesesOriginal - mesesNovo,
+    jurosOriginal: Math.max(0, jurosOriginal),
+    jurosNovo: Math.max(0, jurosNovo),
+    jurosEconomizados: jurosOriginal - jurosNovo,
+    totalPagoNovo,
+  };
+}
+
+function openSimuladorQuitacao(row){
+  const d = (window._dividasCache || []).find(x => x.row === row);
+  if(!d) return;
+  if(!d.saldoDevedor || !d.valorParcela){
+    showToast("Preciso do saldo devedor e do valor da parcela preenchidos pra simular", "error");
+    return;
+  }
+  window._simuladorDividaRow = row;
+  document.getElementById("simuladorQuitacaoDivida").textContent =
+    `${d.desc} · saldo devedor ${d.saldoDevedorAutoCalculado ? "≈ " : ""}${fmtMoney(d.saldoDevedor)} · parcela atual ${fmtMoney(d.valorParcela)}/mês`;
+  document.getElementById("simuladorQuitacaoBody").innerHTML = `
+    <div class="edit-form" style="margin-bottom:14px;">
+      <div><label>Quanto a mais por mês?</label>
+        <input id="simAporteExtra" type="number" step="0.01" min="0" value="100" oninput="renderSimuladorQuitacao()">
+      </div>
+    </div>
+    <div id="simuladorResultado"></div>`;
+  document.getElementById("simuladorQuitacaoModal").classList.remove("hidden");
+  renderSimuladorQuitacao();
+}
+function renderSimuladorQuitacao(){
+  const row = window._simuladorDividaRow;
+  const d = (window._dividasCache || []).find(x => x.row === row);
+  const el = document.getElementById("simuladorResultado");
+  if(!d || !el) return;
+  const aporteExtra = parseFloat(document.getElementById("simAporteExtra").value) || 0;
+  const r = simularQuitacaoAntecipada(d, aporteExtra);
+  if(!r){
+    el.innerHTML = `<p style="font-size:12.5px;color:var(--muted);">Não consegui simular — confira se a taxa de juros e a parcela estão preenchidas corretamente.</p>`;
+    return;
+  }
+  if(r.mesesAntecipados <= 0){
+    el.innerHTML = `<p style="font-size:12.5px;color:var(--muted);">Com esse valor extra o resultado não muda de forma perceptível — tenta um valor maior.</p>`;
+    return;
+  }
+  el.innerHTML = `
+    <div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:14px;">
+      <div style="display:flex;justify-content:space-between;margin-bottom:10px;">
+        <span style="font-size:12.5px;color:var(--muted);">Nova parcela mensal</span>
+        <span style="font-weight:700;">${fmtMoney(d.valorParcela + aporteExtra)}</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;margin-bottom:10px;">
+        <span style="font-size:12.5px;color:var(--muted);">Quita</span>
+        <span style="font-weight:700;color:var(--green);">${r.mesesAntecipados} ${r.mesesAntecipados===1?"mês":"meses"} mais cedo</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;">
+        <span style="font-size:12.5px;color:var(--muted);">Economiza em juros</span>
+        <span style="font-weight:700;color:var(--green);">${fmtMoney(r.jurosEconomizados)}</span>
+      </div>
+      <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border);font-size:11px;color:var(--muted);">
+        Do jeito que está: ${r.mesesOriginal} meses restantes, ${fmtMoney(r.jurosOriginal)} de juros. Com o aporte: ${r.mesesNovo} meses, ${fmtMoney(r.jurosNovo)} de juros.
+      </div>
+    </div>`;
+}
+function closeSimuladorQuitacao(){
+  document.getElementById("simuladorQuitacaoModal").classList.add("hidden");
+  document.getElementById("simuladorQuitacaoBody").innerHTML = "";
 }
 
 function getDividasParsed(){
@@ -3640,6 +3812,39 @@ function isDividaQuitada(d){
   return false;
 }
 
+// Linha do tempo horizontal: uma barra por dívida ativa, de hoje até a data prevista de quitação.
+// Só entra aqui quem tem "Dia de vencimento" preenchido — sem isso não dá pra calcular quando termina.
+function renderDividasTimeline(dividasAtivas){
+  const el = document.getElementById("dividasTimeline");
+  const panel = document.getElementById("dividasTimelinePanel");
+  if(!el) return;
+  const comData = dividasAtivas.filter(d => d.dataQuitacaoPrevista).sort((a,b) => a.dataQuitacaoPrevista - b.dataQuitacaoPrevista);
+  if(comData.length === 0){
+    if(panel) panel.classList.add("hidden");
+    return;
+  }
+  if(panel) panel.classList.remove("hidden");
+  const hoje = new Date(); hoje.setHours(0,0,0,0);
+  const dataMax = comData[comData.length - 1].dataQuitacaoPrevista;
+  const totalDias = Math.max(1, (dataMax - hoje) / 86400000);
+  const W = 600, rowH = 42, PAD_L = 10, PAD_R = 90;
+  const H = comData.length * rowH + 10;
+  const barMaxW = W - PAD_L - PAD_R;
+  const cores = ["var(--red)", "var(--yellow)", "var(--blue)", "var(--purple)", "var(--green)"];
+  const linhas = comData.map((d, idx) => {
+    const dias = Math.max(0, (d.dataQuitacaoPrevista - hoje) / 86400000);
+    const larguraBarra = Math.max(4, (dias / totalDias) * barMaxW);
+    const y = idx * rowH + 6;
+    const cor = cores[idx % cores.length];
+    return `
+      <text x="${PAD_L}" y="${y+9}" font-size="11" fill="var(--text)">${(d.desc||"").slice(0,28)}</text>
+      <rect x="${PAD_L}" y="${y+14}" width="${barMaxW}" height="10" rx="5" fill="var(--border)"/>
+      <rect x="${PAD_L}" y="${y+14}" width="${larguraBarra}" height="10" rx="5" fill="${cor}"/>
+      <text x="${PAD_L + larguraBarra + 8}" y="${y+22}" font-size="10" fill="var(--muted)">${fmtDate(d.dataQuitacaoPrevista)}</text>`;
+  }).join("");
+  el.innerHTML = `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;max-height:${H}px;">${linhas}</svg>`;
+}
+
 function renderDividas(){
   const todasDividas = getDividasParsed();
   const cardsEl = document.getElementById("dividasCards");
@@ -3659,6 +3864,7 @@ function renderDividas(){
   const totalPago = ativas.reduce((s,d) => s + d.valorPago, 0);
   const totalOriginal = ativas.reduce((s,d) => s + d.valorInicial, 0);
   const algumCalculado = ativas.some(d => d.saldoDevedorAutoCalculado);
+  renderDividasTimeline(ativas);
 
   cardsEl.innerHTML = `
     <div class="card"><div class="accent" style="background:var(--red)"></div>
@@ -3707,7 +3913,10 @@ function renderDividas(){
         ${d.dataQuitacaoPrevista ? `<div style="font-size:10.5px;color:var(--muted);margin-top:3px;">quita em ${fmtDate(d.dataQuitacaoPrevista)} · faltam ${d.mesesRestantes} ${d.mesesRestantes===1?"mês":"meses"} (${d.diasRestantes}d)</div>` : ""}
       </td>
       <td data-label="Status"><span class="pill">${d.status || "—"}</span></td>
-      <td data-label=""><button class="icon-btn" onclick="openDividaEditForm(${d.row})" title="Editar">✏️</button></td>
+      <td data-label="">
+        <button class="icon-btn" onclick="openDividaEditForm(${d.row})" title="Editar">✏️</button>
+        ${!quitada ? `<button class="icon-btn" onclick="openSimuladorQuitacao(${d.row})" title="Simular quitação antecipada">💡</button>` : ""}
+      </td>
     </tr>`;
   }).join("");
   tableEl.innerHTML = toggleHtml + `<table class="lanc">
@@ -4160,6 +4369,8 @@ function renderCredito(){
   document.getElementById("ccBrand").textContent = nomeCartao;
   document.getElementById("ccHolder").textContent = userName;
   document.getElementById("ccExpiry").textContent = vencimentoDia ? "Dia " + vencimentoDia : "—";
+  const mesLabelEl = document.getElementById("ccFaturaMesLabel");
+  if(mesLabelEl) mesLabelEl.textContent = `${MONTHS[state.monthIdx]}/${state.year}`;
 
   // Mostra os últimos 4 dígitos cadastrados (se o cartão tiver mais de um número físico associado,
   // mostra só o primeiro da lista) — só pra deixar a UI mais parecida com um cartão de verdade.
@@ -5445,7 +5656,11 @@ function calcularValorFaturaCartaoMes(nomeCartao, mesIdx, ano){
 function abrirLancarFaturaModal(){
   const cartoes = getCadastroCartoesParsed();
   if(cartoes.length === 0){ showToast("Cadastre um cartão no Cadastro primeiro", "error"); return; }
-  const cartaoAtualNome = ((raw.cartoes || [])[state.cardIdx || 0] || [])[0] || cartoes[0].nome;
+  // Mesma lista FILTRADA usada em setupCardSelect (remove linhas em branco) — usar raw.cartoes sem
+  // filtrar aqui desalinha os índices quando existe alguma linha vazia na planilha antes do cartão
+  // selecionado, fazendo o app puxar o cartão errado.
+  const cartoesFiltrados = (raw.cartoes || []).filter(r => r[0]);
+  const cartaoAtualNome = (cartoesFiltrados[state.cardIdx || 0] || [])[0] || cartoes[0].nome;
   const mesAtual = `${state.year}-${String(state.monthIdx + 1).padStart(2, "0")}`;
   const hoje = new Date().toISOString().slice(0, 10);
   document.getElementById("lancarFaturaBody").innerHTML = `
@@ -5523,7 +5738,8 @@ async function confirmarLancarFatura(){
 function abrirNovaCompraModal(){
   const cartoes = getCadastroCartoesParsed();
   if(cartoes.length === 0){ showToast("Cadastre um cartão no Cadastro primeiro", "error"); return; }
-  const cartaoAtualNome = ((raw.cartoes || [])[state.cardIdx || 0] || [])[0] || cartoes[0].nome;
+  const cartoesFiltrados = (raw.cartoes || []).filter(r => r[0]);
+  const cartaoAtualNome = (cartoesFiltrados[state.cardIdx || 0] || [])[0] || cartoes[0].nome;
   const hoje = new Date();
   const hojeStr = hoje.toISOString().slice(0, 10);
   // 1ª parcela vence no próximo dia 5 — mesma convenção usada nos importadores
@@ -5650,6 +5866,7 @@ function setupModalOutsideClickClose(){
     pdfPreviewModal: closePdfPreviewModal,
     scoreDetalheModal: closeScoreDetalheModal,
     lancEditModal: closeForm,
+    simuladorQuitacaoModal: closeSimuladorQuitacao,
     lancarFaturaModal: closeLancarFaturaModal,
     novaCompraModal: closeNovaCompraModal,
     calendarModal: closeCalendarModal,
