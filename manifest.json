@@ -1,6 +1,6 @@
 {
-  "name": "Follow My Money",
-  "short_name": "Follow My Money",
+  "name": "Legacy",
+  "short_name": "Legacy",
   "description": "Dashboard pessoal de finanças — débito, crédito, dívidas e investimentos.",
   "start_url": "./dashboard_live.html",
   "scope": "./",

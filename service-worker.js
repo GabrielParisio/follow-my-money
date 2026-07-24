@@ -41,9 +41,9 @@ self.addEventListener("fetch", (event) => {
 // com o app fechado), ele chega aqui. Por enquanto ninguém envia nada pra esse endpoint — isso fica
 // pronto esperando a peça de backend que ainda falta.
 self.addEventListener("push", (event) => {
-  const dados = event.data ? event.data.json() : { title: "Follow My Money", body: "" };
+  const dados = event.data ? event.data.json() : { title: "Legacy", body: "" };
   event.waitUntil(
-    self.registration.showNotification(dados.title || "Follow My Money", {
+    self.registration.showNotification(dados.title || "Legacy", {
       body: dados.body || "",
       icon: "icons/icon-192.png",
     })
