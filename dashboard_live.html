@@ -2826,6 +2826,8 @@ const GRAD_XP_INFINITE = "linear-gradient(150deg, #0a0a0a 0%, #1a1a1a 100%)";
 const GRAD_C6 = "linear-gradient(150deg, #232323 0%, #000 100%)";
 const GRAD_BTG = "linear-gradient(150deg, #001e3c 0%, #000 100%)";
 const GRAD_METAL_PLATINUM = "linear-gradient(150deg, #d6d8db 0%, #aeb1b6 25%, #eceef0 50%, #9a9da3 75%, #c9ccd0 100%)";
+// Referência real enviada pelo usuário: prateado com leve tom lavanda, acabamento metálico claro
+const GRAD_ITAU_AZUL_INFINITE = "linear-gradient(150deg, #d8d5e0 0%, #b8b4c8 25%, #e8e6ee 50%, #a8a4ba 75%, #cac6d8 100%)";
 
 const CARD_STYLES_RAW = {
   // ===== NÍVEL 1 — Banco + Modelo (o mais específico: mesmo modelo muda de cor conforme o banco) =====
@@ -2840,6 +2842,8 @@ const CARD_STYLES_RAW = {
   // Itaú Visa Infinite é azul — diferente do Bradesco (preto) e do XP (preto com detalhe) com o mesmo nome de modelo
   "itau visa infinite": { background: GRAD_ITAU_INFINITE, tier: 1 },
   "itau infinite": { background: GRAD_ITAU_INFINITE, tier: 1 },
+  "itau azul visa infinite": { background: GRAD_ITAU_AZUL_INFINITE, light: true, tier: 1 },
+  "itau azul infinite": { background: GRAD_ITAU_AZUL_INFINITE, light: true, tier: 1 },
   "bradesco prime": { background: "linear-gradient(135deg, #1a1a1a 0%, #b8860b 100%)", tier: 1 },
   "bradesco elo nanquim": { background: "linear-gradient(150deg, #0a0a0a, #000)", tier: 1 },
   // Referência real enviada pelo usuário: preto fosco, minimalista, com traços diagonais brilhantes discretos
