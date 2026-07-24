@@ -490,20 +490,6 @@
             <span><i style="background:var(--muted);opacity:.6;"></i>Meta (benchmark)</span>
           </div>
         </div>
-        <div class="chart-panel">
-          <h2>Índice de poupança — últimos 12 meses</h2>
-          <div id="chartTaxaPoupanca12m"></div>
-          <div class="legend">
-            <span><i style="background:var(--green)"></i>% da receita que sobrou naquele mês</span>
-          </div>
-        </div>
-        <div class="chart-panel">
-          <h2>Reserva de Emergência — últimos 12 meses</h2>
-          <div id="chartReserva12m"></div>
-          <div class="legend">
-            <span><i style="background:var(--blue)"></i>Saldo acumulado no fim de cada mês</span>
-          </div>
-        </div>
       </div>
       <div class="detalhe-row" style="margin-top:16px;">
         <div class="chart-panel" style="margin:0;">
@@ -1426,9 +1412,8 @@ function render(){
       const projecao12m = totalAtivos + mediaSaldo * 12;
       cProjecaoEl.textContent = fmtMoney(projecao12m);
       cProjecaoEl.style.color = projecao12m >= totalAtivos ? "var(--purple)" : "var(--red)";
-      const projecao6m = totalAtivos + mediaSaldo * 6;
       document.getElementById("cProjecaoPatrimonioSub").textContent =
-        `Média de ${fmtMoney(mediaSaldo)}/mês (últimos ${mesesConsiderados} meses) · em 6 meses: ${fmtMoney(projecao6m)}`;
+        `Média de ${fmtMoney(mediaSaldo)}/mês nos últimos ${mesesConsiderados} meses`;
     }
   }
 
@@ -2244,54 +2229,6 @@ function calcReal(tipo, mesIdx, ano){
 }
 function calcRealAno(tipo, ano){
   return Array.from({ length: 12 }, (_, mi) => calcReal(tipo, mi, ano));
-}
-
-// Janela de 12 meses rolante contando pra trás a partir do mês atual (não o mês em exibição no
-// app) — pode atravessar virada de ano (ex: Ago/2025 até Jul/2026).
-function getUltimos12Meses(){
-  const hoje = new Date();
-  return Array.from({ length: 12 }, (_, k) => {
-    const i = 11 - k;
-    const d = new Date(hoje.getFullYear(), hoje.getMonth() - i, 1);
-    return { mesIdx: d.getMonth(), ano: d.getFullYear(), label: MONTHS[d.getMonth()] };
-  });
-}
-
-// Índice de poupança de UM mês específico: (receita - despesa) / receita. Retorna null quando não
-// há receita no mês (evita divisão por zero e "100% de poupança" enganoso pra mês sem dado).
-function calcTaxaPoupancaMes(mesIdx, ano){
-  const receita = calcReal("Receita", mesIdx, ano);
-  const despesa = calcReal("Despesa", mesIdx, ano);
-  if(receita <= 0) return null;
-  return (receita - despesa) / receita * 100;
-}
-
-// Saldo da Reserva de Emergência TAL COMO ESTAVA no fim de um mês específico (não o saldo atual) —
-// mesma lógica do calcSaldoInvestimento, só que ignorando lançamentos posteriores àquele mês.
-function calcSaldoInvestimentoAteMes(categoriaAlvo, mesIdx, ano){
-  const alvoNorm = normalizeCatName(categoriaAlvo);
-  const fimDoMes = new Date(ano, mesIdx + 1, 0, 23, 59, 59);
-  const items = debitoRows()
-    .filter(it => normalizeCatName(it.categoria) === alvoNorm)
-    .filter(it => it.tipo === "Investimento" || it.tipo === "Resgate Investimento")
-    .filter(it => it.dataVenc)
-    .filter(it => serialToDate(it.dataVenc) <= fimDoMes)
-    .sort((a,b) => a.dataVenc - b.dataVenc);
-
-  let baseline = alvoNorm === normalizeCatName("Reserva de Emergência") ? getReservaInicial() : 0;
-  let startIdx = 0;
-  for(let i = items.length - 1; i >= 0; i--){
-    if(/ajuste saldo total/i.test(items[i].desc || "")){
-      baseline = items[i].valor || 0;
-      startIdx = i + 1;
-      break;
-    }
-  }
-  return items.slice(startIdx).reduce((s, it) => {
-    if(it.tipo === "Investimento") return s + (it.valor || 0);
-    if(it.tipo === "Resgate Investimento") return s - (it.valor || 0);
-    return s;
-  }, baseline);
 }
 
 // Média de saldo real (receita - despesa) dos últimos meses com movimentação — usada na projeção
@@ -3511,66 +3448,6 @@ async function deleteCadCartao(row){
   await salvarEAtualizar(() => clearRange(`Cadastro!H${row}:K${row}`), [renderCadastro], "Cartão removido", "Não foi possível remover");
 }
 
-// Gráfico de linha do índice de poupança nos últimos 12 meses (janela rolante a partir de hoje).
-// Meses sem receita (sem dado) ficam com um buraco na linha em vez de aparecer como 0% enganoso.
-function renderGraficoTaxaPoupanca12m(){
-  const meses = getUltimos12Meses();
-  const valores = meses.map(m => calcTaxaPoupancaMes(m.mesIdx, m.ano));
-  const validos = valores.filter(v => v !== null);
-  const W = 500, H = 220, PAD = 28, PADL = 46;
-  const stepX = (W - PADL - 14) / 11;
-  if(validos.length === 0){
-    document.getElementById("chartTaxaPoupanca12m").innerHTML = `<p class="empty" style="font-size:12.5px;">Sem dados suficientes ainda</p>`;
-    return;
-  }
-  const min = Math.min(0, ...validos) - 5;
-  const max = Math.max(0, ...validos) + 5;
-
-  let svg = yAxis(min, max, W, H, PAD, PAD, PADL, 4);
-  const yZero = H - PAD - ((0 - min) / (max - min)) * (H - PAD*2);
-  svg += `<line x1="${PADL}" y1="${yZero}" x2="${W-14}" y2="${yZero}" stroke="#544f43" stroke-width="1.5" stroke-dasharray="3,3"/>`;
-
-  const pontos = [];
-  valores.forEach((v, i) => {
-    if(v === null) return;
-    pontos.push({ x: PADL + i*stepX, y: H - PAD - ((v - min)/(max-min)) * (H - PAD*2), v, i });
-  });
-  if(pontos.length > 1) svg += svgLine(pontos, "var(--green)", W, H, true);
-  pontos.forEach(p => {
-    const tipHtml = `<b>${meses[p.i].label}</b><br>Poupou ${p.v.toFixed(1)}% da receita`;
-    svg += `<circle cx="${p.x}" cy="${p.y}" r="4" fill="var(--green)" style="cursor:pointer;" onmousemove="showChartTooltip(event, '${tipHtml}')" onmouseleave="hideChartTooltip()"/>`;
-  });
-  meses.forEach((m, i) => {
-    svg += `<text x="${PADL + i*stepX}" y="${H-8}" font-size="9" fill="#9C968A" text-anchor="middle">${m.label}</text>`;
-  });
-  document.getElementById("chartTaxaPoupanca12m").innerHTML = `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;max-height:280px;">${svg}</svg>`;
-}
-
-// Gráfico de linha do saldo da Reserva de Emergência nos últimos 12 meses — usa o saldo TAL COMO
-// ESTAVA no fim de cada mês (não o atual), pra mostrar a evolução real, não uma linha reta.
-function renderGraficoReserva12m(){
-  const meses = getUltimos12Meses();
-  const valores = meses.map(m => calcSaldoInvestimentoAteMes("Reserva de Emergência", m.mesIdx, m.ano));
-  const W = 500, H = 220, PAD = 28, PADL = 46;
-  const stepX = (W - PADL - 14) / 11;
-  const max = Math.max(...valores, 1) * 1.15;
-  const min = Math.min(0, ...valores);
-
-  let svg = yAxis(min, max, W, H, PAD, PAD, PADL, 4);
-  const pontos = valores.map((v, i) => ({
-    x: PADL + i*stepX, y: H - PAD - ((v - min)/(max-min)) * (H - PAD*2), v, i
-  }));
-  svg += svgLine(pontos, "var(--blue)", W, H, true);
-  pontos.forEach(p => {
-    const tipHtml = `<b>${meses[p.i].label}</b><br>${fmtMoney(p.v)}`;
-    svg += `<circle cx="${p.x}" cy="${p.y}" r="4" fill="var(--blue)" style="cursor:pointer;" onmousemove="showChartTooltip(event, '${tipHtml}')" onmouseleave="hideChartTooltip()"/>`;
-  });
-  meses.forEach((m, i) => {
-    svg += `<text x="${PADL + i*stepX}" y="${H-8}" font-size="9" fill="#9C968A" text-anchor="middle">${m.label}</text>`;
-  });
-  document.getElementById("chartReserva12m").innerHTML = `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;max-height:280px;">${svg}</svg>`;
-}
-
 function renderReservaCombo(saldo, saldoPrevisto, reserva, meta, mi){
   const el = document.getElementById("chartReservaCombo");
   if(!el) return;
@@ -4154,7 +4031,7 @@ function renderBalancoCardsShell(){
     { id:"cSaldo", accent:"var(--blue)", label:"Saldo do mês" },
     { id:"cPct", accent:"var(--yellow)", label:"% orçamento gasto",
       tip:"Quanto da sua despesa do mês já consumiu do orçamento total definido no Cadastro.", valueStyle:"color:var(--yellow)" },
-    { id:"cTaxaPoupanca", cardClass:"detalhado-only", accent:"var(--green)", label:"Taxa de poupança",
+    { id:"cTaxaPoupanca", cardClass:"detalhado-only", accent:"var(--green)", label:"Índice de poupança",
       tip:"Percentual da receita acumulada no ano (Jan até o mês atual) que sobrou como saldo positivo.", valueStyle:"color:var(--green)" },
     { id:"cComprometimento", accent:"var(--red)", label:"Comprometimento de renda", cardClass:"no-scroll wide-card",
       tip:"Soma de todas as parcelas fixas (dívidas + compras parceladas no cartão) que vencem neste mês, dividida pelo salário bruto (Cadastro) — ou pela receita do mês, se o salário bruto não estiver preenchido.",
@@ -4220,8 +4097,6 @@ function renderCharts(){
     `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;max-height:340px;">${bars}</svg>`;
 
   renderReservaCombo(saldo, saldoPrevisto, reserva, meta, mi);
-  renderGraficoTaxaPoupanca12m();
-  renderGraficoReserva12m();
 
   // ---- Tabela detalhamento mensal (transposta, como na planilha) ----
   const curM = mi;
