@@ -195,6 +195,10 @@
   .card.wide-card .body{display:flex;align-items:center;gap:24px;flex-wrap:wrap;}
   .card.wide-card .wide-card-info{flex-shrink:0;min-width:200px;}
   .card.wide-card .wide-card-extra{flex:1;min-width:220px;}
+  .card.comprometimento-card{height:auto;min-height:0;}
+  .card.comprometimento-card .body{padding:12px 16px;}
+  .card.comprometimento-card .label{margin-bottom:4px;}
+  .card.comprometimento-card .value{margin-bottom:2px;}
   .card .label{font-size:10.5px;letter-spacing:.04em;color:var(--muted);font-weight:700;text-transform:uppercase;margin-bottom:8px;}
   .card .value{font-size:22px;font-weight:700;line-height:1.1;margin-bottom:6px;}
   .card .sub{font-size:11.5px;color:var(--muted);}
@@ -2155,17 +2159,17 @@ function renderComprometimentoChart(totalParcelado, receitaBase){
   if(!el) return;
   const limite = (receitaBase || 0) * 0.15;
   const maxV = Math.max(totalParcelado, limite, 1) * 1.15;
-  const W = 260, H = 46, PAD = 4;
+  const W = 260, H = 36, PAD = 4;
   const barMaxW = W - PAD*2;
   const barW = Math.min((totalParcelado / maxV) * barMaxW, barMaxW);
   const limiteX = PAD + (limite / maxV) * barMaxW;
   const barColor = totalParcelado > limite ? "var(--red)" : "var(--green)";
   const svg = `
     <svg viewBox="0 0 ${W} ${H}" style="width:100%;height:${H}px;">
-      <rect x="${PAD}" y="16" width="${barMaxW}" height="14" rx="6" fill="var(--border)"/>
-      <rect x="${PAD}" y="16" width="${barW}" height="14" rx="6" fill="${barColor}"/>
-      <line x1="${limiteX}" y1="8" x2="${limiteX}" y2="36" stroke="var(--muted)" stroke-width="1.5" stroke-dasharray="3,3"/>
-      <text x="${limiteX}" y="46" font-size="9" fill="var(--muted)" text-anchor="middle">limite 15%</text>
+      <rect x="${PAD}" y="10" width="${barMaxW}" height="12" rx="6" fill="var(--border)"/>
+      <rect x="${PAD}" y="10" width="${barW}" height="12" rx="6" fill="${barColor}"/>
+      <line x1="${limiteX}" y1="4" x2="${limiteX}" y2="26" stroke="var(--muted)" stroke-width="1.5" stroke-dasharray="3,3"/>
+      <text x="${limiteX}" y="36" font-size="9" fill="var(--muted)" text-anchor="middle">limite 15%</text>
     </svg>`;
   el.innerHTML = svg;
 }
@@ -4401,7 +4405,7 @@ function renderBalancoCardsShell(){
       tip:"Quanto da sua despesa do mês já consumiu do orçamento total definido no Cadastro.", valueStyle:"color:var(--yellow)" },
     { id:"cTaxaPoupanca", cardClass:"detalhado-only", accent:"var(--green)", label:"Índice de poupança",
       tip:"Percentual da receita acumulada no ano (Jan até o mês atual) que sobrou como saldo positivo.", valueStyle:"color:var(--green)" },
-    { id:"cComprometimento", accent:"var(--border)", label:"Comprometimento de renda", cardClass:"no-scroll wide-card",
+    { id:"cComprometimento", accent:"var(--border)", label:"Comprometimento de renda", cardClass:"no-scroll wide-card comprometimento-card",
       tip:"Soma de todas as parcelas fixas (dívidas + compras parceladas no cartão) que vencem neste mês, dividida pelo salário bruto (Cadastro) — ou pela receita do mês, se o salário bruto não estiver preenchido.",
       extra:`<div id="comprometimentoChart" style="margin-top:10px;"></div>` },
     { id:"cScoreSaude", accent:"var(--gold)", label:"Score de saúde financeira", cardClass:"no-scroll wide-card",
