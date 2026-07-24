@@ -642,7 +642,7 @@
         <button class="icon-btn" style="font-size:20px;" onclick="closePdfPreviewModal()">✕</button>
       </div>
       <p style="font-size:12px;color:var(--muted);margin:0 0 14px;">
-        Isso veio de leitura automática (OCR) de um PDF — confere se os valores batem antes de gravar. Desmarque o que estiver errado ou duplicado.
+        Confere se os valores e o cartão de cada compra estão certos antes de gravar. Desmarque o que estiver errado ou duplicado.
       </p>
       <div id="pdfPreviewBody" style="max-height:50vh;overflow-y:auto;"></div>
       <div class="actions" style="margin-top:14px;">
@@ -5086,54 +5086,14 @@ async function handleImportFaturaCartao(file){
       statusEl.textContent = "Nenhuma transação nova encontrada nesse CSV.";
       return;
     }
-    const rows = transacoes.flatMap(t => {
-      const nomeCartao = getNomeCartaoPorDigitos(t.cartaoNumero);
-      const categoria = sugerirCategoria(t.descricao) || "";
-      return gerarLinhasCompraComParcelamento(t.data, nomeCartao, t.descricao, categoria, t.valor, vencimento);
-    });
-
-    // Não importa de novo uma transação que já existe (mesma data + descrição + valor + vencimento) —
-    // evita duplicidade quando o mesmo CSV é importado mais de uma vez, ou quando o período se
-    // sobrepõe com um import anterior (o vencimento entra na chave pra não confundir parcelas diferentes
-    // da mesma compra, já que elas compartilham data/descrição/valor total).
-    const chavesExistentes = new Set(
-      (raw.compras || []).filter(c => c[0] && c[2]).map(c => chaveCompraCredito(fmtDataBR(serialToDate(c[0])), c[2], c[4] || 0, c[7] ? fmtDataBR(serialToDate(c[7])) : ""))
-    );
-    const rowsSemDuplicar = rows.filter(r => !chavesExistentes.has(chaveCompraCredito(r[0], r[2], r[4], r[7])));
-    const duplicadas = rows.length - rowsSemDuplicar.length;
-    if(rowsSemDuplicar.length === 0){
-      statusEl.textContent = `Todas as ${rows.length} transação(ões) desse CSV já estavam importadas — nada novo pra adicionar.`;
-      return;
-    }
-
-    // Confere se os nomes de cartão mapeados batem com algum cartão realmente cadastrado —
-    // a coluna "Cartão" da aba Crédito tem validação restrita a essa lista, então um nome
-    // fora dela gera aviso de erro na planilha depois. Melhor avisar antes de gravar.
-    const cartoesCadastrados = new Set((raw.cartoes || []).filter(r => r[0]).map(r => r[0].trim()));
-    const nomesNaoEncontrados = [...new Set(rowsSemDuplicar.map(r => r[1]).filter(nome => !cartoesCadastrados.has(nome)))];
-    if(nomesNaoEncontrados.length > 0){
-      const confirmar = confirm(
-        `Estes nomes de cartão não batem com nenhum cartão cadastrado no Cadastro:\n\n${nomesNaoEncontrados.join(", ")}\n\n` +
-        `Isso vai aparecer com aviso de erro na planilha (a coluna "Cartão" só aceita os nomes já cadastrados). ` +
-        `Quer importar mesmo assim? (Cancelar pra corrigir o cadastro primeiro)`
-      );
-      if(!confirmar){
-        statusEl.textContent = `Importação cancelada. Cadastre "${nomesNaoEncontrados.join('", "')}" na aba Cadastro → Cartões (ou ajuste o mapeamento de dígitos) e tente de novo.`;
-        return;
-      }
-    }
-
-    statusEl.textContent = "Importando...";
-    await appendRows("Crédito", "B:I", rowsSemDuplicar);
-    await loadData();
-    renderCredito();
-    statusEl.textContent = `✅ ${rowsSemDuplicar.length} transação(ões) importada(s) na aba Crédito` +
-      (duplicadas ? ` · ${duplicadas} ignorada(s) por já existir (mesma data/descrição/valor)` : "") +
+    // Mesma tela de conferência do importador de PDF — permite escolher o cartão manualmente quando
+    // os últimos dígitos não batem com nenhum cartão cadastrado, em vez de só avisar que vai dar erro.
+    abrirPreviaImportacaoPdf(transacoes, vencimento);
+    statusEl.textContent = `${transacoes.length} transação(ões) reconhecida(s)` +
       (puladasNaoCompra ? ` · ${puladasNaoCompra} ignorada(s) (saldo anterior/boleto)` : "") +
-      (nomesNaoEncontrados.length ? `\n⚠️ Nomes fora do cadastro: ${nomesNaoEncontrados.join(", ")}` : "") +
-      `\n📝 Categoria sugerida automaticamente quando reconheci a descrição — confira e ajuste onde ficou em branco.`;
+      ` — confira na tela antes de importar.`;
   }catch(err){
-    statusEl.textContent = "❌ Não foi possível importar: " + err.message;
+    statusEl.textContent = "❌ Não foi possível ler o CSV: " + err.message;
   }
 }
 
