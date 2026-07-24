@@ -2008,13 +2008,13 @@ function gerarAlertasFatura(){
 
   cartoes.forEach(cartaoInfo => {
     const nomeCartao = cartaoInfo.nome;
-    const cartaoRow = (raw.cartoes || []).find(r => (r[0] || "").trim() === nomeCartao.trim());
+    const cartaoRow = (raw.cartoes || []).find(r => String(r[0] || "").trim() === String(nomeCartao || "").trim());
     const diaVenc = Number(cartaoRow && cartaoRow[2]) || 5;
 
     // Descobre todos os meses/anos em que esse cartão teve compras com vencimento definido
     const mesesComCompra = new Set();
     (raw.compras || []).forEach(c => {
-      if(!c[2] || (c[1] || "").trim() !== nomeCartao.trim() || !c[7]) return;
+      if(!c[2] || String(c[1] || "").trim() !== String(nomeCartao || "").trim() || !c[7]) return;
       const d = serialToDate(c[7]);
       mesesComCompra.add(`${d.getFullYear()}-${d.getMonth()}`);
     });
@@ -2937,7 +2937,7 @@ function renderLancamentos(){
     .sort((a,b) => (a.dataVenc||0) - (b.dataVenc||0));
 
   if(lancSearchQuery){
-    items = items.filter(it => (it.desc || "").toLowerCase().includes(lancSearchQuery));
+    items = items.filter(it => String(it.desc || "").toLowerCase().includes(lancSearchQuery));
   }
 
   const el = document.getElementById("lancTable");
@@ -3313,7 +3313,7 @@ const CATEGORY_COLOR_MAP = {
 };
 
 function normalizeCatName(name){
-  return (name || "")
+  return String(name || "")
     .replace(/^[\p{Emoji_Presentation}\p{Extended_Pictographic}\uFE0F]+\s*/u, "")
     .trim()
     .toLowerCase()
@@ -3628,7 +3628,7 @@ function navegarMesCredito(delta){
 function comprasDoCartao(nomeCartao){
   const todasCompras = (raw.compras || []).filter(r => r[2]);
   return todasCompras.filter(c => {
-    if((c[1] || "").trim() !== nomeCartao.trim()) return false;
+    if(String(c[1] || "").trim() !== String(nomeCartao || "").trim()) return false;
     const venc = c[7];
     if(!venc) return true;
     const d = serialToDate(venc);
@@ -3882,7 +3882,7 @@ function dividaColLetter(offset){
 
 // Considera quitada quando o status diz isso, quando já pagou todas as parcelas, ou o saldo devedor zerou
 function isDividaQuitada(d){
-  const statusNorm = (d.status || "").toLowerCase();
+  const statusNorm = String(d.status || "").toLowerCase();
   if(/quita|finaliz|encerr|paga/.test(statusNorm)) return true;
   if(d.numParcelas > 0 && d.parcelasPagas >= d.numParcelas) return true;
   if(d.saldoDevedor <= 0 && d.valorInicial > 0) return true;
@@ -4231,7 +4231,7 @@ function renderCadCartoesTable(){
 async function reconectarComprasDoCartao(nomeAntigo, nomeNovo){
   const linhasParaAtualizar = [];
   (raw.compras || []).forEach((c, i) => {
-    if((c[1] || "").trim() === nomeAntigo.trim()) linhasParaAtualizar.push(10 + i);
+    if(String(c[1] || "").trim() === nomeAntigo.trim()) linhasParaAtualizar.push(10 + i);
   });
   await writeCellsBatch(linhasParaAtualizar.map(r => ({ range: `Crédito!C${r}`, value: nomeNovo })));
   return linhasParaAtualizar.length;
@@ -4239,10 +4239,10 @@ async function reconectarComprasDoCartao(nomeAntigo, nomeNovo){
 // Nomes de cartão que aparecem em compras lançadas mas não existem mais na lista de cartões do Cadastro
 // (normalmente porque o cartão foi renomeado antes dessa reconexão automática existir).
 function getNomesCartoesOrfaos(){
-  const atuais = new Set(getCadastroCartoesParsed().map(c => c.nome.trim()));
+  const atuais = new Set(getCadastroCartoesParsed().map(c => String(c.nome || "").trim()));
   const orfaos = new Set();
   (raw.compras || []).forEach(c => {
-    const nome = (c[1] || "").trim();
+    const nome = StringString(c[1] || "").trim();
     if(nome && !atuais.has(nome)) orfaos.add(nome);
   });
   return Array.from(orfaos);
@@ -4529,7 +4529,7 @@ function renderCredito(){
     : "Nenhuma compra em " + nomeMesView) + subExtra;
 
   // Parcelas em aberto: todas as compras desse cartão com vencimento a partir do mês selecionado, em diante
-  const todasDoCartao = (raw.compras || []).filter(r => r[2] && (r[1] || "").trim() === nomeCartao.trim());
+  const todasDoCartao = (raw.compras || []).filter(r => r[2] && String(r[1] || "").trim() === String(nomeCartao || "").trim());
   const inicioMes = new Date(state.year, state.monthIdx, 1);
   const parcelasAberto = todasDoCartao.filter(c => {
     if(!c[7]) return false;
@@ -5720,7 +5720,7 @@ function closePdfPreviewModal(){
 // mês/cartão que está sendo visualizado na tela no momento (por isso recebe os parâmetros direto).
 function calcularValorFaturaCartaoMes(nomeCartao, mesIdx, ano){
   return (raw.compras || [])
-    .filter(c => c[2] && (c[1] || "").trim() === nomeCartao.trim())
+    .filter(c => c[2] && String(c[1] || "").trim() === String(nomeCartao || "").trim())
     .filter(c => {
       const venc = c[7];
       if(!venc) return false;
