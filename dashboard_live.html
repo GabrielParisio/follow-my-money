@@ -1687,6 +1687,53 @@ function closeAlertasModal(){
   document.getElementById("alertasModal").classList.add("hidden");
 }
 
+// Varre TODOS os cartões e TODOS os meses com compra (não só o mês em exibição) — por isso uma
+// fatura atrasada continua aparecendo nos alertas mesmo depois de você navegar pra outro mês.
+function gerarAlertasFatura(){
+  const alertasFatura = [];
+  const cartoes = getCadastroCartoesParsed();
+  const hoje = new Date(); hoje.setHours(0, 0, 0, 0);
+  const em3Dias = new Date(hoje); em3Dias.setDate(em3Dias.getDate() + 3);
+
+  cartoes.forEach(cartaoInfo => {
+    const nomeCartao = cartaoInfo.nome;
+    const cartaoRow = (raw.cartoes || []).find(r => (r[0] || "").trim() === nomeCartao.trim());
+    const diaVenc = Number(cartaoRow && cartaoRow[2]) || 5;
+
+    // Descobre todos os meses/anos em que esse cartão teve compras com vencimento definido
+    const mesesComCompra = new Set();
+    (raw.compras || []).forEach(c => {
+      if(!c[2] || (c[1] || "").trim() !== nomeCartao.trim() || !c[7]) return;
+      const d = serialToDate(c[7]);
+      mesesComCompra.add(`${d.getFullYear()}-${d.getMonth()}`);
+    });
+
+    mesesComCompra.forEach(chave => {
+      const [ano, mesIdx] = chave.split("-").map(Number);
+      const faturaValor = calcularValorFaturaCartaoMes(nomeCartao, mesIdx, ano);
+      if(faturaValor <= 0) return; // sem gasto, sem alerta
+
+      const nomeMes = MONTHS_FULL[mesIdx];
+      const descEsperada = normalizeCatName(`Fatura ${nomeCartao} - ${nomeMes}/${ano}`);
+      const pagamentoExistente = debitoRows().find(it => normalizeCatName(it.desc) === descEsperada);
+      const valorPago = pagamentoExistente ? (pagamentoExistente.valor || 0) : 0;
+      const diferenca = Math.round((faturaValor - valorPago) * 100) / 100;
+      if(pagamentoExistente && diferenca <= 0.01) return; // totalmente paga, sem alerta
+
+      const dataVencimentoFatura = new Date(ano, mesIdx, diaVenc);
+      if(dataVencimentoFatura < hoje){
+        alertasFatura.push({ id: `fatura-atrasada-${nomeCartao}-${mesIdx}-${ano}`, type: "danger", icon: "💳",
+          html: `<b>${nomeCartao}</b> — fatura de ${nomeMes}/${ano} atrasada: ${fmtMoney(diferenca)}` });
+      } else if(dataVencimentoFatura <= em3Dias){
+        alertasFatura.push({ id: `fatura-vencendo-${nomeCartao}-${mesIdx}-${ano}`, type: "warn", icon: "⏰",
+          html: `<b>${nomeCartao}</b> — fatura de ${nomeMes}/${ano} vence dia ${diaVenc}: ${fmtMoney(diferenca)}` });
+      }
+    });
+  });
+
+  return alertasFatura;
+}
+
 function renderAlertas(lanc, mi){
   window._lancAtual = lanc; window._miAtual = mi;
   const alertas = [];
@@ -1716,7 +1763,7 @@ function renderAlertas(lanc, mi){
   if(maiorAlta && maiorAlta.alta >= 25){
     const nomeCat = maiorAlta.cat.replace(/^[\p{Emoji_Presentation}\p{Extended_Pictographic}\uFE0F]+\s*/u, "");
     alertas.push({ id: `alta-${maiorAlta.cat}-${mi}-${state.year}`, type: "warn", icon: "⚠️",
-      html: `<b>${nomeCat}</b> deu uma subida de ${maiorAlta.alta.toFixed(0)}% vs ${MONTHS[mi-1]} (${fmtMoney(maiorAlta.prev)} → ${fmtMoney(maiorAlta.val)}) — vale um olhar, sem pânico` });
+      html: `<b>${nomeCat}</b> subiu ${maiorAlta.alta.toFixed(0)}% vs ${MONTHS[mi-1]}: ${fmtMoney(maiorAlta.prev)} → ${fmtMoney(maiorAlta.val)}` });
   }
 
   // 2) Categorias estourando o orçamento
@@ -1725,7 +1772,7 @@ function renderAlertas(lanc, mi){
     if(gasto > r[4]){
       const nomeCat = r[0].replace(/^[\p{Emoji_Presentation}\p{Extended_Pictographic}\uFE0F]+\s*/u, "");
       alertas.push({ id: `orcamento-${r[0]}-${mi}-${state.year}`, type: "danger", icon: "🚨",
-        html: `<b>${nomeCat}</b> passou do orçamento (${fmtMoney(gasto)} de ${fmtMoney(r[4])} previstos) — nada grave, só fique de olho pro resto do mês` });
+        html: `<b>${nomeCat}</b> passou do orçamento: ${fmtMoney(gasto)} de ${fmtMoney(r[4])} previstos` });
     }
   });
 
@@ -1734,8 +1781,16 @@ function renderAlertas(lanc, mi){
   const receitaReal = row(48)[mi] || 0, despesaReal = row(49)[mi] || 0;
   if(despesaReal > receitaReal && receitaReal > 0){
     alertas.push({ id: `deficit-${mi}-${state.year}`, type: "danger", icon: "📉",
-      html: `Calma — a despesa (${fmtMoney(despesaReal)}) passou da receita (${fmtMoney(receitaReal)}) em ${MONTHS_FULL[mi]}. Vale revisar antes do fim do mês` });
+      html: `Despesa (${fmtMoney(despesaReal)}) maior que receita (${fmtMoney(receitaReal)}) em ${MONTHS_FULL[mi]}` });
   }
+
+  // 4) Faturas atrasadas ou vencendo em breve — não depende do mês em exibição (mi), varre todos os
+  // cartões e meses com compra, então uma fatura atrasada de julho continua alertando em agosto.
+  alertas.push(...gerarAlertasFatura());
+
+  // Mais grave primeiro (danger antes de warn), senão mantém a ordem em que foram gerados
+  const pesoSeveridade = { danger: 0, warn: 1 };
+  alertas.sort((a, b) => (pesoSeveridade[a.type] ?? 2) - (pesoSeveridade[b.type] ?? 2));
 
   window._alertasTodos = alertas;
   const arquivados = getArchivedAlertIds();
