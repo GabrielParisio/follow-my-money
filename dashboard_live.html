@@ -191,6 +191,13 @@
     border-color:rgba(47,158,91,.35)!important;
   }
   @media (max-width:480px){ .patrimonio-card{grid-column:span 1;} }
+  @media print{
+    body *{ visibility:hidden; }
+    #relatorioPrintArea, #relatorioPrintArea *{ visibility:visible; }
+    #relatorioPrintArea{ position:absolute; left:0; top:0; width:100%; border:none; background:#fff; color:#000; }
+    #relatorioPrintArea *{ background:transparent !important; color:#000 !important; }
+    .no-print{ display:none !important; }
+  }
   .card{
     background:var(--card);border:1px solid var(--border);border-radius:16px;
     overflow:hidden;display:flex;flex-direction:column;height:auto;min-height:0;
@@ -479,7 +486,7 @@
       <div class="seg-toggle" id="resumoModoToggle">
         <button class="seg-btn active" data-modo="resumido">Resumido</button>
         <button class="seg-btn" data-modo="detalhado">Detalhado</button>
-        <button class="seg-btn" data-modo="essencial">Essencial</button>
+        <button class="seg-btn" data-modo="relatorio">Relatório</button>
       </div>
     </div>
 
@@ -489,13 +496,20 @@
       <div class="skeleton-row"><span class="skeleton" style="width:100%;"></span></div>
     </div>
 
-    <!-- Modo Essencial: só o mínimo pra responder "posso gastar hoje?" numa olhada -->
-    <div id="resumoEssencial" class="hidden" style="text-align:center;padding:50px 20px;">
-      <div id="essencialPodeGastar" style="font-size:22px;font-weight:700;margin-bottom:18px;"></div>
-      <div id="essencialSaldo" style="font-size:46px;font-weight:700;line-height:1.1;"></div>
-      <div style="font-size:12.5px;color:var(--muted);margin-bottom:34px;">saldo do mês</div>
-      <div id="essencialScore" style="font-size:34px;font-weight:700;"></div>
-      <div style="font-size:12.5px;color:var(--muted);">score de saúde financeira</div>
+    <!-- Modo Relatório: visão completa da carteira, pronta pra exportar em PDF -->
+    <div id="resumoRelatorio" class="hidden">
+      <div class="chart-panel" id="relatorioPrintArea">
+        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:6px;">
+          <div>
+            <h2 style="margin:0;">📄 Relatório da Carteira</h2>
+            <p id="relatorioDataGeracao" style="font-size:11.5px;color:var(--muted);margin:2px 0 0;"></p>
+          </div>
+          <button class="connect-btn no-print" onclick="window.print()">⬇️ Exportar PDF</button>
+        </div>
+        <div id="relatorioConteudo" style="margin-top:16px;">
+          <div class="skeleton-row"><span class="skeleton" style="width:100%;"></span></div>
+        </div>
+      </div>
     </div>
 
     <!-- Só no modo Detalhado: o que antes era a aba Balanço -->
@@ -1539,9 +1553,9 @@ function render(){
   // ---- Score de Saúde Financeira ----
   const cScoreEl = document.getElementById("cScoreSaude");
   if(cScoreEl){
-    const { score, notas, delta } = calcularScoreSaudeFinanceira(mi, state.year);
+    const { score, notas, delta, mesIdx, ano } = calcularScoreSaudeFinanceira(mi, state.year);
     const mediaAcumulada = calcularScoreMediaAcumulada(mi, state.year);
-    window._scoreSaudeAtual = { score, notas, delta, mediaAcumulada };
+    window._scoreSaudeAtual = { score, notas, delta, mediaAcumulada, mesIdx, ano };
     const faixa = faixaScore(score);
     cScoreEl.textContent = score;
     cScoreEl.style.color = faixa.cor;
@@ -1660,27 +1674,16 @@ function renderResumo(){
   // Modo Detalhado = os gráficos e tabelas que antes viviam sozinhos na aba Balanço
   const detalhadoEl = document.getElementById("resumoDetalhado");
   const isDetalhado = resumoModo === "detalhado";
-  const isEssencial = resumoModo === "essencial";
+  const isRelatorio = resumoModo === "relatorio";
   detalhadoEl.classList.toggle("hidden", !isDetalhado);
   document.querySelectorAll("#balancoCards .detalhado-only").forEach(card => card.classList.toggle("hidden", !isDetalhado));
   if(isDetalhado) renderCharts();
 
-  // Modo Essencial: some com tudo, mostra só 2-3 números — pra quem só quer saber "posso gastar hoje?"
-  document.getElementById("balancoCards").classList.toggle("hidden", isEssencial);
-  document.getElementById("resumoExtra").classList.toggle("hidden", isEssencial);
-  document.getElementById("resumoEssencial").classList.toggle("hidden", !isEssencial);
-  if(isEssencial){
-    const corSaldo = saldoReal >= 0 ? "var(--green)" : "var(--red)";
-    document.getElementById("essencialSaldo").textContent = fmtMoney(saldoReal);
-    document.getElementById("essencialSaldo").style.color = corSaldo;
-    document.getElementById("essencialPodeGastar").textContent = saldoReal >= 0 ? "✅ Pode gastar" : "⚠️ Segura o gasto";
-    document.getElementById("essencialPodeGastar").style.color = corSaldo;
-    const { score } = calcularScoreSaudeFinanceira(mi, state.year);
-    const faixa = faixaScore(score);
-    const scoreEl = document.getElementById("essencialScore");
-    scoreEl.textContent = `${faixa.emoji} ${score}`;
-    scoreEl.style.color = faixa.cor;
-  }
+  // Modo Relatório: visão completa da carteira, pronta pra exportar em PDF (window.print())
+  document.getElementById("balancoCards").classList.toggle("hidden", isRelatorio);
+  document.getElementById("resumoExtra").classList.toggle("hidden", isRelatorio);
+  document.getElementById("resumoRelatorio").classList.toggle("hidden", !isRelatorio);
+  if(isRelatorio) renderRelatorio(mi);
 }
 
 function greetingWord(){
@@ -2182,6 +2185,99 @@ function gastoPorCategoriaMesSimples(targetMi, targetYear){
   return map;
 }
 
+// ===================== RELATÓRIO DA CARTEIRA (exportável em PDF via window.print) =====================
+function renderRelatorio(mi){
+  const el = document.getElementById("relatorioConteudo");
+  const dataGeracaoEl = document.getElementById("relatorioDataGeracao");
+  if(!el) return;
+  const ano = state.year;
+  const nome = (raw.nomeUsuario && raw.nomeUsuario[0] && raw.nomeUsuario[0][0]) || "";
+  const agora = new Date();
+  dataGeracaoEl.textContent = `${nome ? nome + " · " : ""}${MONTHS_FULL[mi]}/${ano} · gerado em ${fmtDate(agora)} às ${String(agora.getHours()).padStart(2,"0")}:${String(agora.getMinutes()).padStart(2,"0")}`;
+
+  // Patrimônio
+  const reserva = calcSaldoInvestimento("Reserva de Emergência");
+  const rendaFixa = calcSaldoInvestimento("Renda Fixa");
+  const rendaVariavel = calcSaldoInvestimento("Renda Variável");
+  const totalAtivos = reserva + rendaFixa + rendaVariavel;
+
+  // Dívidas
+  const dividas = getDividasParsed();
+  const dividasAtivas = dividas.filter(d => !isDividaQuitada(d));
+  const totalDevedor = dividasAtivas.reduce((s,d) => s + d.saldoDevedor, 0);
+  const patrimonioLiquido = totalAtivos - totalDevedor;
+
+  // Mês atual
+  const receitaMes = calcReal("Receita", mi, ano);
+  const despesaMes = calcReal("Despesa", mi, ano);
+  const saldoMes = receitaMes - despesaMes;
+
+  // Score
+  const { score, notas } = calcularScoreSaudeFinanceira(mi, ano);
+  const faixa = faixaScore(score);
+  const pilares = [
+    { label: "Fluxo de Caixa", nota: notas.fluxo },
+    { label: "Poupança", nota: notas.poupanca },
+    { label: "Endividamento", nota: notas.endividamento },
+    { label: "Liquidez", nota: notas.liquidez },
+    { label: "Patrimônio", nota: notas.patrimonio },
+  ];
+
+  // Gastos por categoria do mês
+  const categorias = Object.entries(gastoPorCategoriaMesSimples(mi, ano)).sort((a,b) => b[1]-a[1]).slice(0, 8);
+
+  // Projeção 12 meses
+  const { mediaSaldo, mesesConsiderados } = calcularMediaSaldoMensal(6);
+  const projecao12m = mesesConsiderados > 0 ? totalAtivos + mediaSaldo * 12 : null;
+
+  const secao = (titulo, conteudo) => `
+    <div style="margin-bottom:22px;">
+      <h3 style="font-size:14px;margin:0 0 10px;border-bottom:1px solid var(--border);padding-bottom:6px;">${titulo}</h3>
+      ${conteudo}
+    </div>`;
+  const linha = (label, valor, cor) => `
+    <div style="display:flex;justify-content:space-between;padding:5px 0;font-size:13px;">
+      <span style="color:var(--muted);">${label}</span>
+      <span style="font-weight:600;${cor?`color:${cor};`:""}">${valor}</span>
+    </div>`;
+
+  el.innerHTML =
+    secao("💰 Patrimônio", `
+      ${linha("Reserva de Emergência", fmtMoney(reserva))}
+      ${linha("Renda Fixa", fmtMoney(rendaFixa))}
+      ${linha("Renda Variável", fmtMoney(rendaVariavel))}
+      ${linha("Total em ativos", fmtMoney(totalAtivos))}
+      ${linha("Dívidas ativas", fmtMoney(totalDevedor), "var(--red)")}
+      ${linha("Patrimônio líquido", fmtMoney(patrimonioLiquido), patrimonioLiquido >= 0 ? "var(--green)" : "var(--red)")}
+    `) +
+    secao(`📅 ${MONTHS_FULL[mi]}/${ano}`, `
+      ${linha("Receita", fmtMoney(receitaMes), "var(--green)")}
+      ${linha("Despesa", fmtMoney(despesaMes), "var(--red)")}
+      ${linha("Saldo", fmtMoney(saldoMes), saldoMes >= 0 ? "var(--green)" : "var(--red)")}
+    `) +
+    secao("📈 Score de Saúde Financeira", `
+      <div style="display:flex;align-items:baseline;gap:10px;margin-bottom:12px;">
+        <span style="font-size:28px;font-weight:700;color:${faixa.cor};">${score}</span>
+        <span style="font-size:13px;color:${faixa.cor};font-weight:600;">${faixa.emoji} ${faixa.label}</span>
+      </div>
+      ${pilares.map(p => `
+        <div style="margin-bottom:6px;">
+          <div style="display:flex;justify-content:space-between;font-size:11.5px;color:var(--muted);margin-bottom:2px;">
+            <span>${p.label}</span><span>${p.nota}/100</span>
+          </div>
+          <div style="height:5px;background:var(--border);border-radius:3px;overflow:hidden;">
+            <div style="width:${p.nota}%;height:100%;background:${p.nota>=70?"var(--green)":p.nota>=40?"var(--yellow)":"var(--red)"};"></div>
+          </div>
+        </div>`).join("")}
+    `) +
+    secao("📊 Gastos por categoria", categorias.length > 0
+      ? categorias.map(([cat, val]) => linha(cat, fmtMoney(val))).join("")
+      : `<p style="font-size:12.5px;color:var(--muted);">Sem despesa categorizada neste mês</p>`) +
+    secao("🔮 Projeção patrimonial", projecao12m !== null
+      ? linha(`Em 12 meses (média de ${mesesConsiderados} meses)`, fmtMoney(projecao12m), "var(--purple)")
+      : `<p style="font-size:12.5px;color:var(--muted);">Sem histórico suficiente pra projetar ainda</p>`);
+}
+
 function renderInsights(mi){
   const el = document.getElementById("insightsPanel");
   if(!el) return;
@@ -2651,6 +2747,11 @@ function openScoreDetalheModal(){
     </div>` : `
     <p style="font-size:11.5px;color:var(--muted);text-align:center;margin-bottom:18px;">Ainda não há histórico de 30 dias pra comparar — volte depois de um tempo pra ver a variação aqui.</p>`;
   document.getElementById("scoreDetalheBody").innerHTML = `
+    <div style="display:flex;align-items:center;justify-content:center;gap:14px;margin-bottom:6px;">
+      <button class="icon-btn" onclick="navegarMesScore(-1)" title="Mês anterior">◀</button>
+      <span style="font-size:13px;color:var(--muted);font-weight:600;min-width:110px;text-align:center;">${MONTHS_FULL[dados.mesIdx ?? state.monthIdx]}/${dados.ano ?? state.year}</span>
+      <button class="icon-btn" onclick="navegarMesScore(1)" title="Próximo mês">▶</button>
+    </div>
     <div style="text-align:center;margin-bottom:14px;">
       <div style="font-size:36px;font-weight:700;color:${faixa.cor};">${score}</div>
       <div style="font-size:13px;color:${faixa.cor};font-weight:600;">${faixa.emoji} ${faixa.label}</div>
@@ -2703,12 +2804,14 @@ function calcularScoreSaudeFinanceira(mesIdx, ano){
   ano = ano !== undefined ? ano : hoje.getFullYear();
   const ehMesAtualReal = mi === hoje.getMonth() && ano === hoje.getFullYear();
 
-  // Médias dos 6 meses anteriores ao mês calculado (usadas em Fluxo de Caixa e Liquidez)
+  // Médias dos 6 meses anteriores ao mês calculado (usadas em Fluxo de Caixa e Liquidez) — usa
+  // valores ESPERADOS (Previsto: soma tudo lançado no mês, pago ou pendente), não só o que já foi
+  // confirmado, tanto pra receita quanto pra despesa.
   let somaSaldo6m = 0, somaReceita6m = 0, somaDespesa6m = 0, mesesComDado6m = 0;
   for(let i = 1; i <= 6; i++){
     const d = new Date(ano, mi - i, 1);
-    const r = calcReal("Receita", d.getMonth(), d.getFullYear());
-    const de = calcReal("Despesa", d.getMonth(), d.getFullYear());
+    const r = calcPrevisto("Receita", d.getMonth(), d.getFullYear());
+    const de = calcPrevisto("Despesa", d.getMonth(), d.getFullYear());
     if(r === 0 && de === 0) continue;
     somaSaldo6m += (r - de); somaReceita6m += r; somaDespesa6m += de; mesesComDado6m++;
   }
@@ -2717,10 +2820,14 @@ function calcularScoreSaudeFinanceira(mesIdx, ano){
   const percSaldoMedio = somaReceita6m > 0 ? (somaSaldo6m / somaReceita6m * 100) : 0;
   const notaFluxo = interpolarNota(percSaldoMedio, [[-50,0],[0,50],[5,70],[10,85],[20,100]]);
 
-  // ---- 2) Capacidade de Poupança (peso 22%) — índice de poupança do mês calculado
-  const receitaReal = calcReal("Receita", mi, ano);
-  const despesaReal = calcReal("Despesa", mi, ano);
-  const indicePoupanca = receitaReal > 0 ? ((receitaReal - despesaReal) / receitaReal * 100) : 0;
+  // ---- 2) Capacidade de Poupança (peso 22%) — usa os valores ESPERADOS do mês (calcPrevisto: soma
+  // tudo que está lançado com vencimento neste mês, pago ou ainda pendente) tanto pra receita quanto
+  // pra despesa. Um salário ainda "Pendente" ou uma conta ainda não paga já entram no cálculo, em vez
+  // do score variar só por causa de status de pagamento — o que importa aqui é o que está PREVISTO
+  // acontecer no mês, não só o que já foi confirmado.
+  const receitaEsperada = calcPrevisto("Receita", mi, ano);
+  const despesaEsperada = calcPrevisto("Despesa", mi, ano);
+  const indicePoupanca = receitaEsperada > 0 ? ((receitaEsperada - despesaEsperada) / receitaEsperada * 100) : 0;
   const notaPoupanca = interpolarNota(indicePoupanca, [[0,0],[5,20],[10,40],[15,60],[20,80],[25,90],[30,100]]);
 
   // ---- 3) Endividamento (peso 22%) — comprometimento de renda (parcelas fixas / renda) do mês calculado
@@ -2732,7 +2839,7 @@ function calcularScoreSaudeFinanceira(mesIdx, ano){
     .filter(c => { const d = serialToDate(c[7]); return d >= inicioMes && d < fimMes; })
     .reduce((s,c) => s + (c[5] || c[4] || 0), 0);
   const totalParcelado = dividasParcelaMensal + creditoParcelasMes;
-  const rendaBase = getSalarioBruto() > 0 ? getSalarioBruto() : receitaReal;
+  const rendaBase = getSalarioBruto() > 0 ? getSalarioBruto() : receitaEsperada;
   const comprometimento = rendaBase > 0 ? (totalParcelado / rendaBase * 100) : 0;
   const notaEndividamento = interpolarNota(comprometimento, [[0,100],[20,100],[30,85],[40,60],[50,30],[100,0]]);
 
@@ -3625,6 +3732,22 @@ function navegarMesCredito(delta){
   if(raw) renderCredito();
 }
 
+// Mesmo padrão do navegarMesCredito — troca o mês global e redesenha o modal do Score no lugar,
+// sem fechar e reabrir a sobreposição.
+function navegarMesScore(delta){
+  let novoMes = state.monthIdx + delta;
+  let novoAno = state.year;
+  if(novoMes < 0){ novoMes = 11; novoAno -= 1; }
+  else if(novoMes > 11){ novoMes = 0; novoAno += 1; }
+  state.monthIdx = novoMes;
+  state.year = novoAno;
+  const yearSelEl = document.getElementById("yearSelect");
+  if(yearSelEl) yearSelEl.value = novoAno;
+  updateMonthRuler();
+  render();
+  openScoreDetalheModal();
+}
+
 function comprasDoCartao(nomeCartao){
   const todasCompras = (raw.compras || []).filter(r => r[2]);
   return todasCompras.filter(c => {
@@ -4242,7 +4365,7 @@ function getNomesCartoesOrfaos(){
   const atuais = new Set(getCadastroCartoesParsed().map(c => String(c.nome || "").trim()));
   const orfaos = new Set();
   (raw.compras || []).forEach(c => {
-    const nome = StringString(c[1] || "").trim();
+    const nome = String(c[1] || "").trim();
     if(nome && !atuais.has(nome)) orfaos.add(nome);
   });
   return Array.from(orfaos);
