@@ -71,6 +71,10 @@
   [data-theme="light"] .sidebar .tabs span:hover{ color:#FFFFFF; }
   [data-theme="light"] .sidebar .tabs .active{ color:#FFFFFF; background:var(--deep-green); }
   [data-theme="light"] .sidebar #lastUpdated{ color:#E3D3B0 !important; }
+  [data-theme="light"] .connect-btn{
+    background:rgba(31,122,68,.08); border-color:rgba(31,122,68,.35); color:var(--green); font-weight:600;
+  }
+  [data-theme="light"] .connect-btn:hover{ background:rgba(31,122,68,.14); border-color:var(--green); }
   .main-content{flex:1;min-width:0;padding:24px 24px 60px;}
   .brand{font-weight:700;font-size:17px;display:flex;align-items:center;gap:9px;margin-bottom:28px;padding:0 8px;color:var(--gold);}
   .brand span{color:var(--gold);}
@@ -545,8 +549,10 @@
       </div>
     </div>
     <div class="panel">
-      <h2>🇧🇷 Comparado com a média nacional <span class="info-icon" data-tip="Fonte: IBGE, Pesquisa de Orçamentos Familiares (POF) 2017-2018 — última edição com resultado publicado.">?</span></h2>
-      <div id="benchmarkList"></div>
+      <h2>💡 Como este mês está indo</h2>
+      <div id="insightsPanel">
+        <div class="skeleton-row"><span class="skeleton" style="width:100%;"></span></div>
+      </div>
     </div>
     <div class="panel panel-clickable" onclick="openCalendarModal()" title="Ver calendário completo">
       <h2>📅 Próximos vencimentos</h2>
@@ -1566,6 +1572,7 @@ function render(){
 
   renderCategorias(lanc, mi);
   renderVencimentos(lanc);
+  renderInsights(mi);
   renderOrcadoReal(lanc, mi);
   renderAlertas(lanc, mi);
 }
@@ -1732,7 +1739,6 @@ function renderBenchmark(mi){
   el.innerHTML = linha("Alimentação", dados.alimentacao) + linha("Essenciais (moradia+alim.+transporte)", dados.essenciais);
 }
 function renderCategorias(lanc, mi){
-  renderBenchmark(mi);
   const totals = {};
   debitoRows().forEach(it => {
     if(!it.categoria || it.tipo !== "Despesa" || !it.dataVenc) return;
@@ -2159,6 +2165,77 @@ function renderOrcadoReal(lanc, mi){
       </div>
     </div>`;
   }).join("");
+}
+
+// Soma gasto por categoria num mês específico — versão simples, reaproveitada só pra achar a
+// categoria que mais subiu (o motor completo de alertas tem sua própria cópia, deixada como está
+// pra não arriscar mudar o comportamento dos alertas já existentes).
+function gastoPorCategoriaMesSimples(targetMi, targetYear){
+  const map = {};
+  debitoRows().forEach(it => {
+    if(!it.categoria || it.tipo !== "Despesa" || !it.dataVenc) return;
+    if(ehCategoriaTransferencia(it.categoria) || ehCategoriaFaturaCartao(it.categoria)) return;
+    const d = serialToDate(it.dataVenc);
+    if(d.getMonth() !== targetMi || d.getFullYear() !== targetYear) return;
+    map[it.categoria] = (map[it.categoria] || 0) + (it.valor || 0);
+  });
+  return map;
+}
+
+function renderInsights(mi){
+  const el = document.getElementById("insightsPanel");
+  if(!el) return;
+  const ano = state.year;
+  const mesAnteriorData = new Date(ano, mi - 1, 1);
+  const miAnt = mesAnteriorData.getMonth(), anoAnt = mesAnteriorData.getFullYear();
+
+  // 1) Comparação com você mesmo — despesa deste mês vs. mês anterior
+  const despesaAtual = calcReal("Despesa", mi, ano);
+  const despesaAnterior = calcReal("Despesa", miAnt, anoAnt);
+  let linhaComparacao;
+  if(despesaAnterior > 0){
+    const diffPct = (despesaAtual - despesaAnterior) / despesaAnterior * 100;
+    const cor = diffPct <= 0 ? "var(--green)" : "var(--red)";
+    const verbo = diffPct <= 0 ? "a menos" : "a mais";
+    linhaComparacao = `<div class="row"><span class="name">Gasto vs. mês passado</span><span class="val" style="color:${cor};">${Math.abs(diffPct).toFixed(1)}% ${verbo}</span></div>`;
+  } else {
+    linhaComparacao = `<div class="row"><span class="name">Gasto vs. mês passado</span><span class="val" style="color:var(--muted);">sem dado no mês anterior</span></div>`;
+  }
+
+  // 2) Insight automático — prioriza o mais notável: melhor mês de poupança, senão categoria em alta
+  let insightTexto = "";
+  const receitaAtual = calcReal("Receita", mi, ano);
+  const poupancaAtual = receitaAtual > 0 ? ((receitaAtual - despesaAtual) / receitaAtual * 100) : null;
+
+  const poupancasAnteriores = [];
+  for(let i = 1; i <= 6; i++){
+    const d = new Date(ano, mi - i, 1);
+    const r = calcReal("Receita", d.getMonth(), d.getFullYear());
+    const de = calcReal("Despesa", d.getMonth(), d.getFullYear());
+    if(r === 0 && de === 0) continue;
+    poupancasAnteriores.push(r > 0 ? (r - de) / r * 100 : 0);
+  }
+  const melhorAnterior = poupancasAnteriores.length > 0 ? Math.max(...poupancasAnteriores) : null;
+
+  if(poupancaAtual !== null && melhorAnterior !== null && poupancasAnteriores.length >= 2 && poupancaAtual > melhorAnterior){
+    insightTexto = `🏆 Este é seu melhor mês de poupança nos últimos ${poupancasAnteriores.length + 1} meses.`;
+  } else {
+    const atualCat = gastoPorCategoriaMesSimples(mi, ano);
+    const anteriorCat = gastoPorCategoriaMesSimples(miAnt, anoAnt);
+    let maiorAltaCategoria = null, maiorAltaPct = 25; // só entra se passar de 25%
+    Object.keys(atualCat).forEach(cat => {
+      const valAnterior = anteriorCat[cat] || 0;
+      if(valAnterior < 50) return; // base pequena demais, % dispara sem significar muito
+      const pct = (atualCat[cat] - valAnterior) / valAnterior * 100;
+      if(pct > maiorAltaPct){ maiorAltaPct = pct; maiorAltaCategoria = cat; }
+    });
+    if(maiorAltaCategoria){
+      insightTexto = `📈 <b>${maiorAltaCategoria}</b> subiu ${maiorAltaPct.toFixed(0)}% em relação ao mês passado.`;
+    }
+  }
+
+  el.innerHTML = linhaComparacao +
+    (insightTexto ? `<div style="border-top:1px solid var(--border);margin-top:8px;padding-top:10px;font-size:12.5px;">${insightTexto}</div>` : "");
 }
 
 function renderVencimentos(lanc){
