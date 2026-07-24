@@ -3894,9 +3894,24 @@ async function saveCadCartaoCampo(row, col, value){
 }
 // Renomear o cartão precisa também atualizar as compras já lançadas com o nome antigo — senão elas
 // "descolam" do cartão (o nome funciona como a ligação entre a compra e o cartão na aba Crédito).
+// Confere se já existe outro cartão cadastrado com o MESMO nome mas de um BANCO diferente — isso
+// quebra a identificação das compras, já que a aba Crédito só guarda o nome do cartão na coluna
+// "Cartão", não o banco junto. Dois cartões com nome igual viram indistinguíveis pro app.
+function existeColisaoDeNome(nomeCandidato, bancoCandidato, rowIgnorar){
+  const nomeNorm = normalizeCatName(nomeCandidato);
+  return getCadastroCartoesParsed().some(c => {
+    if(c.row === rowIgnorar) return false;
+    return normalizeCatName(c.nome) === nomeNorm && normalizeCatName(c.bandeira || "") !== normalizeCatName(bancoCandidato || "");
+  });
+}
 async function renomearCartao(row, nomeAntigo, nomeNovo){
   nomeNovo = (nomeNovo || "").trim();
   if(!nomeNovo || nomeNovo === nomeAntigo) return;
+  const cartaoAtual = getCadastroCartoesParsed().find(c => c.row === row);
+  if(existeColisaoDeNome(nomeNovo, cartaoAtual ? cartaoAtual.bandeira : "", row)){
+    const confirmar = confirm(`Já existe outro cartão cadastrado chamado "${nomeNovo}", de um banco diferente. O app não consegue separar as compras de dois cartões com o mesmo nome — as faturas dos dois vão se misturar. Recomendo diferenciar (ex: "${nomeNovo} ${cartaoAtual ? cartaoAtual.bandeira : ""}"). Quer salvar mesmo assim?`);
+    if(!confirmar) return;
+  }
   try{
     await writeCell(`Cadastro!H${row}`, nomeNovo);
     const n = await reconectarComprasDoCartao(nomeAntigo, nomeNovo);
@@ -3950,6 +3965,10 @@ async function saveCadastroCartaoNovo(row){
   const nome = modelo || "Cartão";
   const vencimento = parseInt(document.getElementById("novoCartaoVencimento").value, 10) || 10;
   const digitos = document.getElementById("novoCartaoDigitos").value.trim();
+  if(existeColisaoDeNome(nome, banco, null)){
+    const confirmar = confirm(`Já existe outro cartão cadastrado chamado "${nome}", de um banco diferente. O app não consegue separar as compras de dois cartões com o mesmo nome — as faturas dos dois vão se misturar. Recomendo diferenciar (ex: "${nome} ${banco}"). Quer salvar mesmo assim?`);
+    if(!confirmar) return;
+  }
   await salvarEAtualizar(async () => {
     await writeCell(`Cadastro!H${row}`, nome);
     await writeCell(`Cadastro!I${row}`, banco === "Genérico" ? "" : banco);
