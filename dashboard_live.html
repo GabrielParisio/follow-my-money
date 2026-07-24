@@ -1749,7 +1749,7 @@ function renderCategorias(lanc, mi){
   const totals = {};
   debitoRows().forEach(it => {
     if(!it.categoria || it.tipo !== "Despesa" || !it.dataVenc) return;
-    if(ehCategoriaTransferencia(it.categoria) || ehCategoriaFaturaCartao(it.categoria)) return;
+    if(ehCategoriaTransferencia(it.categoria) || ehCategoriaFaturaCartao(it.categoria) || ehCategoriaPatrimonio(it.categoria)) return;
     const d = serialToDate(it.dataVenc);
     if(d.getMonth() !== mi || d.getFullYear() !== state.year) return;
     totals[it.categoria] = (totals[it.categoria] || 0) + (it.valor || 0);
@@ -1790,7 +1790,7 @@ function gastosPorCategoriaCombinado(mesIni, mesFim){
   const totals = {};
   debitoRows().forEach(it => {
     if(!it.categoria || it.tipo !== "Despesa" || !it.dataVenc) return;
-    if(ehCategoriaTransferencia(it.categoria) || ehCategoriaFaturaCartao(it.categoria)) return;
+    if(ehCategoriaTransferencia(it.categoria) || ehCategoriaFaturaCartao(it.categoria) || ehCategoriaPatrimonio(it.categoria)) return;
     const d = serialToDate(it.dataVenc);
     if(d.getFullYear() !== state.year) return;
     const mIdx = d.getMonth();
@@ -2081,7 +2081,7 @@ function renderAlertas(lanc, mi){
     const map = {};
     debitoRows().forEach(it => {
       if(!it.categoria || it.tipo !== "Despesa" || !it.dataVenc) return;
-      if(ehCategoriaTransferencia(it.categoria) || ehCategoriaFaturaCartao(it.categoria)) return;
+      if(ehCategoriaTransferencia(it.categoria) || ehCategoriaFaturaCartao(it.categoria) || ehCategoriaPatrimonio(it.categoria)) return;
       const d = serialToDate(it.dataVenc);
       if(d.getMonth() !== targetMi || d.getFullYear() !== targetYear) return;
       map[it.categoria] = (map[it.categoria] || 0) + (it.valor || 0);
@@ -2149,7 +2149,7 @@ function renderOrcadoReal(lanc, mi){
   const gastoPorCategoria = {};
   debitoRows().forEach(it => {
     if(!it.categoria || it.tipo !== "Despesa" || !it.dataVenc) return;
-    if(ehCategoriaTransferencia(it.categoria) || ehCategoriaFaturaCartao(it.categoria)) return;
+    if(ehCategoriaTransferencia(it.categoria) || ehCategoriaFaturaCartao(it.categoria) || ehCategoriaPatrimonio(it.categoria)) return;
     const d = serialToDate(it.dataVenc);
     if(d.getMonth() !== mi || d.getFullYear() !== state.year) return;
     gastoPorCategoria[it.categoria] = (gastoPorCategoria[it.categoria] || 0) + (it.valor || 0);
@@ -2196,7 +2196,7 @@ function gastoPorCategoriaMesSimples(targetMi, targetYear){
   const map = {};
   debitoRows().forEach(it => {
     if(!it.categoria || it.tipo !== "Despesa" || !it.dataVenc) return;
-    if(ehCategoriaTransferencia(it.categoria) || ehCategoriaFaturaCartao(it.categoria)) return;
+    if(ehCategoriaTransferencia(it.categoria) || ehCategoriaFaturaCartao(it.categoria) || ehCategoriaPatrimonio(it.categoria)) return;
     const d = serialToDate(it.dataVenc);
     if(d.getMonth() !== targetMi || d.getFullYear() !== targetYear) return;
     map[it.categoria] = (map[it.categoria] || 0) + (it.valor || 0);
@@ -2708,6 +2708,13 @@ function ehCategoriaTransferencia(categoria){
 function ehCategoriaFaturaCartao(categoria){
   return normalizeCatName(categoria || "").includes("fatura");
 }
+// Categorias que representam movimentação de patrimônio (aporte/resgate), não gasto de verdade.
+// Isso pega mesmo quando o Tipo do lançamento está errado (ex: categoria "Investimento" mas Tipo
+// ainda marcado como "Despesa") — a categoria em si já entrega que aquilo não é um gasto de categoria.
+function ehCategoriaPatrimonio(categoria){
+  const c = normalizeCatName(categoria || "");
+  return c.includes("investimento") || c.includes("renda fixa") || c.includes("renda variavel") || c.includes("reserva de emergencia");
+}
 
 function calcPrevisto(tipo, mesIdx, ano){
   return debitoRows().reduce((s, it) => {
@@ -3191,8 +3198,12 @@ function pareceAporteOuResgate(desc){
     d.indexOf("rent.inv") !== -1 || d.indexOf("resg") !== -1;
 }
 async function corrigirTipoInvestimentoDebito(){
+  // Duas formas de detectar: pela descrição (palavra-chave) OU pela categoria já estar num dos
+  // "baldes" de patrimônio (Investimento/Renda Fixa/Renda Variável/Reserva) mesmo com Tipo errado —
+  // essa segunda forma é mais confiável quando a descrição não ajuda, mas a categoria já entrega.
   const candidatos = debitoRows().filter(it =>
-    (it.tipo === "Receita" || it.tipo === "Despesa") && pareceAporteOuResgate(it.desc)
+    (it.tipo === "Receita" || it.tipo === "Despesa") &&
+    (pareceAporteOuResgate(it.desc) || ehCategoriaPatrimonio(it.categoria))
   );
   if(candidatos.length === 0){
     showToast("Não achei nenhum aporte/resgate classificado como Receita/Despesa comum", "success");
