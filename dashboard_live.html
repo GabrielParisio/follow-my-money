@@ -724,7 +724,10 @@
     <div class="chart-panel">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:10px;">
         <h2 style="margin:0;">Lançamentos do mês</h2>
-        <button class="connect-btn" id="novoLancBtn">+ Novo lançamento</button>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+          <button class="connect-btn" onclick="analisarCategoriasDebito()">🏷️ Analisar categorias</button>
+          <button class="connect-btn" id="novoLancBtn">+ Novo lançamento</button>
+        </div>
       </div>
       <input id="lancSearchInput" type="text" placeholder="🔎 Buscar por descrição..." style="width:100%;background:var(--panel);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:9px 12px;font-size:13px;margin-bottom:14px;">
       <div id="lancBulkBar" class="hidden" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:12px;padding:10px 14px;background:var(--card);border:1px solid var(--border);border-radius:10px;">
@@ -2801,6 +2804,33 @@ function updateLancBulkBar(){
   const sel = document.getElementById("lancBulkCategoriaSelect");
   if(sel && count > 0) sel.innerHTML = categoriaOptions(null);
 }
+// Varre TODOS os lançamentos de Débito sem categoria (não só o mês em exibição) e preenche
+// automaticamente usando o mesmo motor de sugestão já usado na importação (histórico categorizado
+// + dicionário de palavras-chave). Nunca sobrescreve uma categoria que já foi escolhida — só
+// preenche o que está em branco.
+async function analisarCategoriasDebito(){
+  const semCategoria = debitoRows().filter(it => it.desc && !it.categoria);
+  if(semCategoria.length === 0){
+    showToast("Todos os lançamentos já têm categoria", "success");
+    return;
+  }
+  const updates = [];
+  semCategoria.forEach(it => {
+    const sugestao = sugerirCategoria(it.desc);
+    if(sugestao) updates.push({ range: `Débito!H${it.row}`, value: sugestao });
+  });
+  if(updates.length === 0){
+    showToast(`Não encontrei sugestão pra nenhum dos ${semCategoria.length} lançamento(s) sem categoria`, "error");
+    return;
+  }
+  const semSugestao = semCategoria.length - updates.length;
+  await salvarEAtualizar(async () => {
+    await writeCellsBatch(updates);
+  }, [renderLancamentos, renderCredito],
+    `${updates.length} lançamento${updates.length===1?"":"s"} categorizado${updates.length===1?"":"s"} automaticamente` +
+    (semSugestao > 0 ? ` · ${semSugestao} sem sugestão, precisam ser feitos na mão` : ""));
+}
+
 async function bulkCategorizarLancamentos(){
   const rows = Array.from(lancSelectedRows);
   if(rows.length === 0) return;
