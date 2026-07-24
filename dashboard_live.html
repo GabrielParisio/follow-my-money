@@ -3137,7 +3137,7 @@ function renderCadCartoesTable(){
   const rows = cartoes.map(c => `
     <tr>
       <td data-label="Nome"><input value="${c.nome}" onchange='renomearCartao(${c.row}, ${JSON.stringify(c.nome)}, this.value)' style="background:transparent;border:none;color:var(--text);width:100%;font-size:13px;"></td>
-      <td data-label="Banco"><input value="${c.bandeira}" placeholder="Ex: Bradesco" onchange="saveCadCartaoCampo(${c.row}, 'I', this.value)" style="background:transparent;border:none;color:var(--text);width:100%;font-size:13px;"></td>
+      <td data-label="Banco"><input value="${c.bandeira}" placeholder="Ex: Bradesco, XP, Amazon (não é Visa/Master/Elo)" onchange="saveCadCartaoCampo(${c.row}, 'I', this.value)" style="background:transparent;border:none;color:var(--text);width:100%;font-size:13px;"></td>
       <td data-label="Vencimento" style="text-align:right;"><input type="number" min="1" max="31" value="${c.vencimento}" onchange="saveCadCartaoCampo(${c.row}, 'J', this.value)" style="background:transparent;border:none;color:var(--text);width:60px;text-align:right;font-size:13px;"></td>
       <td data-label="Últimos 4 dígitos" style="text-align:right;"><input value="${c.ultimosDigitos}" placeholder="Ex: 8428, 5162" onchange="saveCadCartaoCampo(${c.row}, 'K', this.value)" style="background:transparent;border:none;color:var(--text);width:110px;text-align:right;font-size:13px;"></td>
       <td><button class="icon-btn" onclick="deleteCadCartao(${c.row})" title="Remover">🗑️</button></td>
@@ -3393,7 +3393,13 @@ function renderCredito(){
   const lancarBtnEl = document.getElementById("ccLancarFaturaBtn");
   const faturaSubEl = document.getElementById("ccFaturaSub");
   let subExtra = "";
-  if(totalmentePaga){
+  if(compras.length === 0){
+    // Sem nenhuma compra no mês, não tem o que estar atrasado — nunca mostra "atrasada" nesse caso
+    faturaLabelEl.textContent = "Fatura do mês";
+    faturaValEl.style.color = "var(--muted)";
+    faturaValEl.textContent = "S/Gastos";
+    lancarBtnEl.textContent = "💳 Lançar pagamento desta fatura";
+  } else if(totalmentePaga){
     faturaLabelEl.textContent = "Fatura paga";
     faturaValEl.style.color = "var(--green)";
     lancarBtnEl.textContent = "✅ Fatura já paga";
@@ -3412,7 +3418,9 @@ function renderCredito(){
     faturaValEl.style.color = "var(--purple)";
     lancarBtnEl.textContent = "💳 Lançar pagamento desta fatura";
   }
-  faturaValEl.textContent = fmtMoney(diferencaPendente ? diferenca : faturaValor);
+  if(compras.length > 0){
+    faturaValEl.textContent = fmtMoney(diferencaPendente ? diferenca : faturaValor);
+  }
   faturaSubEl.textContent = (compras.length
     ? compras.length + " compra" + (compras.length > 1 ? "s" : "") + " em " + nomeMesView
     : "Nenhuma compra em " + nomeMesView) + subExtra;
