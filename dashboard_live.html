@@ -649,6 +649,16 @@
     </div>
   </div>
 
+  <div id="scoreDetalheModal" class="modal-overlay hidden">
+    <div class="modal-box" style="max-width:520px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
+        <h2 style="margin:0;">Score de saúde financeira</h2>
+        <button class="icon-btn" style="font-size:20px;" onclick="closeScoreDetalheModal()">✕</button>
+      </div>
+      <div id="scoreDetalheBody"></div>
+    </div>
+  </div>
+
   <div id="lancarFaturaModal" class="modal-overlay hidden">
     <div class="modal-box">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
@@ -1475,12 +1485,31 @@ function render(){
   const cScoreEl = document.getElementById("cScoreSaude");
   if(cScoreEl){
     const { score, notas } = calcularScoreSaudeFinanceira();
+    window._scoreSaudeAtual = { score, notas };
     const corScore = score >= 700 ? "var(--green)" : score >= 400 ? "var(--yellow)" : "var(--red)";
     const rotulo = score >= 700 ? "Bom" : score >= 400 ? "Regular" : "Atenção";
     cScoreEl.textContent = score;
     cScoreEl.style.color = corScore;
     document.getElementById("cScoreSaudeSub").innerHTML =
-      `<span style="color:${corScore};font-weight:700;">${rotulo}</span> · Comprometimento ${notas.comprometimento} · Poupança ${notas.poupanca} · Reserva ${notas.reserva} · Dívida ${notas.divida} · Consistência ${notas.consistencia}`;
+      `<span style="color:${corScore};font-weight:700;">${rotulo}</span> · toque no card pra ver o detalhamento`;
+    const itens = [
+      { label: "Comprometimento", nota: notas.comprometimento },
+      { label: "Poupança", nota: notas.poupanca },
+      { label: "Reserva", nota: notas.reserva },
+      { label: "Dívida", nota: notas.divida },
+      { label: "Consistência", nota: notas.consistencia },
+    ];
+    document.getElementById("scoreBreakdown").innerHTML = itens.map(it => {
+      const cor = it.nota >= 70 ? "var(--green)" : it.nota >= 40 ? "var(--yellow)" : "var(--red)";
+      return `<div style="margin-bottom:6px;">
+        <div style="display:flex;justify-content:space-between;font-size:10.5px;color:var(--muted);margin-bottom:2px;">
+          <span>${it.label}</span><span>${it.nota}/100</span>
+        </div>
+        <div style="height:5px;background:var(--border);border-radius:3px;overflow:hidden;">
+          <div style="width:${it.nota}%;height:100%;background:${cor};"></div>
+        </div>
+      </div>`;
+    }).join("");
   }
 
   renderCategorias(lanc, mi);
@@ -2399,6 +2428,51 @@ function calcularMediaSaldoMensal(janelaMeses = 6){
 // único número de 0 a 1000 (mesma escala que um score de crédito, formato já familiar). Cada
 // indicador vira uma nota de 0-100 com peso diferente — nada de fórmula nova ou dado inventado,
 // só os cálculos que já existem, combinados.
+function openScoreDetalheModal(){
+  const dados = window._scoreSaudeAtual;
+  if(!dados) return;
+  const { score, notas } = dados;
+  const corScore = score >= 700 ? "var(--green)" : score >= 400 ? "var(--yellow)" : "var(--red)";
+  const rotulo = score >= 700 ? "Bom" : score >= 400 ? "Regular" : "Atenção";
+  const componentes = [
+    { label: "Comprometimento de renda", peso: 25, nota: notas.comprometimento,
+      desc: "Quanto das suas parcelas fixas (dívidas + compras parceladas) come da renda. Nota 100 até 15%, cai até 0 em 40%+." },
+    { label: "Índice de poupança", peso: 25, nota: notas.poupanca,
+      desc: "Quanto sobrou da receita deste mês. Nota 0 em 0%, nota 100 a partir de 20%." },
+    { label: "Reserva vs. meta", peso: 20, nota: notas.reserva,
+      desc: "Reserva de Emergência atual dividida pela meta (12x salário bruto cadastrado)." },
+    { label: "Dívida vs. patrimônio", peso: 20, nota: notas.divida,
+      desc: "Quanto da dívida ativa pesa em relação ao que você já tem acumulado. Nota 100 sem nenhuma dívida." },
+    { label: "Consistência", peso: 10, nota: notas.consistencia,
+      desc: "% dos últimos 6 meses (com algum lançamento) que fecharam com saldo positivo." },
+  ];
+  document.getElementById("scoreDetalheBody").innerHTML = `
+    <div style="text-align:center;margin-bottom:18px;">
+      <div style="font-size:36px;font-weight:700;color:${corScore};">${score}</div>
+      <div style="font-size:13px;color:${corScore};font-weight:600;">${rotulo}</div>
+      <div style="font-size:11.5px;color:var(--muted);margin-top:4px;">Escala de 0 a 1000, mesmo formato de um score de crédito</div>
+    </div>
+    ${componentes.map(c => {
+      const cor = c.nota >= 70 ? "var(--green)" : c.nota >= 40 ? "var(--yellow)" : "var(--red)";
+      return `<div style="margin-bottom:14px;">
+        <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:3px;">
+          <span style="font-size:13px;font-weight:600;">${c.label} <span style="color:var(--muted);font-weight:400;font-size:11px;">(peso ${c.peso}%)</span></span>
+          <span style="font-size:13px;font-weight:700;color:${cor};">${c.nota}/100</span>
+        </div>
+        <div style="height:6px;background:var(--border);border-radius:3px;overflow:hidden;margin-bottom:4px;">
+          <div style="width:${c.nota}%;height:100%;background:${cor};"></div>
+        </div>
+        <div style="font-size:11.5px;color:var(--muted);">${c.desc}</div>
+      </div>`;
+    }).join("")}
+  `;
+  document.getElementById("scoreDetalheModal").classList.remove("hidden");
+}
+function closeScoreDetalheModal(){
+  document.getElementById("scoreDetalheModal").classList.add("hidden");
+  document.getElementById("scoreDetalheBody").innerHTML = "";
+}
+
 function calcularScoreSaudeFinanceira(){
   const hoje = new Date();
   const mi = hoje.getMonth(), ano = hoje.getFullYear();
@@ -4320,9 +4394,6 @@ function renderBalancoCardsShell(){
     { id:"cProjecaoPatrimonio", cardClass:"detalhado-only", accent:"var(--purple)", label:"Projeção em 12 meses",
       tip:"Se sua média de saldo mensal dos últimos meses continuar igual, é aproximadamente onde seu patrimônio estaria daqui a 12 meses. Só uma estimativa — não considera rendimento de investimento, só o quanto sobra todo mês.",
       valueStyle:"color:var(--purple);font-size:22px;" },
-    { id:"cScoreSaude", cardClass:"detalhado-only", accent:"var(--gold)", label:"Score de saúde financeira",
-      tip:"Combina 5 indicadores que o app já calcula (comprometimento de renda, índice de poupança, reserva vs. meta, dívida vs. patrimônio, consistência dos últimos 6 meses) num único número de 0 a 1000 — mesma escala de um score de crédito.",
-      valueStyle:"font-size:24px;" },
     { id:"cReceita", accent:"var(--green)", label:"Receita do mês", valueStyle:"color:var(--green)" },
     { id:"cDespesa", accent:"var(--red)", label:"Despesa do mês", valueStyle:"color:var(--red)" },
     { id:"cSaldo", accent:"var(--blue)", label:"Saldo do mês" },
@@ -4333,22 +4404,27 @@ function renderBalancoCardsShell(){
     { id:"cComprometimento", accent:"var(--border)", label:"Comprometimento de renda", cardClass:"no-scroll wide-card",
       tip:"Soma de todas as parcelas fixas (dívidas + compras parceladas no cartão) que vencem neste mês, dividida pelo salário bruto (Cadastro) — ou pela receita do mês, se o salário bruto não estiver preenchido.",
       extra:`<div id="comprometimentoChart" style="margin-top:10px;"></div>` },
+    { id:"cScoreSaude", accent:"var(--gold)", label:"Score de saúde financeira", cardClass:"no-scroll wide-card",
+      tip:"Combina 5 indicadores (comprometimento de renda, índice de poupança, reserva vs. meta, dívida vs. patrimônio, consistência dos últimos 6 meses) num único número de 0 a 1000 — mesma escala de um score de crédito. Clique pra ver o detalhamento.",
+      valueStyle:"font-size:26px;", onClick:"openScoreDetalheModal()",
+      extra:`<div id="scoreBreakdown" style="margin-top:6px;"></div>` },
   ];
   document.getElementById("balancoCards").innerHTML = cards.map(c => {
     const isWide = (c.cardClass||"").includes("wide-card");
+    const clickAttr = c.onClick ? ` onclick="${c.onClick}" style="cursor:pointer;"` : "";
     const info = `
         <div class="label">${c.label}${c.tip ? ` <span class="info-icon" data-tip="${c.tip}">?</span>` : ""}</div>
         <div class="value" id="${c.id}"${c.valueStyle?` style="${c.valueStyle}"`:""}><span class="skeleton" style="width:70%;"></span></div>
         <div class="sub" id="${c.id}Sub"></div>`;
     return isWide ? `
-    <div class="card ${c.cardClass||""}">
+    <div class="card ${c.cardClass||""}"${clickAttr}>
       <div class="accent" id="${c.id}Accent" style="background:${c.accent}"></div>
       <div class="body">
         <div class="wide-card-info">${info}</div>
         <div class="wide-card-extra">${c.extra||""}</div>
       </div>
     </div>` : `
-    <div class="card ${c.cardClass||""}">
+    <div class="card ${c.cardClass||""}"${clickAttr}>
       <div class="accent" id="${c.id}Accent" style="background:${c.accent}"></div>
       <div class="body">${info}
         ${c.extra||""}
@@ -5332,6 +5408,7 @@ function setupModalOutsideClickClose(){
     dividaEditModal: closeDividaEditForm,
     creditEditModal: closeCreditEditForm,
     pdfPreviewModal: closePdfPreviewModal,
+    scoreDetalheModal: closeScoreDetalheModal,
     lancarFaturaModal: closeLancarFaturaModal,
     novaCompraModal: closeNovaCompraModal,
     calendarModal: closeCalendarModal,
