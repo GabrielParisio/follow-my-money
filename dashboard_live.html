@@ -531,6 +531,10 @@
         <div class="skeleton-row"><span class="skeleton" style="width:35%;"></span><span class="skeleton" style="width:25%;"></span></div>
       </div>
     </div>
+    <div class="panel">
+      <h2>🇧🇷 Comparado com a média nacional <span class="info-icon" data-tip="Fonte: IBGE, Pesquisa de Orçamentos Familiares (POF) 2017-2018 — última edição com resultado publicado.">?</span></h2>
+      <div id="benchmarkList"></div>
+    </div>
     <div class="panel panel-clickable" onclick="openCalendarModal()" title="Ver calendário completo">
       <h2>📅 Próximos vencimentos</h2>
       <div id="vencList">
@@ -892,6 +896,18 @@
         <div><label>Reserva já acumulada</label><input id="cadReservaInicial" type="number" step="0.01" placeholder="0.00"></div>
         <div class="actions"><button class="save-btn" onclick="saveCadastroReservaInicial()">Salvar</button></div>
       </div>
+    </div>
+
+    <div class="chart-panel">
+      <h2>🔔 Notificações</h2>
+      <p style="font-size:12.5px;color:var(--muted);margin-top:-6px;margin-bottom:8px;">
+        Fase 1 (esta): quando você abre o app com notificações ativadas, ele avisa na hora sobre fatura atrasada, orçamento estourado, etc. — os mesmos alertas que já existem no sininho, só que também como notificação do sistema.
+      </p>
+      <p style="font-size:12.5px;color:var(--muted);margin-top:0;margin-bottom:14px;">
+        <b>Ainda não avisa com o app fechado.</b> Isso (notificação chegando mesmo sem abrir o app) precisa de um servidor próprio disparando o aviso — um passo de infraestrutura separado, ainda não construído.
+      </p>
+      <div id="notifStatus" style="font-size:12.5px;color:var(--muted);margin-bottom:10px;"></div>
+      <button class="save-btn" id="notifToggleBtn" onclick="toggleNotificacoes()">Ativar notificações</button>
     </div>
 
     <div class="chart-panel">
@@ -1455,6 +1471,18 @@ function render(){
     }
   }
 
+  // ---- Score de Saúde Financeira ----
+  const cScoreEl = document.getElementById("cScoreSaude");
+  if(cScoreEl){
+    const { score, notas } = calcularScoreSaudeFinanceira();
+    const corScore = score >= 700 ? "var(--green)" : score >= 400 ? "var(--yellow)" : "var(--red)";
+    const rotulo = score >= 700 ? "Bom" : score >= 400 ? "Regular" : "Atenção";
+    cScoreEl.textContent = score;
+    cScoreEl.style.color = corScore;
+    document.getElementById("cScoreSaudeSub").innerHTML =
+      `<span style="color:${corScore};font-weight:700;">${rotulo}</span> · Comprometimento ${notas.comprometimento} · Poupança ${notas.poupanca} · Reserva ${notas.reserva} · Dívida ${notas.divida} · Consistência ${notas.consistencia}`;
+  }
+
   renderCategorias(lanc, mi);
   renderVencimentos(lanc);
   renderOrcadoReal(lanc, mi);
@@ -1585,7 +1613,27 @@ function toggleValoresOcultos(){
   if(!document.getElementById("calendarModal").classList.contains("hidden")) renderCalendar();
 }
 
+function renderBenchmark(mi){
+  const el = document.getElementById("benchmarkList");
+  if(!el) return;
+  const dados = calcularBenchmarkGastos(mi, state.year);
+  if(!dados){
+    el.innerHTML = '<p class="empty">Sem despesa categorizada neste mês ainda</p>';
+    return;
+  }
+  const linha = (label, d) => {
+    const diff = d.usuario - d.benchmark;
+    const cor = Math.abs(diff) <= 3 ? "var(--muted)" : (diff > 0 ? "var(--yellow)" : "var(--green)");
+    const sinal = diff > 0 ? "+" : "";
+    return `<div class="row">
+      <span class="name">${label}</span>
+      <span class="val">${d.usuario.toFixed(1)}% <span style="color:${cor};font-size:11.5px;">(média: ${d.benchmark.toFixed(1)}% · ${sinal}${diff.toFixed(1)}pp)</span></span>
+    </div>`;
+  };
+  el.innerHTML = linha("Alimentação", dados.alimentacao) + linha("Essenciais (moradia+alim.+transporte)", dados.essenciais);
+}
 function renderCategorias(lanc, mi){
+  renderBenchmark(mi);
   const totals = {};
   lanc.forEach(r => {
     const categoria = r[5], tipo = r[6], valor = r[7], mes = r[9], ano = r[10];
@@ -1790,6 +1838,60 @@ function closeAlertasModal(){
 
 // Varre TODOS os cartões e TODOS os meses com compra (não só o mês em exibição) — por isso uma
 // fatura atrasada continua aparecendo nos alertas mesmo depois de você navegar pra outro mês.
+// ===================== NOTIFICAÇÕES (Fase 1: só com o app aberto) =====================
+// Pede permissão de notificação do navegador e, quando concedida, dispara uma notificação do
+// sistema pra cada alerta ativo (os mesmos já mostrados no sininho) que ainda não foi notificado
+// nesta sessão. Não funciona com o app fechado — isso precisaria de um servidor mandando push de
+// verdade, que é um passo de infraestrutura separado (o service worker já tem o listener pronto
+// pra quando isso existir, só não tem ninguém do outro lado enviando ainda).
+function renderNotifStatus(){
+  const statusEl = document.getElementById("notifStatus");
+  const btnEl = document.getElementById("notifToggleBtn");
+  if(!statusEl || !btnEl) return;
+  if(!("Notification" in window)){
+    statusEl.textContent = "Seu navegador não suporta notificações.";
+    btnEl.classList.add("hidden");
+    return;
+  }
+  if(Notification.permission === "granted"){
+    statusEl.textContent = "✅ Notificações ativadas neste navegador.";
+    btnEl.textContent = "Desativado pelo navegador — gerencie nas configurações do site";
+    btnEl.disabled = true;
+  } else if(Notification.permission === "denied"){
+    statusEl.textContent = "❌ Notificações bloqueadas — precisa liberar manualmente nas configurações do navegador pra este site.";
+    btnEl.classList.add("hidden");
+  } else {
+    statusEl.textContent = "Notificações ainda não ativadas.";
+    btnEl.textContent = "Ativar notificações";
+    btnEl.disabled = false;
+    btnEl.classList.remove("hidden");
+  }
+}
+async function toggleNotificacoes(){
+  if(!("Notification" in window)) return;
+  const permissao = await Notification.requestPermission();
+  renderNotifStatus();
+  if(permissao === "granted"){
+    showToast("Notificações ativadas — testando agora", "success");
+    new Notification("Follow My Money", { body: "Notificações ativadas com sucesso ✅" });
+    dispararNotificacoesDosAlertas();
+  }
+}
+// Dispara uma notificação do sistema pra cada alerta ativo ainda não notificado nesta sessão do navegador
+function dispararNotificacoesDosAlertas(){
+  if(!("Notification" in window) || Notification.permission !== "granted") return;
+  const jaNotificados = JSON.parse(localStorage.getItem("ftm_notificados") || "[]");
+  const ativos = window._alertasAtuais || [];
+  const novos = ativos.filter(a => !jaNotificados.includes(a.id));
+  novos.forEach(a => {
+    const textoLimpo = a.html.replace(/<[^>]+>/g, ""); // tira as tags <b> etc antes de mostrar na notificação
+    new Notification("Follow My Money", { body: `${a.icon} ${textoLimpo}` });
+  });
+  if(novos.length > 0){
+    localStorage.setItem("ftm_notificados", JSON.stringify([...jaNotificados, ...novos.map(a => a.id)].slice(-200)));
+  }
+}
+
 function gerarAlertasFatura(){
   const alertasFatura = [];
   const cartoes = getCadastroCartoesParsed();
@@ -1903,6 +2005,7 @@ function renderAlertas(lanc, mi){
     badgeEl.textContent = ativos.length;
     badgeEl.classList.toggle("hidden", ativos.length === 0);
   }
+  dispararNotificacoesDosAlertas();
 }
 
 function renderOrcadoReal(lanc, mi){
@@ -2290,6 +2393,111 @@ function calcularMediaSaldoMensal(janelaMeses = 6){
   if(saldos.length === 0) return { mediaSaldo: 0, mesesConsiderados: 0 };
   const mediaSaldo = saldos.reduce((s, v) => s + v, 0) / saldos.length;
   return { mediaSaldo, mesesConsiderados: saldos.length };
+}
+
+// Score de Saúde Financeira: combina 5 indicadores que o app já calcula em outros lugares, num
+// único número de 0 a 1000 (mesma escala que um score de crédito, formato já familiar). Cada
+// indicador vira uma nota de 0-100 com peso diferente — nada de fórmula nova ou dado inventado,
+// só os cálculos que já existem, combinados.
+function calcularScoreSaudeFinanceira(){
+  const hoje = new Date();
+  const mi = hoje.getMonth(), ano = hoje.getFullYear();
+
+  // 1) Comprometimento de renda (peso 25%) — nota 100 se <=15%, cai linear até 0 em 40%+
+  const dividasAtivas = getDividasParsed().filter(d => !isDividaQuitada(d));
+  const dividasParcelaMensal = dividasAtivas.reduce((s,d) => s + (d.valorParcela||0), 0);
+  const inicioMes = new Date(ano, mi, 1), fimMes = new Date(ano, mi+1, 1);
+  const creditoParcelasMes = (raw.compras || [])
+    .filter(c => c[2] && c[7] && isCompraParcelada(c))
+    .filter(c => { const d = serialToDate(c[7]); return d >= inicioMes && d < fimMes; })
+    .reduce((s,c) => s + (c[5] || c[4] || 0), 0);
+  const totalParcelado = dividasParcelaMensal + creditoParcelasMes;
+  const receitaReal = calcReal("Receita", mi, ano);
+  const rendaBase = getSalarioBruto() > 0 ? getSalarioBruto() : receitaReal;
+  const comprometimento = rendaBase > 0 ? (totalParcelado / rendaBase * 100) : 0;
+  const notaComprometimento = Math.max(0, Math.min(100, 100 - ((comprometimento - 15) / 25 * 100)));
+
+  // 2) Índice de poupança do mês (peso 25%) — nota 0 em 0%, nota 100 em 20%+
+  const despesaReal = calcReal("Despesa", mi, ano);
+  const indicePoupanca = receitaReal > 0 ? ((receitaReal - despesaReal) / receitaReal * 100) : 0;
+  const notaPoupanca = Math.max(0, Math.min(100, (indicePoupanca / 20) * 100));
+
+  // 3) Reserva vs meta (peso 20%)
+  const reservaAtual = calcSaldoInvestimento("Reserva de Emergência");
+  const salarioBruto = getSalarioBruto();
+  const metaReserva = salarioBruto > 0 ? salarioBruto * 12 : 0;
+  const notaReserva = metaReserva > 0 ? Math.max(0, Math.min(100, (reservaAtual / metaReserva) * 100)) : 0;
+
+  // 4) Dívida vs patrimônio (peso 20%) — nota 100 sem dívida ativa, cai conforme a dívida cresce
+  // em relação ao que você tem acumulado
+  const totalAtivos = calcSaldoInvestimento("Reserva de Emergência") + calcSaldoInvestimento("Renda Fixa") + calcSaldoInvestimento("Renda Variável");
+  const totalDividas = dividasAtivas.reduce((s,d) => s + (d.saldoDevedor||0), 0);
+  let notaDivida;
+  if(totalDividas <= 0) notaDivida = 100;
+  else if(totalAtivos <= 0) notaDivida = 0;
+  else notaDivida = Math.max(0, Math.min(100, 100 - (totalDividas / totalAtivos * 100)));
+
+  // 5) Consistência (peso 10%) — % dos últimos 6 meses (com algum lançamento) que fecharam no positivo
+  let mesesComDado = 0, mesesPositivos = 0;
+  for(let i = 1; i <= 6; i++){
+    const d = new Date(ano, mi - i, 1);
+    const r = calcReal("Receita", d.getMonth(), d.getFullYear());
+    const de = calcReal("Despesa", d.getMonth(), d.getFullYear());
+    if(r === 0 && de === 0) continue;
+    mesesComDado++;
+    if(r - de >= 0) mesesPositivos++;
+  }
+  const notaConsistencia = mesesComDado > 0 ? (mesesPositivos / mesesComDado * 100) : 50; // sem dado ainda, fica neutro
+
+  const notaFinal0a100 =
+    notaComprometimento * 0.25 +
+    notaPoupanca * 0.25 +
+    notaReserva * 0.20 +
+    notaDivida * 0.20 +
+    notaConsistencia * 0.10;
+
+  return {
+    score: Math.round(notaFinal0a100 * 10), // escala 0-1000, igual score de crédito
+    notas: {
+      comprometimento: Math.round(notaComprometimento),
+      poupanca: Math.round(notaPoupanca),
+      reserva: Math.round(notaReserva),
+      divida: Math.round(notaDivida),
+      consistencia: Math.round(notaConsistencia),
+    }
+  };
+}
+
+// Referência: IBGE, Pesquisa de Orçamentos Familiares (POF) 2017-2018 — última edição com resultado
+// publicado (a de 2024-2025 ainda está em campo). Só comparamos com as categorias que têm número
+// sólido e público — não inventamos percentual pra categoria sem fonte confiável.
+const BENCHMARK_POF_2017_2018 = {
+  alimentacao: 17.5, // % da despesa de consumo média das famílias brasileiras
+  essenciais: 72.2,  // moradia + alimentação + transporte juntos
+};
+function calcularBenchmarkGastos(mesIdx, ano){
+  const gastos = {};
+  debitoRows().forEach(it => {
+    if(it.tipo !== "Despesa" || !it.dataVenc) return;
+    const d = serialToDate(it.dataVenc);
+    if(d.getMonth() !== mesIdx || d.getFullYear() !== ano) return;
+    const cat = normalizeCatName(it.categoria || "");
+    gastos[cat] = (gastos[cat] || 0) + (it.valor || 0);
+  });
+  const totalDespesa = Object.values(gastos).reduce((s,v) => s+v, 0);
+  if(totalDespesa === 0) return null;
+
+  const somaCategoria = (palavrasChave) => Object.entries(gastos)
+    .filter(([cat]) => palavrasChave.some(p => cat.includes(p)))
+    .reduce((s,[,v]) => s+v, 0);
+
+  const alimentacaoUsuario = somaCategoria(["alimenta", "mercado", "comida"]);
+  const essenciaisUsuario = alimentacaoUsuario + somaCategoria(["moradia"]) + somaCategoria(["combustivel", "transporte"]);
+
+  return {
+    alimentacao: { usuario: alimentacaoUsuario / totalDespesa * 100, benchmark: BENCHMARK_POF_2017_2018.alimentacao },
+    essenciais: { usuario: essenciaisUsuario / totalDespesa * 100, benchmark: BENCHMARK_POF_2017_2018.essenciais },
+  };
 }
 // Substitui a leitura de raw.balanco pras linhas 48/49/50 (Real) por cálculo direto — as outras
 // linhas (Reserva, Meta) continuam vindo da planilha por enquanto.
@@ -3284,6 +3492,7 @@ function renderCadastro(){
   renderCadCategoriasTable();
   renderCadCartoesTable();
   renderCartoesOrfaosAviso();
+  renderNotifStatus();
 }
 
 async function saveCadastroPerfil(){
@@ -4111,6 +4320,9 @@ function renderBalancoCardsShell(){
     { id:"cProjecaoPatrimonio", cardClass:"detalhado-only", accent:"var(--purple)", label:"Projeção em 12 meses",
       tip:"Se sua média de saldo mensal dos últimos meses continuar igual, é aproximadamente onde seu patrimônio estaria daqui a 12 meses. Só uma estimativa — não considera rendimento de investimento, só o quanto sobra todo mês.",
       valueStyle:"color:var(--purple);font-size:22px;" },
+    { id:"cScoreSaude", cardClass:"detalhado-only", accent:"var(--gold)", label:"Score de saúde financeira",
+      tip:"Combina 5 indicadores que o app já calcula (comprometimento de renda, índice de poupança, reserva vs. meta, dívida vs. patrimônio, consistência dos últimos 6 meses) num único número de 0 a 1000 — mesma escala de um score de crédito.",
+      valueStyle:"font-size:24px;" },
     { id:"cReceita", accent:"var(--green)", label:"Receita do mês", valueStyle:"color:var(--green)" },
     { id:"cDespesa", accent:"var(--red)", label:"Despesa do mês", valueStyle:"color:var(--red)" },
     { id:"cSaldo", accent:"var(--blue)", label:"Saldo do mês" },
