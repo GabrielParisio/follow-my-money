@@ -1488,20 +1488,20 @@ function render(){
   // ---- Score de Saúde Financeira ----
   const cScoreEl = document.getElementById("cScoreSaude");
   if(cScoreEl){
-    const { score, notas } = calcularScoreSaudeFinanceira();
-    window._scoreSaudeAtual = { score, notas };
-    const corScore = score >= 700 ? "var(--green)" : score >= 400 ? "var(--yellow)" : "var(--red)";
-    const rotulo = score >= 700 ? "Bom" : score >= 400 ? "Regular" : "Atenção";
+    const { score, notas, delta } = calcularScoreSaudeFinanceira();
+    window._scoreSaudeAtual = { score, notas, delta };
+    const faixa = faixaScore(score);
     cScoreEl.textContent = score;
-    cScoreEl.style.color = corScore;
+    cScoreEl.style.color = faixa.cor;
+    const deltaTexto = delta ? ` · ${delta.deltaScore >= 0 ? "+" : ""}${delta.deltaScore} nos últimos 30 dias` : "";
     document.getElementById("cScoreSaudeSub").innerHTML =
-      `<span style="color:${corScore};font-weight:700;">${rotulo}</span> · toque no card pra ver o detalhamento`;
+      `<span style="color:${faixa.cor};font-weight:700;">${faixa.emoji} ${faixa.label}</span>${deltaTexto} · toque no card pra ver o detalhamento`;
     const itens = [
-      { label: "Comprometimento", nota: notas.comprometimento },
+      { label: "Fluxo de Caixa", nota: notas.fluxo },
       { label: "Poupança", nota: notas.poupanca },
-      { label: "Reserva", nota: notas.reserva },
-      { label: "Dívida", nota: notas.divida },
-      { label: "Consistência", nota: notas.consistencia },
+      { label: "Endividamento", nota: notas.endividamento },
+      { label: "Liquidez", nota: notas.liquidez },
+      { label: "Patrimônio", nota: notas.patrimonio },
     ];
     document.getElementById("scoreBreakdown").innerHTML = itens.map(it => {
       const cor = it.nota >= 70 ? "var(--green)" : it.nota >= 40 ? "var(--yellow)" : "var(--red)";
@@ -2432,30 +2432,54 @@ function calcularMediaSaldoMensal(janelaMeses = 6){
 // único número de 0 a 1000 (mesma escala que um score de crédito, formato já familiar). Cada
 // indicador vira uma nota de 0-100 com peso diferente — nada de fórmula nova ou dado inventado,
 // só os cálculos que já existem, combinados.
+// 7 faixas nomeadas e coloridas pro Score de Saúde Financeira
+function faixaScore(score){
+  if(score >= 900) return { label: "Elite", emoji: "🟣", cor: "var(--purple)" };
+  if(score >= 800) return { label: "Excelente", emoji: "🟢", cor: "var(--green)" };
+  if(score >= 700) return { label: "Muito Bom", emoji: "🔵", cor: "var(--blue)" };
+  if(score >= 600) return { label: "Estável", emoji: "🟡", cor: "var(--yellow)" };
+  if(score >= 500) return { label: "Atenção", emoji: "🟠", cor: "#E8823D" };
+  if(score >= 300) return { label: "Risco", emoji: "🔴", cor: "var(--red)" };
+  return { label: "Crítico", emoji: "⚫", cor: "#8a2f2f" };
+}
+
 function openScoreDetalheModal(){
   const dados = window._scoreSaudeAtual;
   if(!dados) return;
-  const { score, notas } = dados;
-  const corScore = score >= 700 ? "var(--green)" : score >= 400 ? "var(--yellow)" : "var(--red)";
-  const rotulo = score >= 700 ? "Bom" : score >= 400 ? "Regular" : "Atenção";
+  const { score, notas, delta } = dados;
+  const faixa = faixaScore(score);
   const componentes = [
-    { label: "Comprometimento de renda", peso: 25, nota: notas.comprometimento,
-      desc: "Quanto das suas parcelas fixas (dívidas + compras parceladas) come da renda. Nota 100 até 15%, cai até 0 em 40%+." },
-    { label: "Índice de poupança", peso: 25, nota: notas.poupanca,
-      desc: "Quanto sobrou da receita deste mês. Nota 0 em 0%, nota 100 a partir de 20%." },
-    { label: "Reserva vs. meta", peso: 20, nota: notas.reserva,
-      desc: "Reserva de Emergência atual dividida pela meta (12x salário bruto cadastrado)." },
-    { label: "Dívida vs. patrimônio", peso: 20, nota: notas.divida,
-      desc: "Quanto da dívida ativa pesa em relação ao que você já tem acumulado. Nota 100 sem nenhuma dívida." },
-    { label: "Consistência", peso: 10, nota: notas.consistencia,
-      desc: "% dos últimos 6 meses (com algum lançamento) que fecharam com saldo positivo." },
+    { chave: "fluxo", label: "Fluxo de Caixa", peso: 22, nota: notas.fluxo,
+      desc: "Saldo médio (receita - despesa) dos últimos 6 meses, como % da receita média. Mede se sobra dinheiro no fim do mês, de forma consistente." },
+    { chave: "poupanca", label: "Capacidade de Poupança", peso: 22, nota: notas.poupanca,
+      desc: "Quanto sobrou da receita deste mês. Nota 0 em 0%, nota 100 a partir de 30%." },
+    { chave: "endividamento", label: "Endividamento", peso: 22, nota: notas.endividamento,
+      desc: "Parcelas fixas (dívidas + compras parceladas) divididas pela renda. Nota 100 até 20%, cai até 0 acima de 50%." },
+    { chave: "liquidez", label: "Liquidez", peso: 17, nota: notas.liquidez,
+      desc: "Reserva de Emergência dividida pela despesa mensal média — quantos meses você sobrevive sem receita nenhuma. Nota 100 a partir de 12 meses." },
+    { chave: "patrimonio", label: "Patrimônio", peso: 17, nota: notas.patrimonio,
+      desc: "Patrimônio líquido positivo (60 pts) + cresceu nos últimos 12 meses (40 pts)." },
   ];
+  const nomesPilar = { fluxo: "Fluxo de Caixa", poupanca: "Poupança", endividamento: "Endividamento", liquidez: "Liquidez", patrimonio: "Patrimônio" };
+  const deltaHtml = delta ? `
+    <div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:12px 14px;margin-bottom:18px;">
+      <div style="font-size:13px;font-weight:600;margin-bottom:8px;">
+        ${delta.deltaScore >= 0 ? "📈" : "📉"} Você ${delta.deltaScore >= 0 ? "ganhou" : "perdeu"} <span style="color:${delta.deltaScore >= 0 ? "var(--green)" : "var(--red)"};">${Math.abs(delta.deltaScore)} pontos</span> nos últimos 30 dias
+      </div>
+      ${Object.entries(delta.deltaNotas).filter(([,d]) => d !== 0).map(([chave, d]) => {
+        const sinal = d > 0 ? "✔" : "✖";
+        const cor = d > 0 ? "var(--green)" : "var(--red)";
+        return `<div style="font-size:12px;color:${cor};margin-bottom:2px;">${sinal} ${nomesPilar[chave]} (${d > 0 ? "+" : ""}${d})</div>`;
+      }).join("") || `<div style="font-size:12px;color:var(--muted);">Nenhum pilar mudou de forma relevante</div>`}
+    </div>` : `
+    <p style="font-size:11.5px;color:var(--muted);text-align:center;margin-bottom:18px;">Ainda não há histórico de 30 dias pra comparar — volte depois de um tempo pra ver a variação aqui.</p>`;
   document.getElementById("scoreDetalheBody").innerHTML = `
-    <div style="text-align:center;margin-bottom:18px;">
-      <div style="font-size:36px;font-weight:700;color:${corScore};">${score}</div>
-      <div style="font-size:13px;color:${corScore};font-weight:600;">${rotulo}</div>
+    <div style="text-align:center;margin-bottom:14px;">
+      <div style="font-size:36px;font-weight:700;color:${faixa.cor};">${score}</div>
+      <div style="font-size:13px;color:${faixa.cor};font-weight:600;">${faixa.emoji} ${faixa.label}</div>
       <div style="font-size:11.5px;color:var(--muted);margin-top:4px;">Escala de 0 a 1000, mesmo formato de um score de crédito</div>
     </div>
+    ${deltaHtml}
     ${componentes.map(c => {
       const cor = c.nota >= 70 ? "var(--green)" : c.nota >= 40 ? "var(--yellow)" : "var(--red)";
       return `<div style="margin-bottom:14px;">
@@ -2469,6 +2493,7 @@ function openScoreDetalheModal(){
         <div style="font-size:11.5px;color:var(--muted);">${c.desc}</div>
       </div>`;
     }).join("")}
+    <p style="font-size:10.5px;color:var(--muted);text-align:center;margin-top:4px;">Um 6º pilar (Comportamento Financeiro) está planejado pra mais adiante — ainda não entra nesse cálculo.</p>
   `;
   document.getElementById("scoreDetalheModal").classList.remove("hidden");
 }
@@ -2477,11 +2502,48 @@ function closeScoreDetalheModal(){
   document.getElementById("scoreDetalheBody").innerHTML = "";
 }
 
+// Interpola linear entre pontos-âncora [valorReferencia, nota], em ordem crescente de valor —
+// usado pra montar cada pilar do score sem precisar de "if" em cascata pra cada faixa.
+function interpolarNota(valor, pontos){
+  if(valor <= pontos[0][0]) return pontos[0][1];
+  for(let i = 0; i < pontos.length - 1; i++){
+    const [v0, n0] = pontos[i], [v1, n1] = pontos[i+1];
+    if(valor <= v1){
+      const t = (valor - v0) / (v1 - v0);
+      return n0 + t * (n1 - n0);
+    }
+  }
+  return pontos[pontos.length - 1][1];
+}
+
+// Score de Saúde Financeira — 5 pilares (Comportamento Financeiro fica pra depois; o peso dele foi
+// redistribuído proporcionalmente entre os outros 5, senão o score nunca chegaria em 1000).
+// Pesos: Fluxo de Caixa 22% · Poupança 22% · Endividamento 22% · Liquidez 17% · Patrimônio 17%
 function calcularScoreSaudeFinanceira(){
   const hoje = new Date();
   const mi = hoje.getMonth(), ano = hoje.getFullYear();
 
-  // 1) Comprometimento de renda (peso 25%) — nota 100 se <=15%, cai linear até 0 em 40%+
+  // Médias dos últimos 6 meses (usadas em Fluxo de Caixa e Liquidez)
+  let somaSaldo6m = 0, somaReceita6m = 0, somaDespesa6m = 0, mesesComDado6m = 0;
+  for(let i = 1; i <= 6; i++){
+    const d = new Date(ano, mi - i, 1);
+    const r = calcReal("Receita", d.getMonth(), d.getFullYear());
+    const de = calcReal("Despesa", d.getMonth(), d.getFullYear());
+    if(r === 0 && de === 0) continue;
+    somaSaldo6m += (r - de); somaReceita6m += r; somaDespesa6m += de; mesesComDado6m++;
+  }
+
+  // ---- 1) Fluxo de Caixa (peso 22%) — saldo médio dos últimos 6 meses, como % da receita média
+  const percSaldoMedio = somaReceita6m > 0 ? (somaSaldo6m / somaReceita6m * 100) : 0;
+  const notaFluxo = interpolarNota(percSaldoMedio, [[-50,0],[0,50],[5,70],[10,85],[20,100]]);
+
+  // ---- 2) Capacidade de Poupança (peso 22%) — índice de poupança do mês atual
+  const receitaReal = calcReal("Receita", mi, ano);
+  const despesaReal = calcReal("Despesa", mi, ano);
+  const indicePoupanca = receitaReal > 0 ? ((receitaReal - despesaReal) / receitaReal * 100) : 0;
+  const notaPoupanca = interpolarNota(indicePoupanca, [[0,0],[5,20],[10,40],[15,60],[20,80],[25,90],[30,100]]);
+
+  // ---- 3) Endividamento (peso 22%) — comprometimento de renda (parcelas fixas / renda)
   const dividasAtivas = getDividasParsed().filter(d => !isDividaQuitada(d));
   const dividasParcelaMensal = dividasAtivas.reduce((s,d) => s + (d.valorParcela||0), 0);
   const inicioMes = new Date(ano, mi, 1), fimMes = new Date(ano, mi+1, 1);
@@ -2490,60 +2552,87 @@ function calcularScoreSaudeFinanceira(){
     .filter(c => { const d = serialToDate(c[7]); return d >= inicioMes && d < fimMes; })
     .reduce((s,c) => s + (c[5] || c[4] || 0), 0);
   const totalParcelado = dividasParcelaMensal + creditoParcelasMes;
-  const receitaReal = calcReal("Receita", mi, ano);
   const rendaBase = getSalarioBruto() > 0 ? getSalarioBruto() : receitaReal;
   const comprometimento = rendaBase > 0 ? (totalParcelado / rendaBase * 100) : 0;
-  const notaComprometimento = Math.max(0, Math.min(100, 100 - ((comprometimento - 15) / 25 * 100)));
+  const notaEndividamento = interpolarNota(comprometimento, [[0,100],[20,100],[30,85],[40,60],[50,30],[100,0]]);
 
-  // 2) Índice de poupança do mês (peso 25%) — nota 0 em 0%, nota 100 em 20%+
-  const despesaReal = calcReal("Despesa", mi, ano);
-  const indicePoupanca = receitaReal > 0 ? ((receitaReal - despesaReal) / receitaReal * 100) : 0;
-  const notaPoupanca = Math.max(0, Math.min(100, (indicePoupanca / 20) * 100));
-
-  // 3) Reserva vs meta (peso 20%)
+  // ---- 4) Liquidez (peso 17%) — Reserva ÷ despesa mensal média = meses de sobrevivência
   const reservaAtual = calcSaldoInvestimento("Reserva de Emergência");
-  const salarioBruto = getSalarioBruto();
-  const metaReserva = salarioBruto > 0 ? salarioBruto * 12 : 0;
-  const notaReserva = metaReserva > 0 ? Math.max(0, Math.min(100, (reservaAtual / metaReserva) * 100)) : 0;
+  const despesaMediaMensal = mesesComDado6m > 0 ? (somaDespesa6m / mesesComDado6m) : 0;
+  const mesesSobrevivencia = despesaMediaMensal > 0 ? (reservaAtual / despesaMediaMensal) : (reservaAtual > 0 ? 12 : 0);
+  const notaLiquidez = interpolarNota(mesesSobrevivencia, [[0,0],[1,27],[3,67],[6,87],[12,100]]);
 
-  // 4) Dívida vs patrimônio (peso 20%) — nota 100 sem dívida ativa, cai conforme a dívida cresce
-  // em relação ao que você tem acumulado
+  // ---- 5) Patrimônio (peso 17%) — patrimônio líquido positivo + cresceu nos últimos 12 meses
+  // (o critério "cresce acima da inflação" fica pra depois — precisa de um dado externo, o IPCA,
+  // que o app ainda não busca)
   const totalAtivos = calcSaldoInvestimento("Reserva de Emergência") + calcSaldoInvestimento("Renda Fixa") + calcSaldoInvestimento("Renda Variável");
   const totalDividas = dividasAtivas.reduce((s,d) => s + (d.saldoDevedor||0), 0);
-  let notaDivida;
-  if(totalDividas <= 0) notaDivida = 100;
-  else if(totalAtivos <= 0) notaDivida = 0;
-  else notaDivida = Math.max(0, Math.min(100, 100 - (totalDividas / totalAtivos * 100)));
+  const patrimonioPositivo = (totalAtivos - totalDividas) > 0;
+  const dozeAtras = new Date(ano, mi - 12, 1);
+  let aportesLiquidos12m = 0;
+  debitoRows().forEach(it => {
+    if(!it.dataVenc) return;
+    const catNorm = normalizeCatName(it.categoria || "");
+    const ehBucketPatrimonio = ["reserva de emergencia","renda fixa","renda variavel"].some(c => catNorm === normalizeCatName(c));
+    if(!ehBucketPatrimonio) return;
+    const d = serialToDate(it.dataVenc);
+    if(d < dozeAtras) return;
+    if(it.tipo === "Investimento") aportesLiquidos12m += (it.valor || 0);
+    if(it.tipo === "Resgate Investimento") aportesLiquidos12m -= (it.valor || 0);
+  });
+  const notaPatrimonio = (patrimonioPositivo ? 60 : 0) + (aportesLiquidos12m > 0 ? 40 : 0);
 
-  // 5) Consistência (peso 10%) — % dos últimos 6 meses (com algum lançamento) que fecharam no positivo
-  let mesesComDado = 0, mesesPositivos = 0;
-  for(let i = 1; i <= 6; i++){
-    const d = new Date(ano, mi - i, 1);
-    const r = calcReal("Receita", d.getMonth(), d.getFullYear());
-    const de = calcReal("Despesa", d.getMonth(), d.getFullYear());
-    if(r === 0 && de === 0) continue;
-    mesesComDado++;
-    if(r - de >= 0) mesesPositivos++;
-  }
-  const notaConsistencia = mesesComDado > 0 ? (mesesPositivos / mesesComDado * 100) : 50; // sem dado ainda, fica neutro
-
+  // Pesos originais (20/20/20/15/15) escalados pra somar 100, já que o pilar de Comportamento
+  // Financeiro (10%) foi deferido e não entra no cálculo ainda.
+  const pesos = { fluxo: 22.2, poupanca: 22.2, endividamento: 22.2, liquidez: 16.7, patrimonio: 16.7 };
   const notaFinal0a100 =
-    notaComprometimento * 0.25 +
-    notaPoupanca * 0.25 +
-    notaReserva * 0.20 +
-    notaDivida * 0.20 +
-    notaConsistencia * 0.10;
+    notaFluxo * (pesos.fluxo/100) +
+    notaPoupanca * (pesos.poupanca/100) +
+    notaEndividamento * (pesos.endividamento/100) +
+    notaLiquidez * (pesos.liquidez/100) +
+    notaPatrimonio * (pesos.patrimonio/100);
 
-  return {
-    score: Math.round(notaFinal0a100 * 10), // escala 0-1000, igual score de crédito
-    notas: {
-      comprometimento: Math.round(notaComprometimento),
-      poupanca: Math.round(notaPoupanca),
-      reserva: Math.round(notaReserva),
-      divida: Math.round(notaDivida),
-      consistencia: Math.round(notaConsistencia),
-    }
+  const notas = {
+    fluxo: Math.round(notaFluxo),
+    poupanca: Math.round(notaPoupanca),
+    endividamento: Math.round(notaEndividamento),
+    liquidez: Math.round(notaLiquidez),
+    patrimonio: Math.round(notaPatrimonio),
   };
+  const score = Math.round(notaFinal0a100 * 10); // escala 0-1000, igual score de crédito
+
+  const delta = calcularDeltaScore(score, notas);
+  salvarSnapshotScore(score, notas);
+
+  return { score, notas, pesos, delta, mesesSobrevivencia };
+}
+
+// Guarda um "retrato" do score de hoje no localStorage (no máximo 1 por dia) — histórico usado
+// só pra calcular a variação (item 2), não é enviado a lugar nenhum.
+function salvarSnapshotScore(score, notas){
+  const historico = JSON.parse(localStorage.getItem("ftm_score_historico") || "[]");
+  const hojeStr = new Date().toISOString().slice(0, 10);
+  if(historico.length && historico[historico.length-1].data === hojeStr){
+    historico[historico.length-1] = { data: hojeStr, score, notas };
+  } else {
+    historico.push({ data: hojeStr, score, notas });
+  }
+  localStorage.setItem("ftm_score_historico", JSON.stringify(historico.slice(-400)));
+}
+// Compara com o retrato mais próximo de ~30 dias atrás, pra mostrar "você ganhou/perdeu X pontos
+// este mês" — e explicar qual pilar puxou pra cima ou pra baixo.
+function calcularDeltaScore(scoreAtual, notasAtuais){
+  const historico = JSON.parse(localStorage.getItem("ftm_score_historico") || "[]");
+  if(historico.length === 0) return null;
+  const alvoData = new Date(); alvoData.setDate(alvoData.getDate() - 30);
+  let referencia = null;
+  for(const snap of historico){
+    if(new Date(snap.data) <= alvoData) referencia = snap; else break;
+  }
+  if(!referencia) return null;
+  const deltaNotas = {};
+  Object.keys(notasAtuais).forEach(k => { deltaNotas[k] = notasAtuais[k] - (referencia.notas[k] || 0); });
+  return { deltaScore: scoreAtual - referencia.score, deltaNotas, dataReferencia: referencia.data };
 }
 
 // Referência: IBGE, Pesquisa de Orçamentos Familiares (POF) 2017-2018 — última edição com resultado
