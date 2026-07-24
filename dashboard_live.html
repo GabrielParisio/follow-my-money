@@ -659,6 +659,16 @@
     </div>
   </div>
 
+  <div id="lancEditModal" class="modal-overlay hidden">
+    <div class="modal-box">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
+        <h2 style="margin:0;" id="lancEditModalTitle">Editar lançamento</h2>
+        <button class="icon-btn" style="font-size:20px;" onclick="closeForm()">✕</button>
+      </div>
+      <div id="lancEditFormBody"></div>
+    </div>
+  </div>
+
   <div id="lancarFaturaModal" class="modal-overlay hidden">
     <div class="modal-box">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
@@ -740,7 +750,6 @@
           <button class="connect-btn" style="color:var(--red);border-color:var(--red);" onclick="bulkExcluirLancamentos()">🗑️ Excluir selecionadas</button>
         </div>
       </div>
-      <div id="novoLancForm" class="hidden"></div>
       <div id="lancTable" style="overflow-x:auto;"></div>
     </div>
   </div>
@@ -2757,37 +2766,46 @@ function renderLancamentos(){
     updateLancBulkBar();
     return;
   }
-  const rows = items.map(it => lancRowHtml(it)).join("");
   const allSelected = items.length > 0 && items.every(it => lancSelectedRows.has(it.row));
-  el.innerHTML = `<table class="lanc" id="lancTableInner">
-    <thead><tr>
-      <th style="width:32px;"><input type="checkbox" ${allSelected?"checked":""} onchange="toggleLancSelectAll(this.checked)"></th>
-      <th>Data</th><th>Descrição</th><th>Categoria</th><th>Status</th><th style="text-align:right;">Valor</th><th></th>
-    </tr></thead>
-    <tbody>${rows}</tbody>
-  </table>`;
+  const selecionarTodasHtml = `<div style="margin-bottom:8px;"><label style="display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--muted);cursor:pointer;width:fit-content;">
+    <input type="checkbox" ${allSelected?"checked":""} onchange="toggleLancSelectAll(this.checked)"> Selecionar todas
+  </label></div>`;
+  const cards = items.map(it => lancRowHtml(it)).join("");
+  el.innerHTML = selecionarTodasHtml + cards;
   updateLancBulkBar();
 }
 
 function lancRowHtml(it){
   const cleanCat = it.categoria || "";
-  const catColor = cleanCat ? colorForCategory(cleanCat) : "var(--muted)";
   const valClass = it.tipo === "Receita" ? "receita" : (it.tipo === "Despesa" ? "despesa" : "");
   const sign = it.tipo === "Receita" ? "+" : "";
   const dateLabel = it.dataVenc ? fmtDate(serialToDate(it.dataVenc)) : "";
   const isPago = it.status === "✅ Pago";
   const checked = lancSelectedRows.has(it.row);
-  return `<tr id="lanc-row-${it.row}">
-    <td><input type="checkbox" ${checked?"checked":""} onchange="toggleLancRowSelect(${it.row}, this.checked)"></td>
-    <td data-label="Data">${dateLabel}</td>
-    <td data-label="Descrição">${it.desc}</td>
-    <td data-label="Categoria"><span style="display:inline-flex;align-items:center;gap:7px;"><i style="width:8px;height:8px;border-radius:50%;background:${catColor};display:inline-block;flex-shrink:0;"></i>${cleanCat}</span></td>
-    <td data-label="Status"><button class="pill pill-btn ${isPago ? "" : "soon"}" onclick="toggleStatus(${it.row}, ${isPago})">${isPago ? "Pago" : "Pendente"}</button></td>
-    <td class="val-col ${valClass}" data-label="Valor">${sign}${fmtMoney(Math.abs(it.valor))}</td>
-    <td class="row-actions" data-label="">
-      <button class="icon-btn" onclick="openEditForm(${it.row})" title="Editar">✏️</button>
-    </td>
-  </tr>`;
+  return `<div class="lanc-card" id="lanc-row-${it.row}" onclick="openEditForm(${it.row})">
+    <div style="display:flex;align-items:flex-start;gap:10px;">
+      <input type="checkbox" ${checked?"checked":""} style="margin-top:3px;flex-shrink:0;"
+        onclick="event.stopPropagation()" onchange="toggleLancRowSelect(${it.row}, this.checked)">
+      <div style="flex:1;min-width:0;">
+        <div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px;">
+          <span style="font-weight:600;">${it.desc}</span>
+          <span class="val-col ${valClass}" style="flex-shrink:0;">${sign}${fmtMoney(Math.abs(it.valor))}</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-top:6px;">
+          <span style="color:var(--muted);font-size:12px;">${dateLabel}</span>
+          <button class="pill pill-btn ${isPago ? "" : "soon"}" onclick="event.stopPropagation(); toggleStatus(${it.row}, ${isPago})">${isPago ? "Pago" : "Pendente"}</button>
+        </div>
+        <div style="margin-top:6px;">
+          <select onclick="event.stopPropagation()" onchange="saveLancCategoriaInline(${it.row}, this.value)"
+            style="background:transparent;border:none;color:${cleanCat?"var(--text)":"var(--muted)"};font-size:12.5px;width:100%;">${categoriaOptions(cleanCat)}</select>
+        </div>
+      </div>
+    </div>
+  </div>`;
+}
+
+async function saveLancCategoriaInline(row, categoria){
+  await salvarEAtualizar(() => writeCell(`Débito!H${row}`, categoria), [renderLancamentos], "Categoria atualizada");
 }
 
 function toggleLancRowSelect(row, checked){
@@ -2795,9 +2813,9 @@ function toggleLancRowSelect(row, checked){
   updateLancBulkBar();
 }
 function toggleLancSelectAll(checked){
-  document.querySelectorAll("#lancTableInner tbody tr").forEach(tr => {
-    const row = +tr.id.replace("lanc-row-", "");
-    const cb = tr.querySelector('input[type="checkbox"]');
+  document.querySelectorAll("#lancTable .lanc-card").forEach(card => {
+    const row = +card.id.replace("lanc-row-", "");
+    const cb = card.querySelector('input[type="checkbox"]');
     if(cb) cb.checked = checked;
     if(checked) lancSelectedRows.add(row); else lancSelectedRows.delete(row);
   });
@@ -2917,11 +2935,11 @@ function refreshCalendarIfOpen(){
 function openEditForm(row){
   const it = debitoRows().find(x => x.row === row);
   if(!it) return;
-  const formEl = document.getElementById("novoLancForm");
-  formEl.classList.remove("hidden");
+  document.getElementById("lancEditModalTitle").textContent = "Editar lançamento";
+  const formEl = document.getElementById("lancEditFormBody");
   formEl.dataset.editingRow = row;
   formEl.innerHTML = `
-    <div class="edit-form">
+    <div class="edit-form" style="margin-bottom:0;">
       <div><label>Descrição</label><input id="fDesc" value="${it.desc}"></div>
       <div><label>Categoria</label><select id="fCat">${categoriaOptions(it.categoria)}</select></div>
       <div><label>Tipo</label>
@@ -2939,7 +2957,7 @@ function openEditForm(row){
         <button class="cancel-btn" style="color:var(--red);border-color:var(--red);margin-left:auto;" onclick='deleteLancamento(${row}, ${JSON.stringify(it.desc)}); closeForm();'>Excluir</button>
       </div>
     </div>`;
-  formEl.scrollIntoView({ behavior: "smooth", block: "center" });
+  document.getElementById("lancEditModal").classList.remove("hidden");
 }
 
 // Sugere categoria enquanto a pessoa digita a descrição — para de sugerir assim que ela escolhe
@@ -2952,13 +2970,13 @@ function autoSugerirCategoriaForm(descId, catId){
 }
 
 function openNewForm(){
-  const formEl = document.getElementById("novoLancForm");
-  formEl.classList.remove("hidden");
+  document.getElementById("lancEditModalTitle").textContent = "Novo lançamento";
+  const formEl = document.getElementById("lancEditFormBody");
   delete formEl.dataset.editingRow;
   const today = new Date();
   const todayStr = today.toISOString().slice(0,10);
   formEl.innerHTML = `
-    <div class="edit-form">
+    <div class="edit-form" style="margin-bottom:0;">
       <div><label>Data</label><input id="fData" type="date" value="${todayStr}"></div>
       <div><label>Descrição</label><input id="fDesc" placeholder="Ex: Mercado" oninput="autoSugerirCategoriaForm('fDesc','fCat')"></div>
       <div><label>Categoria</label><select id="fCat" onchange="this.dataset.manual='1'">${categoriaOptions()}</select></div>
@@ -2978,12 +2996,12 @@ function openNewForm(){
         <button class="cancel-btn" onclick="closeForm()">Cancelar</button>
       </div>
     </div>`;
+  document.getElementById("lancEditModal").classList.remove("hidden");
 }
 
 function closeForm(){
-  const formEl = document.getElementById("novoLancForm");
-  formEl.classList.add("hidden");
-  formEl.innerHTML = "";
+  document.getElementById("lancEditModal").classList.add("hidden");
+  document.getElementById("lancEditFormBody").innerHTML = "";
 }
 
 async function saveEdit(row){
@@ -5547,6 +5565,7 @@ function setupModalOutsideClickClose(){
     creditEditModal: closeCreditEditForm,
     pdfPreviewModal: closePdfPreviewModal,
     scoreDetalheModal: closeScoreDetalheModal,
+    lancEditModal: closeForm,
     lancarFaturaModal: closeLancarFaturaModal,
     novaCompraModal: closeNovaCompraModal,
     calendarModal: closeCalendarModal,
