@@ -419,13 +419,15 @@
 <div id="picker" class="gate hidden">
   <img class="brand-logo" style="width:64px;height:auto;margin-bottom:10px;" alt="Legacy">
   <h2 style="color:var(--gold)">Legacy</h2>
-  <p id="pickerMsg">Procurando sua planilha...</p>
+  <p id="pickerMsg">Escolha a planilha que quer usar:</p>
+  <input id="pickerSearch" type="text" placeholder="Buscar planilha por nome..." style="width:100%;box-sizing:border-box;margin-bottom:12px;padding:10px 12px;border-radius:8px;border:1px solid var(--border);background:var(--panel);color:var(--text);">
+  <div id="pickerLoading" style="display:none;opacity:0.7;font-size:0.9em;margin-bottom:8px;">Buscando...</div>
   <div id="pickerList"></div>
 </div>
 
 <div id="noSheet" class="gate hidden">
   <h2>Nenhuma planilha encontrada</h2>
-  <p>Não achamos nenhuma planilha com "legacy" no nome na sua conta Google. Faça uma cópia do modelo Legacy Beta pra começar:</p>
+  <p>Não encontramos nenhuma planilha do Google Sheets na sua conta Google. Faça uma cópia do modelo Legacy Beta pra começar:</p>
   <a id="copyTemplateLink" href="#" target="_blank" style="color:var(--gold);font-weight:600;">Copiar modelo Legacy Beta</a>
   <p style="margin-top:18px;">Depois de copiar, clique abaixo:</p>
   <button id="retryBtn">Já copiei, tentar de novo</button>
@@ -1150,38 +1152,42 @@ function trySilentReconnect(client){
 }
 
 // ===================== DESCOBERTA DA PLANILHA (multi-usuário) =====================
-async function resolveWorkspace(){
-  showScreen("picker");
-  document.getElementById("pickerMsg").textContent = "Procurando suas planilhas...";
-  document.getElementById("pickerList").innerHTML = "";
+// Lista as planilhas do Drive do usuário (mais recentes por padrão, ou filtradas por busca) e
+// deixa ele escolher qual usar — não depende mais de um nome fixo bater.
+let pickerSearchDebounce = null;
+
+async function searchSpreadsheets(term){
+  const pickerLoading = document.getElementById("pickerLoading");
+  const list = document.getElementById("pickerList");
+  if(pickerLoading) pickerLoading.style.display = "block";
   try{
-    // Filtra por "legacy" no nome — é a convenção usada nas cópias do modelo (ex: "Cópia de
-    // legacy_planilha_v4"). Sem esse filtro, qualquer planilha pessoal/de trabalho sem relação
-    // nenhuma com o app aparecia na lista, escondendo a tela de "copiar modelo" pra quem ainda
-    // não tinha a planilha certa.
-    const q = encodeURIComponent(`name contains 'legacy' and mimeType='application/vnd.google-apps.spreadsheet' and trashed=false and 'me' in owners`);
-    const url = `https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id,name)&pageSize=20&orderBy=modifiedTime desc`;
+    let q = `mimeType='application/vnd.google-apps.spreadsheet' and trashed=false and 'me' in owners`;
+    if(term && term.trim()){
+      q += ` and name contains '${term.trim().replace(/'/g, "\\'")}'`;
+    }
+    const params = new URLSearchParams({
+      q,
+      fields: "files(id,name,modifiedTime)",
+      pageSize: "20",
+      orderBy: "modifiedTime desc"
+    });
+    const url = `https://www.googleapis.com/drive/v3/files?${params}`;
     const res = await fetch(url, { headers: { Authorization: "Bearer " + accessToken } });
     if(!res.ok) throw new Error("Falha ao buscar no Drive (" + res.status + ")");
     const data = await res.json();
     const files = data.files || [];
 
+    list.innerHTML = "";
     if(files.length === 0){
-      document.getElementById("copyTemplateLink").href =
-        `https://docs.google.com/spreadsheets/d/${TEMPLATE_SPREADSHEET_ID}/copy`;
-      showScreen("noSheet");
+      if(!term){
+        document.getElementById("copyTemplateLink").href =
+          `https://docs.google.com/spreadsheets/d/${TEMPLATE_SPREADSHEET_ID}/copy`;
+        showScreen("noSheet");
+        return;
+      }
+      list.innerHTML = `<p style="opacity:0.7;">Nenhuma planilha encontrada com esse nome.</p>`;
       return;
     }
-    if(files.length === 1){
-      SPREADSHEET_ID = files[0].id;
-      localStorage.setItem("ftm_spreadsheetId", SPREADSHEET_ID);
-      showScreen("dash");
-      loadData();
-      return;
-    }
-    // múltiplas planilhas encontradas — deixa o usuário escolher
-    document.getElementById("pickerMsg").textContent = "Encontramos mais de uma planilha. Qual é a sua?";
-    const list = document.getElementById("pickerList");
     files.forEach(f => {
       const btn = document.createElement("button");
       btn.className = "picker-option";
@@ -1195,8 +1201,29 @@ async function resolveWorkspace(){
       list.appendChild(btn);
     });
   }catch(err){
-    document.getElementById("pickerMsg").textContent = "Erro ao buscar sua planilha: " + err.message;
+    list.innerHTML = "";
+    document.getElementById("pickerMsg").textContent = "Erro ao buscar suas planilhas: " + err.message;
+  }finally{
+    if(pickerLoading) pickerLoading.style.display = "none";
   }
+}
+
+async function resolveWorkspace(){
+  showScreen("picker");
+  document.getElementById("pickerMsg").textContent = "Escolha a planilha que quer usar:";
+  const searchInput = document.getElementById("pickerSearch");
+  if(searchInput) searchInput.value = "";
+  await searchSpreadsheets("");
+}
+
+function setupPickerSearch(){
+  const searchInput = document.getElementById("pickerSearch");
+  if(!searchInput || searchInput.dataset.wired === "1") return;
+  searchInput.dataset.wired = "1";
+  searchInput.addEventListener("input", () => {
+    clearTimeout(pickerSearchDebounce);
+    pickerSearchDebounce = setTimeout(() => searchSpreadsheets(searchInput.value), 400);
+  });
 }
 
 async function fetchRanges(ranges){
@@ -1204,13 +1231,23 @@ async function fetchRanges(ranges){
   const url = `https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}/values:batchGet?${params}&valueRenderOption=UNFORMATTED_VALUE`;
   const res = await fetch(url, { headers: { Authorization: "Bearer " + accessToken } });
   if(!res.ok){
-    if(res.status === 403){
-      throw new Error("Sem permissão pra acessar essa planilha (403). Confere se a conta Google conectada aqui é a mesma que é dona da planilha (ou tem acesso de edição a ela).");
+    let apiMessage = "", apiStatus = "";
+    try{
+      const errBody = await res.json();
+      apiMessage = errBody?.error?.message || "";
+      apiStatus = errBody?.error?.status || "";
+    }catch(e){ /* corpo não veio em JSON, segue só com o status HTTP */ }
+    let err;
+    if(res.status === 403 && !apiMessage){
+      err = new Error("Sem permissão pra acessar essa planilha (403). Confere se a conta Google conectada aqui é a mesma que é dona da planilha (ou tem acesso de edição a ela).");
+    } else if(res.status === 404 && !apiMessage){
+      err = new Error("Planilha não encontrada (404) — pode ter sido movida, apagada, ou o link ficou desatualizado. Tenta 'Trocar planilha' e escolher de novo.");
+    } else {
+      err = new Error(apiMessage || ("Falha ao ler a planilha (" + res.status + ")"));
     }
-    if(res.status === 404){
-      throw new Error("Planilha não encontrada (404) — pode ter sido movida, apagada, ou o link ficou desatualizado. Tenta 'Trocar planilha' e escolher de novo.");
-    }
-    throw new Error("Falha ao ler a planilha (" + res.status + ")");
+    err.httpStatus = res.status;
+    err.apiStatus = apiStatus;
+    throw err;
   }
   const data = await res.json();
   return data.valueRanges.map(v => v.values || []);
@@ -1280,12 +1317,11 @@ setInterval(updateLastUpdatedLabel, 30000);
 async function loadData(){
   setLoading(true);
   try{
-    const [balanco, cadastro, orcadoTotal, lanc, invest, cartoes, compras, nomeUsuario, debito, dividas, salarioBruto, reservaInicial] = await fetchRanges([
+    const [balanco, cadastro, orcadoTotal, lanc, cartoes, compras, nomeUsuario, debito, dividas, salarioBruto, reservaInicial] = await fetchRanges([
       "Balanço!D44:O56",
       "Cadastro!B7:F60",
       "Cadastro!F4",
       "Lançamentos(fx)!A2:K",
-      "Investimentos!C4:C7",
       "Cadastro!H7:K20",
       "Crédito!B10:I",
       "Cadastro!T6",
@@ -1294,7 +1330,7 @@ async function loadData(){
       "Cadastro!T8",
       "Cadastro!T10"
     ]);
-    raw = { balanco, cadastro, orcadoTotal, lanc, invest, cartoes, compras, nomeUsuario, debito, dividas, salarioBruto, reservaInicial };
+    raw = { balanco, cadastro, orcadoTotal, lanc, cartoes, compras, nomeUsuario, debito, dividas, salarioBruto, reservaInicial };
     state.lastUpdated = Date.now();
     updateLastUpdatedLabel();
     setupSelectors();
@@ -1302,7 +1338,25 @@ async function loadData(){
     renderResumo();
     showToast("Dados atualizados", "success");
   }catch(err){
-    showToast("Erro ao carregar dados: " + err.message, "error");
+    // Planilha existe e o token é válido, mas a estrutura de abas/ranges não bate com o que o
+    // Legacy espera — provavelmente foi escolhida uma planilha que não é do formato certo.
+    const isStructureError = err.apiStatus === "INVALID_ARGUMENT" ||
+      (typeof err.message === "string" && err.message.includes("Unable to parse range"));
+    if(isStructureError){
+      localStorage.removeItem("ftm_spreadsheetId");
+      SPREADSHEET_ID = null;
+      raw = null;
+      showScreen("picker");
+      document.getElementById("pickerMsg").textContent =
+        "Essa planilha não parece ter a estrutura do Legacy (" + err.message + "). Escolha outra planilha ou copie o modelo abaixo.";
+      document.getElementById("copyTemplateLink").href =
+        `https://docs.google.com/spreadsheets/d/${TEMPLATE_SPREADSHEET_ID}/copy`;
+      const searchInput = document.getElementById("pickerSearch");
+      if(searchInput) searchInput.value = "";
+      await searchSpreadsheets("");
+    } else {
+      showToast("Erro ao carregar dados: " + err.message, "error");
+    }
   }finally{
     setLoading(false);
   }
@@ -6405,6 +6459,7 @@ window.onload = () => {
   });
   setupTabs();
   setupSidebarToggle();
+  setupPickerSearch();
 
   // Renova a sessão sozinho ao abrir a página (sem pedir login de novo)
   trySilentReconnect(client);
