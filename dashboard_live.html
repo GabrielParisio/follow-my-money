@@ -1059,7 +1059,7 @@
 const CLIENT_ID = "731969839924-q6sqieddpjsp3tb0fl202cissgsmpoh9.apps.googleusercontent.com";
 
 // Planilha "modelo" usada para gerar o link de cópia pra novos usuários
-const TEMPLATE_SPREADSHEET_ID = "1P89mSxY0krkUc1RCCdPZzE_Hm68cJmSxbVMaZwe3KeY";
+const TEMPLATE_SPREADSHEET_ID = "1lu-dVgI5PkR79lDBJkosf5KN_9YDQkk5E7WSrYTn3YA";
 
 // Nome (ou parte dele) que identifica a planilha de cada usuário no Drive dele
 // ==========================================================
@@ -2901,11 +2901,11 @@ function openConfigInicialModal(){
   const linhasCartao = Array.from({ length: Math.max(3, cartoesExistentes.length) }, (_, i) => {
     const c = cartoesExistentes[i] || { nome: "", bandeira: "", vencimento: "", ultimosDigitos: "" };
     return `
-    <div style="display:flex;gap:6px;margin-bottom:6px;">
-      <input class="ci-card-nome" placeholder="Nome" value="${c.nome || ""}" style="flex:2;">
-      <input class="ci-card-banco" placeholder="Banco" value="${c.bandeira || ""}" style="flex:2;">
-      <input class="ci-card-dia" placeholder="Dia" type="number" min="1" max="31" value="${c.vencimento || ""}" style="flex:1;">
-      <input class="ci-card-digitos" placeholder="Últ. 4 díg." value="${c.ultimosDigitos || ""}" style="flex:1;">
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px;">
+      <input class="ci-card-nome" placeholder="Nome" value="${c.nome || ""}" style="flex:2 1 120px;min-width:0;">
+      <input class="ci-card-banco" placeholder="Banco" value="${c.bandeira || ""}" style="flex:2 1 120px;min-width:0;">
+      <input class="ci-card-dia" placeholder="Dia" type="number" min="1" max="31" value="${c.vencimento || ""}" style="flex:1 1 60px;min-width:0;">
+      <input class="ci-card-digitos" placeholder="Últ. 4 díg." value="${c.ultimosDigitos || ""}" style="flex:1 1 90px;min-width:0;">
     </div>`;
   }).join("");
 
@@ -2917,9 +2917,15 @@ function openConfigInicialModal(){
       <div><label>Orçado total (mensal)</label><input id="ciOrcadoTotal" type="number" step="0.01" value="${orcadoTotalAtual || 0}"></div>
     </div>
     <h3 style="font-size:13.5px;margin:0 0 8px;">Categorias e orçamento mensal</h3>
+    <div style="display:flex;gap:8px;margin-bottom:6px;font-size:10.5px;color:var(--muted);font-weight:700;text-transform:uppercase;">
+      <span style="flex:2;">Categoria</span><span style="flex:1;">Orçamento mensal</span>
+    </div>
     <div id="ciCategorias" style="max-height:220px;overflow-y:auto;margin-bottom:16px;">${linhasCategoria}</div>
     <button class="connect-btn" style="font-size:12px;margin-bottom:16px;" onclick="adicionarLinhaCategoriaConfigInicial()">+ Adicionar categoria</button>
     <h3 style="font-size:13.5px;margin:0 0 8px;">Cartões de crédito (opcional, pode deixar em branco)</h3>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px;font-size:10.5px;color:var(--muted);font-weight:700;text-transform:uppercase;">
+      <span style="flex:2 1 120px;">Nome</span><span style="flex:2 1 120px;">Banco</span><span style="flex:1 1 60px;">Dia</span><span style="flex:1 1 90px;">Últ. 4 díg.</span>
+    </div>
     <div id="ciCartoes" style="margin-bottom:16px;">${linhasCartao}</div>
     <div class="actions">
       <button class="save-btn" onclick="salvarConfigInicial()">✅ Concluir configuração</button>
