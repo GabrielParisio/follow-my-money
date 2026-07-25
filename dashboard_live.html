@@ -427,7 +427,7 @@
 
 <div id="noSheet" class="gate hidden">
   <h2>Nenhuma planilha encontrada</h2>
-  <p>Não encontramos nenhuma planilha do Google Sheets na sua conta Google. Faça uma cópia do modelo Legacy Beta pra começar:</p>
+  <p>Não encontramos nenhuma planilha com "legacy" no nome na sua conta Google. Faça uma cópia do modelo Legacy Beta pra começar:</p>
   <a id="copyTemplateLink" href="#" target="_blank" style="color:var(--gold);font-weight:600;">Copiar modelo Legacy Beta</a>
   <p style="margin-top:18px;">Depois de copiar, clique abaixo:</p>
   <button id="retryBtn">Já copiei, tentar de novo</button>
@@ -1161,7 +1161,9 @@ async function searchSpreadsheets(term){
   const list = document.getElementById("pickerList");
   if(pickerLoading) pickerLoading.style.display = "block";
   try{
-    let q = `mimeType='application/vnd.google-apps.spreadsheet' and trashed=false and 'me' in owners`;
+    // Filtra por "legacy" no nome — convenção usada nas cópias do modelo. Sem isso, qualquer
+    // planilha pessoal/de trabalho sem relação com o app aparecia na lista de seleção.
+    let q = `name contains 'legacy' and mimeType='application/vnd.google-apps.spreadsheet' and trashed=false and 'me' in owners`;
     if(term && term.trim()){
       q += ` and name contains '${term.trim().replace(/'/g, "\\'")}'`;
     }
