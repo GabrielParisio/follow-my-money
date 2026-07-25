@@ -822,6 +822,12 @@
   </div>
 
   <div id="view-credito" class="view">
+    <div id="creditoEmptyState" class="chart-panel hidden" style="text-align:center;padding:32px 20px;">
+      <p style="font-size:14px;margin:0 0 12px;">💳 Sem cartão de crédito cadastrado</p>
+      <p style="font-size:12.5px;color:var(--muted);margin:0 0 16px;">Cadastre um cartão pra acompanhar faturas, parcelas e gastos por categoria.</p>
+      <a href="javascript:void(0)" onclick="goToCadastro()" style="color:var(--gold);font-weight:600;text-decoration:underline;">Cadastrar cartão no Cadastro →</a>
+    </div>
+    <div id="creditoConteudo">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:10px;">
       <select id="cardSelect" style="margin-bottom:0;"></select>
       <div class="seg-toggle" id="creditLayoutToggle">
@@ -913,6 +919,7 @@
     </div>
     </div>
     <div id="credito-ladoalado" class="hidden"></div>
+    </div>
   </div>
 
   <div id="view-dividas" class="view">
@@ -4838,6 +4845,13 @@ function renderReservaCombo(saldo, saldoPrevisto, reserva, meta, mi){
 }
 
 function renderCredito(){
+  const cartoesExistem = (raw.cartoes || []).filter(r => r[0]).length > 0;
+  const emptyStateEl = document.getElementById("creditoEmptyState");
+  const conteudoEl = document.getElementById("creditoConteudo");
+  if(emptyStateEl) emptyStateEl.classList.toggle("hidden", cartoesExistem);
+  if(conteudoEl) conteudoEl.classList.toggle("hidden", !cartoesExistem);
+  if(!cartoesExistem) return;
+
   setupCardSelect();
   setupCreditLayoutToggle();
 
