@@ -1409,24 +1409,35 @@ async function writeCellsBatch(updates){
 }
 
 async function appendRow(sheetName, rowValues){
-  const url = `https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}/values/${encodeURIComponent(sheetName + "!B:K")}:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`;
-  const res = await fetch(url, {
-    method: "POST",
-    headers: { Authorization: "Bearer " + accessToken, "Content-Type": "application/json" },
-    body: JSON.stringify({ values: [rowValues] })
-  });
-  if(!res.ok) throw new Error("Falha ao adicionar (" + res.status + ")");
-  return res.json();
+  return appendRows(sheetName, "B:K", [rowValues]);
 }
 
 // Igual ao appendRow, mas manda VÁRIAS linhas numa única requisição — essencial pros importadores
 // de fatura/extrato, que podem gerar dezenas de transações de uma vez (uma requisição por linha
 // estouraria o limite de taxa da API do Google, como já vimos acontecer antes).
+// Acha a próxima linha vazia de uma "tabela" (Débito, Crédito etc), olhando só a coluna-âncora
+// (a primeira coluna de dado real, tipicamente B) — evita usar o endpoint :append do Sheets, que
+// tenta adivinhar sozinho onde é a tabela e pode empurrar os dados pra colunas erradas se achar
+// algo em outro lugar da planilha (foi exatamente esse bug que corrigimos aqui).
+async function findNextEmptyRow(sheetName, colunaAncora){
+  const range = `${sheetName}!${colunaAncora}:${colunaAncora}`;
+  const url = `https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}/values/${encodeURIComponent(range)}`;
+  const res = await fetch(url, { headers: { Authorization: "Bearer " + accessToken } });
+  if(!res.ok) throw new Error("Falha ao calcular a próxima linha livre (" + res.status + ")");
+  const data = await res.json();
+  const values = data.values || [];
+  return values.length + 1; // 1-indexed: se a coluna tem 56 linhas preenchidas, a próxima livre é a 57
+}
+
 async function appendRows(sheetName, colRange, rows2D){
   if(!rows2D || rows2D.length === 0) return;
-  const url = `https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}/values/${encodeURIComponent(sheetName + "!" + colRange)}:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`;
+  const [colInicio, colFim] = colRange.split(":");
+  const proximaLinha = await findNextEmptyRow(sheetName, colInicio);
+  const ultimaLinha = proximaLinha + rows2D.length - 1;
+  const range = `${sheetName}!${colInicio}${proximaLinha}:${colFim}${ultimaLinha}`;
+  const url = `https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}/values/${encodeURIComponent(range)}?valueInputOption=USER_ENTERED`;
   const res = await fetch(url, {
-    method: "POST",
+    method: "PUT",
     headers: { Authorization: "Bearer " + accessToken, "Content-Type": "application/json" },
     body: JSON.stringify({ values: rows2D })
   });
