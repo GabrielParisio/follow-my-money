@@ -1144,9 +1144,8 @@ async function fetchGoogleProfile(){
     if(info.picture && avatarEl){
       avatarEl.innerHTML = `<img src="${info.picture}" alt="" style="width:100%;height:100%;border-radius:50%;object-fit:cover;">`;
     }
-    if(info.name && nameEl){
-      nameEl.textContent = info.name;
-    }
+    // Nome da sidebar não vem daqui de propósito — é o Cadastro (planilha) que manda no nome
+    // exibido no app, não a conta Google conectada. Ver render() para onde isso é aplicado.
   }catch(e){ /* silencioso: perfil é só um detalhe visual, não trava o app */ }
 }
 
@@ -1546,8 +1545,8 @@ function render(){
   document.getElementById("greeting").textContent = greetingWord() + (userName ? ", " + userName : "");
   document.getElementById("summaryLine").textContent = `Aqui está o resumo de ${MONTHS_FULL[mi]} · ${state.year}`;
   const sidebarNameEl = document.getElementById("sidebarUserName");
-  if(sidebarNameEl && sidebarNameEl.textContent === "Usuário" && userName){
-    sidebarNameEl.textContent = userName;
+  if(sidebarNameEl){
+    sidebarNameEl.textContent = userName || "Usuário";
   }
 
   document.getElementById("cReceita").textContent = fmtMoney(receitaReal);
