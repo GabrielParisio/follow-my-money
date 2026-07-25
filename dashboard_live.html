@@ -1378,7 +1378,16 @@ async function writeCell(a1Range, value){
     headers: { Authorization: "Bearer " + accessToken, "Content-Type": "application/json" },
     body: JSON.stringify({ values: [[value]] })
   });
-  if(!res.ok) throw new Error("Falha ao salvar (" + res.status + ")");
+  if(!res.ok){
+    let apiMessage = "";
+    try{ apiMessage = (await res.json())?.error?.message || ""; }catch(e){ /* corpo não veio em JSON */ }
+    if(res.status === 403){
+      throw new Error(apiMessage
+        ? `Sem permissão pra editar essa planilha (403): ${apiMessage}. Confere se você é dono/editor dela, não só leitor.`
+        : "Sem permissão pra editar essa planilha (403). Confere se você é dono/editor dela, não só leitor — planilhas 'Somente ver' bloqueiam qualquer salvamento.");
+    }
+    throw new Error(apiMessage || ("Falha ao salvar (" + res.status + ")"));
+  }
   return res.json();
 }
 
