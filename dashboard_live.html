@@ -1020,15 +1020,6 @@
       </div>
     </div>
 
-    <div class="chart-panel" style="border-color:var(--purple);">
-      <h2>🔍 Diagnóstico temporário</h2>
-      <p style="font-size:12px;color:var(--muted);margin-top:-6px;margin-bottom:14px;">
-        Painel provisório só pra investigar o cálculo da previsão de fatura — pode ignorar/remover depois.
-      </p>
-      <button class="connect-btn" onclick="rodarDiagnosticoFatura()">Rodar diagnóstico</button>
-      <pre id="diagnosticoOutput" style="margin-top:12px;font-size:11.5px;white-space:pre-wrap;background:var(--card);border:1px solid var(--border);border-radius:8px;padding:10px 12px;display:none;"></pre>
-    </div>
-
     <div class="chart-panel">
       <h2>🔔 Notificações</h2>
       <p style="font-size:12.5px;color:var(--muted);margin-top:-6px;margin-bottom:8px;">
@@ -1660,16 +1651,27 @@ function render(){
     `${fmtMoney(totalParcelado)} em parcelas este mês · <a href="javascript:void(0)" onclick="openParcelasModal()" style="color:var(--gold);text-decoration:underline;cursor:pointer;">ver detalhes</a>`;
   renderComprometimentoChart(totalParcelado, rendaBaseComprometimento);
 
-  // ---- Patrimônio Acumulado (só ativos, sem descontar dívidas) ----
-  const totalAtivos = calcSaldoInvestimento("Reserva de Emergência") + calcSaldoInvestimento("Renda Fixa") + calcSaldoInvestimento("Renda Variável");
+  // ---- Patrimônio Acumulado (ativos reais + saldo previsto do mês, sem descontar dívidas) ----
+  const totalAtivosReal = calcSaldoInvestimento("Reserva de Emergência") + calcSaldoInvestimento("Renda Fixa") + calcSaldoInvestimento("Renda Variável");
+  // O saldo previsto do mês (já incluindo a provisão de fatura de cartão) só entra pro mês atual em
+  // diante — um mês PASSADO já teve seu efeito absorvido no saldo real dos investimentos, então somar
+  // de novo contaria a mesma coisa duas vezes.
+  const hojeReal = new Date();
+  const mesEhAtualOuFuturo = (state.year > hojeReal.getFullYear()) ||
+    (state.year === hojeReal.getFullYear() && mi >= hojeReal.getMonth());
+  const provisaoDoMes = mesEhAtualOuFuturo ? saldoPrevisto : 0;
+  const totalAtivos = totalAtivosReal + provisaoDoMes;
   const totalDividas = dividasAtivas.reduce((s,d) => s + (d.saldoDevedor||0), 0);
   const patrimonioDescontado = totalAtivos - totalDividas; // antecipando as parcelas/dívidas ativas em aberto
   const cPatrimonioEl = document.getElementById("cPatrimonio");
   if(cPatrimonioEl){
     cPatrimonioEl.textContent = fmtMoney(totalAtivos);
     cPatrimonioEl.style.color = totalAtivos >= 0 ? "var(--text)" : "var(--red)";
+    const textoProvisao = provisaoDoMes !== 0
+      ? ` · ${provisaoDoMes >= 0 ? "+" : ""}${fmtMoney(provisaoDoMes)} previsto em ${MONTHS[mi]}`
+      : "";
     document.getElementById("cPatrimonioSub").textContent =
-      `${fmtMoney(totalAtivos)} em ativos (Reserva + Renda Fixa + Renda Variável) · descontando dívidas: ${fmtMoney(patrimonioDescontado)}`;
+      `${fmtMoney(totalAtivosReal)} em ativos hoje (Reserva + Renda Fixa + Renda Variável)${textoProvisao} · descontando dívidas: ${fmtMoney(patrimonioDescontado)}`;
   }
 
   // ---- Projeção "se continuar assim" (média de saldo dos últimos meses, projetada 12 meses à frente) ----
@@ -2838,36 +2840,6 @@ function ehCategoriaPatrimonio(categoria){
 // lançamento normal de Débito — sem contar duas vezes. Se surgir uma compra nova DEPOIS do
 // pagamento já ter sido lançado, só a diferença ainda não coberta entra como previsão (mesmo
 // princípio já usado na tela de "Fatura em aberto" pra mostrar "falta pagar X").
-// ===================== DIAGNÓSTICO TEMPORÁRIO (mobile, sem console) =====================
-function rodarDiagnosticoFatura(){
-  const out = document.getElementById("diagnosticoOutput");
-  out.style.display = "block";
-  if(!raw){ out.textContent = "Dados ainda não carregados."; return; }
-  try{
-    const cartoes = getCadastroCartoesParsed();
-    const mi = state.monthIdx, ano = state.year;
-    let texto = `Mês/Ano em exibição: ${MONTHS_FULL[mi]}/${ano}\n\n`;
-    texto += `Cartões cadastrados (${cartoes.length}):\n`;
-    cartoes.forEach(c => { texto += `  • "${c.nome}"\n`; });
-    texto += `\n`;
-    cartoes.forEach(c => {
-      const faturaValor = calcularValorFaturaCartaoMes(c.nome, mi, ano);
-      const nomeMes = MONTHS_FULL[mi];
-      const descEsperada = normalizeCatName(`Fatura ${c.nome} - ${nomeMes}/${ano}`);
-      const lancamento = debitoRows().find(it => normalizeCatName(it.desc) === descEsperada);
-      texto += `Cartão "${c.nome}":\n`;
-      texto += `  Fatura do mês: ${fmtMoney(faturaValor)}\n`;
-      texto += `  Descrição esperada de pagamento: "Fatura ${c.nome} - ${nomeMes}/${ano}"\n`;
-      texto += `  Lançamento encontrado no Débito? ${lancamento ? "SIM (\"" + lancamento.desc + "\", " + fmtMoney(lancamento.valor) + ")" : "NÃO"}\n\n`;
-    });
-    texto += `Provisão total calculada: ${fmtMoney(provisaoFaturasCartao(mi, ano))}\n`;
-    texto += `Despesa Prevista total (calcPrevisto): ${fmtMoney(calcPrevisto("Despesa", mi, ano))}\n`;
-    out.textContent = texto;
-  }catch(err){
-    out.textContent = "Erro ao rodar diagnóstico: " + err.message + "\n" + (err.stack || "");
-  }
-}
-
 function provisaoFaturasCartao(mesIdx, ano){
   const cartoes = getCadastroCartoesParsed();
   const nomeMes = MONTHS_FULL[mesIdx];
