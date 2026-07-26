@@ -1589,11 +1589,8 @@ function render(){
   }
 
   // Variação vs mês anterior + vs mesmo mês do ano anterior
-  const somaLanc = (targetMi, targetYear, tipo) => lanc
-    .filter(r => r[5] && r[6] === tipo && r[8] === "✅ Pago" && (r[9]-1) === targetMi && r[10] === targetYear)
-    .reduce((s,r) => s + (r[7]||0), 0);
-  const receitaAnoAnterior = somaLanc(mi, state.year-1, "Receita");
-  const despesaAnoAnterior = somaLanc(mi, state.year-1, "Despesa");
+  const receitaAnoAnterior = calcReal("Receita", mi, state.year-1);
+  const despesaAnoAnterior = calcReal("Despesa", mi, state.year-1);
   const yoyReceita = receitaAnoAnterior ? ((receitaReal - receitaAnoAnterior) / receitaAnoAnterior * 100) : null;
   const yoyDespesa = despesaAnoAnterior ? ((despesaReal - despesaAnoAnterior) / despesaAnoAnterior * 100) : null;
   const yoyReceitaHtml = yoyReceita !== null
