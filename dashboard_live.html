@@ -969,6 +969,8 @@
       <div style="background:rgba(232,170,61,.08);border:1px solid rgba(232,170,61,.3);border-radius:10px;padding:12px 14px;margin-bottom:16px;font-size:12.5px;line-height:1.6;">
         ⚠️ <b>Fase beta:</b> a leitura automática hoje foi construída em cima do formato de arquivo do <b>Bradesco</b> especificamente (é o único banco testado até agora). Com outro banco, é <b>provável que a importação não funcione</b> — o app foi desenhado pra procurar frases e colunas exatas do extrato do Bradesco.
         <br><br>
+        📌 <b>Escolha só um formato por período:</b> o Bradesco escreve as descrições de forma diferente no XLS ("Resgate Inv Fac") e no PDF ("RENTAB.INVEST FACILCRED*"). Como a detecção de duplicata compara a descrição, importar os dois do mesmo período <b>vai duplicar todos os lançamentos</b>.
+        <br><br>
         Mesmo assim, <b>incentivamos você a testar com o extrato do seu banco</b> — é assim que a gente descobre o que precisa ajustar. Se der erro (ou importar tudo errado), <b>tira um print da tela e me manda</b> — isso ajuda bastante a expandir o suporte pra outros bancos.
       </div>
       <div class="edit-form" style="margin-bottom:0;">
@@ -977,8 +979,8 @@
           <input type="file" id="importFaturaInput" accept=".csv">
         </div>
         <div>
-          <label>Extrato de débito (XLS ou CSV)</label>
-          <input type="file" id="importDebitoInput" accept=".xls,.csv">
+          <label>Extrato de débito (XLS ou PDF)</label>
+          <input type="file" id="importDebitoInput" accept=".xls,.pdf">
         </div>
         <div>
           <label>Fatura em PDF (App Bradesco)</label>
@@ -5755,43 +5757,7 @@ function getNomeCartaoPorDigitos(digitos){
   return cartaoCadastrado ? cartaoCadastrado.nome : "Cartão ?";
 }
 
-// ---- Parser CSV genérico (separador configurável, respeita aspas) ----
-function parseCsvLine(line, delimiter){
-  const result = [];
-  let cur = "", inQuotes = false;
-  for(let i = 0; i < line.length; i++){
-    const ch = line[i];
-    if(inQuotes){
-      if(ch === '"'){
-        if(line[i+1] === '"'){ cur += '"'; i++; }
-        else inQuotes = false;
-      } else cur += ch;
-    } else {
-      if(ch === '"') inQuotes = true;
-      else if(ch === delimiter){ result.push(cur); cur = ""; }
-      else cur += ch;
-    }
-  }
-  result.push(cur);
-  return result;
-}
-function parseCsvText(text, delimiter){
-  return text.split(/\r\n|\r|\n/).filter(l => l.length > 0).map(l => parseCsvLine(l, delimiter));
-}
 
-// Extratos do Bradesco aparecem em pelo menos dois formatos: o original do internet banking usa
-// ponto e vírgula (";"), exportações/encaminhamentos por outros apps às vezes vêm com vírgula (",").
-// Soma as ocorrências nas primeiras linhas (não só a primeira — ela pode ser um título tipo
-// "Extrato de: Ag: 3453 | Conta..." sem nenhum separador, o que estragaria a detecção).
-function detectarDelimitadorCsv(text){
-  const linhas = text.split(/\r\n|\r|\n/).filter(l => l.trim().length > 0).slice(0, 10);
-  let qtdPontoVirgula = 0, qtdVirgula = 0;
-  linhas.forEach(l => {
-    qtdPontoVirgula += (l.match(/;/g) || []).length;
-    qtdVirgula += (l.match(/,/g) || []).length;
-  });
-  return qtdPontoVirgula > qtdVirgula ? ";" : ",";
-}
 
 // ---- Parte 1: fatura de cartão (CSV) -> aba Crédito ----
 function parseFaturaCartaoCsv(csvText){
@@ -5973,48 +5939,45 @@ function classificarLancamento(t){
   return { tipo: isEntrada ? "Receita" : "Despesa", categoria: "" };
 }
 
-// Decodifica bytes de um CSV tentando lidar com os dois formatos que aparecem na prática:
-// o extrato antigo do app Bradesco (Latin-1) e exportações mais novas (UTF-8) — inclusive quando
-// vêm com um bug comum de "codificação dupla" (o arquivo foi lido como Latin-1 e resalvo em UTF-8
-// por engano em algum app no caminho, tipo WhatsApp), que transforma "Histórico" em "HistÃ³rico".
-function decodeCsvBytes(bytes){
-  let texto;
-  try{
-    texto = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
-  }catch(e){
-    // Bytes inválidos como UTF-8 — é o formato antigo Latin-1 mesmo
-    return new TextDecoder("iso-8859-1").decode(bytes);
-  }
-  // Sinal de codificação dupla: "ï»¿" é o BOM UTF-8 mal-interpretado, ou sequências "Ã" seguidas
-  // de caractere de continuação são o padrão clássico de acento corrompido nesse cenário.
-  if(texto.indexOf("ï»¿") === 0 || /Ã[\u0080-\u00BF]/.test(texto)){
-    try{
-      const bytesRecuperados = Uint8Array.from(Array.from(texto).map(c => c.charCodeAt(0) & 0xFF));
-      texto = new TextDecoder("utf-8").decode(bytesRecuperados);
-    }catch(e){ /* se a tentativa de reparo falhar, segue com o texto original */ }
-  }
-  return texto.replace(/^\uFEFF/, ""); // remove o BOM real, se sobrar
+
+// No extrato, a data só aparece na PRIMEIRA transação de cada dia — as seguintes herdam a data de
+// cima. Sem isso, metade das transações entraria sem data (e seria descartada na importação).
+function preencherDatasHerdadas(transacoes){
+  let ultimaData = null;
+  return transacoes.map(t => {
+    if(t.data instanceof Date){ ultimaData = t.data; }
+    else if(typeof t.data === "string" && t.data.trim()){
+      const d = parseDataBRCell(t.data);
+      if(d) ultimaData = d;
+    }
+    return { ...t, data: ultimaData };
+  });
 }
 
 async function handleImportExtratoDebito(file){
   const statusEl = document.getElementById("importStatus");
   const isXls = /\.xls$/i.test(file.name);
-  let rows;
+  const isPdf = /\.pdf$/i.test(file.name);
+  if(!isXls && !isPdf){
+    statusEl.textContent = "❌ Extrato de débito aceita apenas XLS ou PDF. Exporta o extrato do internet banking do Bradesco num desses formatos.";
+    return;
+  }
+
+  let transacoesBrutas;
   try{
-    if(isXls){
+    if(isPdf){
+      statusEl.textContent = "Carregando ferramenta de leitura de PDF (primeira vez pode demorar um pouco)...";
+      await garantirPdf();
+      transacoesBrutas = await parseExtratoDebitoPdf(file, statusEl);
+    } else {
       statusEl.textContent = "Carregando ferramenta de leitura de planilha...";
       await garantirXLSX();
-    }
-    statusEl.textContent = "Lendo arquivo...";
-    const buf = await file.arrayBuffer();
-    if(isXls){
+      statusEl.textContent = "Lendo arquivo...";
+      const buf = await file.arrayBuffer();
       const wb = XLSX.read(buf, { type: "array", cellDates: true });
       const sheet = wb.Sheets[wb.SheetNames[0]];
-      rows = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: true, defval: "" });
-    } else {
-      const bytes = new Uint8Array(buf);
-      const texto = decodeCsvBytes(bytes);
-      rows = parseCsvText(texto, detectarDelimitadorCsv(texto));
+      const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: true, defval: "" });
+      transacoesBrutas = parseExtratoDebitoRows(rows);
     }
   }catch(err){
     statusEl.textContent = "❌ Não foi possível ler o arquivo: " + err.message;
@@ -6022,7 +5985,9 @@ async function handleImportExtratoDebito(file){
   }
 
   try{
-    const transacoes = parseExtratoDebitoRows(rows).filter(t => t.data);
+    const transacoes = preencherDatasHerdadas(transacoesBrutas)
+      .filter(t => t.data)
+      .filter(t => (Math.abs(t.credito) + Math.abs(t.debito)) > 0); // linhas de marcação (ex: "COD. LANC. 0") não são movimentação
     if(transacoes.length === 0){
       statusEl.textContent = "Nenhuma transação encontrada no arquivo.";
       return;
@@ -6088,11 +6053,135 @@ async function garantirXLSX(){
   if(typeof XLSX !== "undefined") return;
   await carregarScriptExterno("https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js");
 }
-async function garantirPdfEOcr(){
+// ===================== EXTRATO DE DÉBITO EM PDF (texto real, sem OCR) =====================
+// O extrato do internet banking vem com camada de texto de verdade — dá pra ler direto, sem OCR.
+// O desafio é que o texto sai "solto": a leitura sequencial embaralha colunas e junta o número do
+// contrato com o valor. Por isso a leitura é POSICIONAL: usamos a coordenada X de cada pedaço de
+// texto pra saber em qual coluna ele está, e a coordenada Y pra agrupar em linhas e transações.
+
+function normTextoPdf(s){
+  return (s || "").toString().normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase().trim();
+}
+
+// Descobre a posição X de cada coluna lendo APENAS a linha do cabeçalho da tabela.
+// (Varrer a página inteira quebra: palavras como "CREDITO" e "SALDO" também aparecem no meio de
+// descrições — "PARCELA OPER CREDITO", "SALDO ANTERIOR" — e bagunçariam as fronteiras das colunas.)
+function detectarColunasPdf(itens){
+  let headerY = null;
+  for(const it of itens){
+    if(normTextoPdf(it.texto).replace(/\.$/, "") !== "HISTORICO") continue;
+    const mesmaLinha = itens.filter(o => Math.abs(o.y - it.y) < 3);
+    const textos = mesmaLinha.map(o => normTextoPdf(o.texto).replace(/\.$/, ""));
+    if(textos.includes("DOCTO")){ headerY = it.y; break; }
+  }
+  if(headerY === null) return { bounds: null, headerY: null };
+
+  const alvo = { "DATA":"data", "HISTORICO":"historico", "DOCTO":"docto",
+                 "CREDITO":"credito", "DEBITO":"debito", "SALDO":"saldo" };
+  const bounds = {};
+  itens.forEach(it => {
+    if(Math.abs(it.y - headerY) >= 3) return;
+    const chave = normTextoPdf(it.texto).replace(/\.$/, "");
+    const campo = alvo[chave];
+    if(campo && bounds[campo] === undefined) bounds[campo] = it.x;
+  });
+  if(Object.keys(bounds).length < 5) return { bounds: null, headerY: null };
+  return { bounds, headerY };
+}
+
+function colunaDoX(x, bounds){
+  const ordenado = Object.entries(bounds).sort((a,b) => a[1] - b[1]);
+  let campo = ordenado[0][0];
+  ordenado.forEach(([nome, limite]) => { if(x >= limite - 8) campo = nome; });
+  return campo;
+}
+
+// Lê o PDF inteiro e devolve as transações no mesmo formato do importador de XLS
+// ({ data, historico, docto, credito, debito }), pra reaproveitar todo o resto do fluxo.
+async function parseExtratoDebitoPdf(file, statusEl){
+  const buf = await file.arrayBuffer();
+  const pdf = await pdfjsLib.getDocument({ data: buf }).promise;
+  const transacoes = [];
+  let ultimosBounds = null;
+
+  for(let p = 1; p <= pdf.numPages; p++){
+    if(statusEl) statusEl.textContent = `Lendo página ${p} de ${pdf.numPages}...`;
+    const page = await pdf.getPage(p);
+    const conteudo = await page.getTextContent();
+    const itens = conteudo.items
+      .filter(i => i.str && i.str.trim())
+      .map(i => ({ texto: i.str.trim(), x: i.transform[4], y: -i.transform[5] })); // y negativo = de cima pra baixo
+    if(itens.length === 0) continue;
+
+    const { bounds, headerY } = detectarColunasPdf(itens);
+    if(bounds) ultimosBounds = bounds;
+    const boundsUso = bounds || ultimosBounds;
+    if(!boundsUso || headerY === null) continue; // página sem tabela (capa, "Extrato inexistente")
+
+    const corpo = itens.filter(i => i.y > headerY + 5);
+    corpo.sort((a,b) => (a.y - b.y) || (a.x - b.x));
+
+    // 1) agrupa em linhas visuais (mesma altura)
+    const linhas = [];
+    let atual = [], ultimoY = null;
+    corpo.forEach(i => {
+      if(ultimoY !== null && Math.abs(i.y - ultimoY) > 2.5){ linhas.push(atual); atual = []; }
+      atual.push(i); ultimoY = i.y;
+    });
+    if(atual.length) linhas.push(atual);
+
+    // 2) distribui cada linha nas colunas
+    const linhasInfo = linhas.map(linha => {
+      const cel = { data:[], historico:[], docto:[], credito:[], debito:[], saldo:[] };
+      linha.slice().sort((a,b) => a.x - b.x).forEach(i => cel[colunaDoX(i.x, boundsUso)].push(i.texto));
+      const obj = { y: linha[0].y };
+      Object.keys(cel).forEach(k => { obj[k] = cel[k].join(" ").trim(); });
+      return obj;
+    });
+
+    // 3) junta linhas próximas num mesmo BLOCO = uma transação (descrição pode ocupar 2-3 linhas)
+    const blocos = [];
+    let bloco = null; ultimoY = null;
+    linhasInfo.forEach(li => {
+      if(ultimoY === null || li.y - ultimoY > 15){
+        if(bloco) blocos.push(bloco);
+        bloco = { data:"", historico:[], docto:"", credito:"", debito:"", saldo:"" };
+      }
+      if(li.data) bloco.data = li.data;
+      if(li.historico) bloco.historico.push(li.historico);
+      if(li.docto) bloco.docto = li.docto;
+      if(li.credito) bloco.credito = li.credito;
+      if(li.debito) bloco.debito = li.debito;
+      if(li.saldo) bloco.saldo = li.saldo;
+      ultimoY = li.y;
+    });
+    if(bloco) blocos.push(bloco);
+
+    blocos.forEach(b => {
+      const hist = b.historico.join(" ").trim();
+      if(!hist) return;
+      const n = normTextoPdf(hist);
+      if(n === "SALDO ANTERIOR" || n === "TOTAL" || n.includes("EXTRATO INEXISTENTE")) return;
+      transacoes.push({
+        data: b.data, historico: hist, docto: b.docto,
+        credito: parseValorBR(b.credito), debito: parseValorBR(b.debito)
+      });
+    });
+  }
+  return transacoes;
+}
+
+// Só o pdf.js, sem OCR — usado pelo extrato de débito em PDF, que tem camada de texto de verdade
+// (diferente da fatura fotografada pelo app, que precisa de OCR).
+async function garantirPdf(){
   if(typeof pdfjsLib === "undefined"){
     await carregarScriptExterno("https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js");
     pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
   }
+}
+
+async function garantirPdfEOcr(){
+  await garantirPdf();
   if(typeof Tesseract === "undefined"){
     await carregarScriptExterno("https://cdnjs.cloudflare.com/ajax/libs/tesseract.js/5.0.4/tesseract.min.js");
   }
