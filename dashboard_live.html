@@ -6122,16 +6122,54 @@ function normTextoPdf(s){
 // Descobre a posição X de cada coluna lendo APENAS a linha do cabeçalho da tabela.
 // (Varrer a página inteira quebra: palavras como "CREDITO" e "SALDO" também aparecem no meio de
 // descrições — "PARCELA OPER CREDITO", "SALDO ANTERIOR" — e bagunçariam as fronteiras das colunas.)
+// Agrupa itens de texto em "linhas visuais" por proximidade de Y — usado tanto na detecção do
+// cabeçalho quanto na leitura do corpo da tabela.
+function agruparEmLinhas(itens){
+  const ordenados = itens.slice().sort((a,b) => (a.y - b.y) || (a.x - b.x));
+  const linhas = [];
+  let atual = [], ultimoY = null;
+  ordenados.forEach(i => {
+    if(ultimoY !== null && Math.abs(i.y - ultimoY) > 2.5){ linhas.push(atual); atual = []; }
+    atual.push(i); ultimoY = i.y;
+  });
+  if(atual.length) linhas.push(atual);
+  return linhas;
+}
+
+// Junta os fragmentos de uma linha num texto só, inserindo espaço só quando há um vão real entre
+// eles (senão preserva a palavra unida). O pdf.js às vezes quebra uma palavra tipo "Histórico" em
+// mais de um fragmento de texto por causa de estilo de fonte — juntar a linha inteira antes de
+// procurar o texto evita depender de bater a palavra inteira num fragmento só.
+function textoDaLinha(linha){
+  const ord = linha.slice().sort((a,b) => a.x - b.x);
+  let texto = "";
+  let xAnterior = null;
+  ord.forEach(i => {
+    if(xAnterior !== null && (i.x - xAnterior) > 2) texto += " ";
+    texto += i.texto;
+    xAnterior = i.x + (i.texto.length * 4); // estimativa grosseira do fim do fragmento
+  });
+  return texto.trim();
+}
+
+// Posições de coluna medidas diretamente no layout real do extrato "Bradesco Celular" — usadas
+// como reforço quando a detecção dinâmica por item exato não encontra todas as colunas (porque o
+// pdf.js quebrou os rótulos do cabeçalho em fragmentos, por exemplo).
+const BOUNDS_PDF_BRADESCO_CELULAR = { data: 46, historico: 110, docto: 305, credito: 385, debito: 452, saldo: 520 };
+
 function detectarColunasPdf(itens){
+  const linhas = agruparEmLinhas(itens);
   let headerY = null;
-  for(const it of itens){
-    if(normTextoPdf(it.texto).replace(/\.$/, "") !== "HISTORICO") continue;
-    const mesmaLinha = itens.filter(o => Math.abs(o.y - it.y) < 3);
-    const textos = mesmaLinha.map(o => normTextoPdf(o.texto).replace(/\.$/, ""));
-    if(textos.includes("DOCTO")){ headerY = it.y; break; }
+  for(const linha of linhas){
+    const textoLinha = normTextoPdf(textoDaLinha(linha)).replace(/\s+/g, "");
+    if(textoLinha.includes("HISTORICO") && textoLinha.includes("DOCTO")){
+      headerY = linha[0].y;
+      break;
+    }
   }
   if(headerY === null) return { bounds: null, headerY: null };
 
+  // Tenta achar a posição X exata de cada rótulo (mais preciso quando funciona)
   const alvo = { "DATA":"data", "HISTORICO":"historico", "DOCTO":"docto",
                  "CREDITO":"credito", "DEBITO":"debito", "SALDO":"saldo" };
   const bounds = {};
@@ -6141,7 +6179,11 @@ function detectarColunasPdf(itens){
     const campo = alvo[chave];
     if(campo && bounds[campo] === undefined) bounds[campo] = it.x;
   });
-  if(Object.keys(bounds).length < 5) return { bounds: null, headerY: null };
+  // Se não achou todas as 6 colunas por item exato (rótulo fragmentado), usa as posições fixas
+  // conhecidas desse layout como reforço.
+  if(Object.keys(bounds).length < 6){
+    return { bounds: BOUNDS_PDF_BRADESCO_CELULAR, headerY };
+  }
   return { bounds, headerY };
 }
 
@@ -6172,19 +6214,14 @@ async function parseExtratoDebitoPdf(file, statusEl){
     const { bounds, headerY } = detectarColunasPdf(itens);
     if(bounds) ultimosBounds = bounds;
     const boundsUso = bounds || ultimosBounds;
-    if(!boundsUso || headerY === null) continue; // página sem tabela (capa, "Extrato inexistente")
-
-    const corpo = itens.filter(i => i.y > headerY + 5);
+    if(!boundsUso) continue; // nenhuma página até agora teve uma tabela reconhecível
+    // Se essa página não tem cabeçalho próprio (layout que só imprime na 1ª página), processa
+    // ela inteira — só recorta o que vem acima do cabeçalho quando a página TEM um cabeçalho.
+    const corpo = headerY !== null ? itens.filter(i => i.y > headerY + 5) : itens;
     corpo.sort((a,b) => (a.y - b.y) || (a.x - b.x));
 
     // 1) agrupa em linhas visuais (mesma altura)
-    const linhas = [];
-    let atual = [], ultimoY = null;
-    corpo.forEach(i => {
-      if(ultimoY !== null && Math.abs(i.y - ultimoY) > 2.5){ linhas.push(atual); atual = []; }
-      atual.push(i); ultimoY = i.y;
-    });
-    if(atual.length) linhas.push(atual);
+    const linhas = agruparEmLinhas(corpo);
 
     // 2) distribui cada linha nas colunas
     const linhasInfo = linhas.map(linha => {
@@ -6197,9 +6234,9 @@ async function parseExtratoDebitoPdf(file, statusEl){
 
     // 3) junta linhas próximas num mesmo BLOCO = uma transação (descrição pode ocupar 2-3 linhas)
     const blocos = [];
-    let bloco = null; ultimoY = null;
+    let bloco = null, ultimoYBloco = null;
     linhasInfo.forEach(li => {
-      if(ultimoY === null || li.y - ultimoY > 15){
+      if(ultimoYBloco === null || li.y - ultimoYBloco > 15){
         if(bloco) blocos.push(bloco);
         bloco = { data:"", historico:[], docto:"", credito:"", debito:"", saldo:"" };
       }
@@ -6209,7 +6246,7 @@ async function parseExtratoDebitoPdf(file, statusEl){
       if(li.credito) bloco.credito = li.credito;
       if(li.debito) bloco.debito = li.debito;
       if(li.saldo) bloco.saldo = li.saldo;
-      ultimoY = li.y;
+      ultimoYBloco = li.y;
     });
     if(bloco) blocos.push(bloco);
 
