@@ -2558,7 +2558,7 @@ function renderParcelasModalContent(){
     html += `<div style="font-size:11px;color:var(--muted);font-weight:700;text-transform:uppercase;margin:14px 0 6px;">Cartão de crédito</div>`;
     comprasParceladas.forEach(c => {
       const [data, cartao, desc, cat, valorTotal, valorParcela, parcela] = c;
-      html += `<div class="row"><span class="name">${desc} <span class="pill">${parcela}</span></span><span class="val">${fmtMoney(valorParcela || valorTotal)}</span></div>`;
+      html += `<div class="row"><span class="name">${desc} <span class="pill">${parcelaLabelSegura(parcela)}</span></span><span class="val">${fmtMoney(valorParcela || valorTotal)}</span></div>`;
     });
   }
   if(!dividas.length && !comprasParceladas.length){
@@ -4013,10 +4013,27 @@ function colorForCategory(name){
 
 // Uma compra "à vista" (ex: parcela "1/1", ou sem valor de parcela) não conta como parcelamento no Brasil —
 // usado tanto pra exibição (não mostrar a pill "1/1") quanto pro cálculo de comprometimento de renda.
+// Lê o valor da coluna Parcela com segurança. Antes da correção no ponto de escrita, valores tipo
+// "5/12" podiam ter sido interpretados pelo Google Sheets como data (5 de dezembro) em vez de texto
+// — qualquer "N/total" com total ≤ 12 é uma data válida, então o Sheets convertia sozinho sem avisar.
+// Se detectar isso (o valor chega como número, não como texto "n/total"), decodifica de volta: como
+// o Sheets usa DD/MM no locale brasileiro, o DIA da data é a parcela atual e o MÊS é o total.
+function parcelaLabelSegura(valorBruto){
+  const comoTexto = String(valorBruto ?? "").trim();
+  if(/^\d{1,2}\/\d{1,3}$/.test(comoTexto)) return comoTexto; // já é texto "n/total", nada a fazer
+  const comoNumero = Number(valorBruto);
+  // Faixa plausível de número de série de data do Sheets (cobre datas de ~2015 a ~2100)
+  if(Number.isFinite(comoNumero) && comoNumero > 42000 && comoNumero < 73000){
+    const d = serialToDate(comoNumero);
+    return `${d.getDate()}/${d.getMonth()+1}`;
+  }
+  return comoTexto;
+}
+
 function isCompraParcelada(c){
-  const parcela = c[6];
+  const parcela = parcelaLabelSegura(c[6]);
   if(!parcela) return false;
-  const totalParcelasNum = parseInt(String(parcela).split("/")[1], 10);
+  const totalParcelasNum = parseInt(parcela.split("/")[1], 10);
   if(isNaN(totalParcelasNum)) return false;
   return totalParcelasNum > 1;
 }
@@ -5047,7 +5064,7 @@ function renderCredito(){
     const cleanCat = cat || "";
     const dateLabel = data ? fmtDate(serialToDate(data)) : "";
     // Compra à vista não conta como parcela no Brasil — só mostra a etiqueta quando for realmente parcelado
-    const parcelaLabel = isCompraParcelada(c) ? ` <span class="pill">${parcela}</span>` : "";
+    const parcelaLabel = isCompraParcelada(c) ? ` <span class="pill">${parcelaLabelSegura(parcela)}</span>` : "";
     const checked = creditSelectedRows.has(row);
     return `<div class="lanc-card" id="credit-row-${row}" onclick="openCreditEditForm(${row})">
       <div style="display:flex;align-items:flex-start;gap:10px;">
@@ -5729,7 +5746,7 @@ function detectarParcelamento(descricao){
 function gerarLinhasCompraComParcelamento(dataCompra, nomeCartao, descricaoOriginal, categoria, valorParcela, vencimentoBase){
   const parcelamento = detectarParcelamento(descricaoOriginal);
   if(!parcelamento || !vencimentoBase){
-    return [[fmtDataBR(dataCompra), nomeCartao, descricaoOriginal, categoria, valorParcela, valorParcela, "1/1", vencimentoBase ? fmtDataBR(vencimentoBase) : ""]];
+    return [[fmtDataBR(dataCompra), nomeCartao, descricaoOriginal, categoria, valorParcela, valorParcela, "'1/1", vencimentoBase ? fmtDataBR(vencimentoBase) : ""]];
   }
   const { descricaoLimpa, parcelaAtual, parcelaTotal } = parcelamento;
   // Valor total é uma ESTIMATIVA (valor da parcela × total de parcelas) — só temos o valor de uma
@@ -5739,7 +5756,7 @@ function gerarLinhasCompraComParcelamento(dataCompra, nomeCartao, descricaoOrigi
   for(let n = parcelaAtual; n <= parcelaTotal; n++){
     const offsetMeses = n - parcelaAtual;
     const vencData = new Date(vencimentoBase.getFullYear(), vencimentoBase.getMonth() + offsetMeses, vencimentoBase.getDate());
-    linhas.push([fmtDataBR(dataCompra), nomeCartao, descricaoLimpa, categoria, valorTotalEstimado, valorParcela, `${n}/${parcelaTotal}`, fmtDataBR(vencData)]);
+    linhas.push([fmtDataBR(dataCompra), nomeCartao, descricaoLimpa, categoria, valorTotalEstimado, valorParcela, `'${n}/${parcelaTotal}`, fmtDataBR(vencData)]);
   }
   return linhas;
 }
@@ -6509,7 +6526,7 @@ async function saveNovaCompra(){
     somaAcumulada += valorParcela;
     const vencData = new Date(anoV, mesV - 1 + i, diaV);
     const vencBR = fmtDataBR(vencData);
-    const parcelaLabel = numParcelas > 1 ? `${i+1}/${numParcelas}` : "1/1";
+    const parcelaLabel = numParcelas > 1 ? `'${i+1}/${numParcelas}` : "'1/1";
     rows.push([dataCompraBR, nomeCartao, desc, categoria, valorTotal, valorParcela, parcelaLabel, vencBR]);
   }
 
