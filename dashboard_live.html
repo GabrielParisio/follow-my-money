@@ -4972,11 +4972,13 @@ function renderCredito(){
     ? compras.length + " compra" + (compras.length > 1 ? "s" : "") + " em " + nomeMesView
     : "Nenhuma compra em " + nomeMesView) + subExtra;
 
-  // Parcelas em aberto: todas as compras desse cartão com vencimento a partir do mês selecionado, em diante
+  // Parcelas em aberto: só compras REALMENTE parceladas (2+ parcelas), com vencimento a partir do
+  // mês selecionado em diante. Antes incluía compras à vista também — sem esse filtro, o mês vigente
+  // sempre batia com o valor da fatura inteira (já que toda compra nova daquele mês entrava junto).
   const todasDoCartao = (raw.compras || []).filter(r => r[2] && String(r[1] || "").trim() === String(nomeCartao || "").trim());
   const inicioMes = new Date(state.year, state.monthIdx, 1);
   const parcelasAberto = todasDoCartao.filter(c => {
-    if(!c[7]) return false;
+    if(!c[7] || !isCompraParcelada(c)) return false;
     return serialToDate(c[7]) >= inicioMes;
   });
   const totalParcelasAberto = parcelasAberto.reduce((sum, c) => sum + (c[5] || c[4] || 0), 0);
