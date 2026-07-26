@@ -1020,6 +1020,15 @@
       </div>
     </div>
 
+    <div class="chart-panel" style="border-color:var(--purple);">
+      <h2>🔍 Diagnóstico temporário</h2>
+      <p style="font-size:12px;color:var(--muted);margin-top:-6px;margin-bottom:14px;">
+        Painel provisório só pra investigar o cálculo da previsão de fatura — pode ignorar/remover depois.
+      </p>
+      <button class="connect-btn" onclick="rodarDiagnosticoFatura()">Rodar diagnóstico</button>
+      <pre id="diagnosticoOutput" style="margin-top:12px;font-size:11.5px;white-space:pre-wrap;background:var(--card);border:1px solid var(--border);border-radius:8px;padding:10px 12px;display:none;"></pre>
+    </div>
+
     <div class="chart-panel">
       <h2>🔔 Notificações</h2>
       <p style="font-size:12.5px;color:var(--muted);margin-top:-6px;margin-bottom:8px;">
@@ -2822,14 +2831,71 @@ function ehCategoriaPatrimonio(categoria){
   return c.includes("investimento") || c.includes("renda fixa") || c.includes("renda variavel") || c.includes("reserva de emergencia");
 }
 
+// Soma as faturas de cartão do mês que ainda NÃO viraram um lançamento real na aba Débito — essa é
+// a "previsão" de gasto vindo direto da fatura, sem precisar você criar nenhum lançamento manual.
+// Assim que o pagamento da fatura é lançado (via "Lançar pagamento desta fatura" na aba Crédito),
+// esse valor sai da previsão automaticamente e passa a contar como gasto real através do
+// lançamento normal de Débito — sem contar duas vezes. Se surgir uma compra nova DEPOIS do
+// pagamento já ter sido lançado, só a diferença ainda não coberta entra como previsão (mesmo
+// princípio já usado na tela de "Fatura em aberto" pra mostrar "falta pagar X").
+// ===================== DIAGNÓSTICO TEMPORÁRIO (mobile, sem console) =====================
+function rodarDiagnosticoFatura(){
+  const out = document.getElementById("diagnosticoOutput");
+  out.style.display = "block";
+  if(!raw){ out.textContent = "Dados ainda não carregados."; return; }
+  try{
+    const cartoes = getCadastroCartoesParsed();
+    const mi = state.monthIdx, ano = state.year;
+    let texto = `Mês/Ano em exibição: ${MONTHS_FULL[mi]}/${ano}\n\n`;
+    texto += `Cartões cadastrados (${cartoes.length}):\n`;
+    cartoes.forEach(c => { texto += `  • "${c.nome}"\n`; });
+    texto += `\n`;
+    cartoes.forEach(c => {
+      const faturaValor = calcularValorFaturaCartaoMes(c.nome, mi, ano);
+      const nomeMes = MONTHS_FULL[mi];
+      const descEsperada = normalizeCatName(`Fatura ${c.nome} - ${nomeMes}/${ano}`);
+      const lancamento = debitoRows().find(it => normalizeCatName(it.desc) === descEsperada);
+      texto += `Cartão "${c.nome}":\n`;
+      texto += `  Fatura do mês: ${fmtMoney(faturaValor)}\n`;
+      texto += `  Descrição esperada de pagamento: "Fatura ${c.nome} - ${nomeMes}/${ano}"\n`;
+      texto += `  Lançamento encontrado no Débito? ${lancamento ? "SIM (\"" + lancamento.desc + "\", " + fmtMoney(lancamento.valor) + ")" : "NÃO"}\n\n`;
+    });
+    texto += `Provisão total calculada: ${fmtMoney(provisaoFaturasCartao(mi, ano))}\n`;
+    texto += `Despesa Prevista total (calcPrevisto): ${fmtMoney(calcPrevisto("Despesa", mi, ano))}\n`;
+    out.textContent = texto;
+  }catch(err){
+    out.textContent = "Erro ao rodar diagnóstico: " + err.message + "\n" + (err.stack || "");
+  }
+}
+
+function provisaoFaturasCartao(mesIdx, ano){
+  const cartoes = getCadastroCartoesParsed();
+  const nomeMes = MONTHS_FULL[mesIdx];
+  return cartoes.reduce((soma, cartaoInfo) => {
+    const nomeCartao = cartaoInfo.nome;
+    const faturaValor = calcularValorFaturaCartaoMes(nomeCartao, mesIdx, ano);
+    if(faturaValor <= 0) return soma;
+    const descEsperada = normalizeCatName(`Fatura ${nomeCartao} - ${nomeMes}/${ano}`);
+    const lancamento = debitoRows().find(it => normalizeCatName(it.desc) === descEsperada);
+    const valorJaLancado = lancamento ? (lancamento.valor || 0) : 0;
+    return soma + Math.max(0, faturaValor - valorJaLancado);
+  }, 0);
+}
+
 function calcPrevisto(tipo, mesIdx, ano){
-  return debitoRows().reduce((s, it) => {
+  const baseDebito = debitoRows().reduce((s, it) => {
     if(it.tipo !== tipo || !it.dataVenc) return s;
     if(ehCategoriaTransferencia(it.categoria)) return s;
     const d = serialToDate(it.dataVenc);
     if(d.getMonth() !== mesIdx || d.getFullYear() !== ano) return s;
     return s + (it.valor || 0);
   }, 0);
+  // A previsão de despesa inclui também as faturas de cartão do mês ainda não lançadas como
+  // pagamento — é dinheiro que você já sabe que vai gastar, mesmo sem ter criado o lançamento.
+  if(tipo === "Despesa"){
+    return baseDebito + provisaoFaturasCartao(mesIdx, ano);
+  }
+  return baseDebito;
 }
 
 // "Real" migrado da planilha (antes lia direto da célula D48:O50 do Balanço, calculada por fórmula
