@@ -1327,20 +1327,20 @@ setInterval(updateLastUpdatedLabel, 30000);
 async function loadData(){
   setLoading(true);
   try{
-    const [balanco, cadastro, orcadoTotal, lanc, cartoes, compras, nomeUsuario, debito, dividas, salarioBruto, reservaInicial] = await fetchRanges([
-      "Balanço!D44:O56",
+    const [cadastro, orcadoTotal, cartoes, compras, nomeUsuario, debito, dividas, salarioBruto, reservaInicial, patrimonio] = await fetchRanges([
       "Cadastro!B7:F60",
       "Cadastro!F4",
-      "Lançamentos(fx)!A2:K",
       "Cadastro!H7:K20",
       "Crédito!B10:I",
       "Cadastro!T6",
       "Débito!B1:K",
       "Dívidas!B1:M",
       "Cadastro!T8",
-      "Cadastro!T10"
+      "Cadastro!T10",
+      "Patrimonio!A2:H"
     ]);
-    raw = { balanco, cadastro, orcadoTotal, lanc, cartoes, compras, nomeUsuario, debito, dividas, salarioBruto, reservaInicial };
+    raw = { cadastro, orcadoTotal, cartoes, compras, nomeUsuario, debito, dividas, salarioBruto, reservaInicial, patrimonio };
+    await garantirSnapshotMensal();
     state.lastUpdated = Date.now();
     updateLastUpdatedLabel();
     setupSelectors();
@@ -1550,11 +1550,10 @@ function setupSelectors(){
 }
 
 function render(){
-  const { balanco, cadastro, orcadoTotal, lanc } = raw;
+  const { cadastro, orcadoTotal } = raw;
   const mi = state.monthIdx;
 
-  // Balanço!D44:O56 -> row 44 is offset 0 (Real/Reserva/Meta ainda vêm da planilha; Previsto já migrado pro app)
-  const row = (n) => rowComRealCalculado(n, balanco, state.year);
+  const row = (n) => rowComRealCalculado(n, state.year);
   const receitaPrevisto = calcPrevisto("Receita", mi, state.year);
   const despesaPrevisto = calcPrevisto("Despesa", mi, state.year);
   const saldoPrevisto = receitaPrevisto - despesaPrevisto;
@@ -1574,7 +1573,6 @@ function render(){
   document.getElementById("cReceita").textContent = fmtMoney(receitaReal);
   document.getElementById("cDespesa").textContent = fmtMoney(despesaReal);
   document.getElementById("cSaldo").textContent = fmtMoney(saldoReal);
-  document.getElementById("cSaldoSub").textContent = "Previsto " + fmtMoney(saldoPrevisto);
   const pct = orcado ? despesaReal / orcado : 0;
   document.getElementById("cPct").textContent = fmtPct(pct);
   const hoje = new Date();
@@ -1606,6 +1604,7 @@ function render(){
   if(mi > 0){
     const receitaAnterior = row(48)[mi-1] || 0;
     const despesaAnterior = row(49)[mi-1] || 0;
+    const saldoAnterior = receitaAnterior - despesaAnterior;
     const varReceita = receitaAnterior ? ((receitaReal - receitaAnterior) / receitaAnterior * 100) : 0;
     const varDespesa = despesaAnterior ? ((despesaReal - despesaAnterior) / despesaAnterior * 100) : 0;
     const setaR = varReceita >= 0 ? "↑" : "↓";
@@ -1614,9 +1613,16 @@ function render(){
       `Previsto ${fmtMoney(receitaPrevisto)} <span style="color:${varReceita>=0?"var(--green)":"var(--red)"};">· ${setaR}${Math.abs(varReceita).toFixed(0)}% vs ${MONTHS[mi-1]}</span>${yoyReceitaHtml}`;
     document.getElementById("cDespesaSub").innerHTML =
       `Previsto ${fmtMoney(despesaPrevisto)} <span style="color:${varDespesa<=0?"var(--green)":"var(--red)"};">· ${setaD}${Math.abs(varDespesa).toFixed(0)}% vs ${MONTHS[mi-1]}</span>${yoyDespesaHtml}`;
+    // Variação em R$ (não %) — saldo pode ser negativo, e "-50%" numa base negativa inverteria o
+    // sentido visual (uma dívida de -100 melhorando pra -50 pareceria piora numa fórmula de %).
+    const deltaSaldo = saldoReal - saldoAnterior;
+    const melhorou = deltaSaldo >= 0;
+    document.getElementById("cSaldoSub").innerHTML =
+      `Previsto ${fmtMoney(saldoPrevisto)} <span style="color:${melhorou?"var(--green)":"var(--red)"};">· ${melhorou?"↑":"↓"}${fmtMoney(Math.abs(deltaSaldo))} vs ${MONTHS[mi-1]}</span>`;
   } else {
     document.getElementById("cReceitaSub").innerHTML = "Previsto " + fmtMoney(receitaPrevisto) + yoyReceitaHtml;
     document.getElementById("cDespesaSub").innerHTML = "Previsto " + fmtMoney(despesaPrevisto) + yoyDespesaHtml;
+    document.getElementById("cSaldoSub").textContent = "Previsto " + fmtMoney(saldoPrevisto);
   }
 
   // ---- Taxa de poupança (acumulada no ano, Jan até o mês vigente) ----
@@ -1710,11 +1716,11 @@ function render(){
     }).join("");
   }
 
-  renderCategorias(lanc, mi);
-  renderVencimentos(lanc);
+  renderCategorias(mi);
+  renderVencimentos();
   renderInsights(mi);
-  renderOrcadoReal(lanc, mi);
-  renderAlertas(lanc, mi);
+  renderOrcadoReal(mi);
+  renderAlertas(mi);
 }
 
 // ===================== RESUMO GERAL (página consolidada) =====================
@@ -1737,7 +1743,7 @@ function renderResumo(){
   if(!raw) return;
   setupResumoToggle();
   const mi = state.monthIdx;
-  const row = (n) => rowComRealCalculado(n, raw.balanco, state.year);
+  const row = (n) => rowComRealCalculado(n, state.year);
   const receitaReal = row(48)[mi] || 0;
   const despesaReal = row(49)[mi] || 0;
   const saldoReal = row(50)[mi] || 0;
@@ -1848,26 +1854,7 @@ function toggleValoresOcultos(){
   if(!document.getElementById("calendarModal").classList.contains("hidden")) renderCalendar();
 }
 
-function renderBenchmark(mi){
-  const el = document.getElementById("benchmarkList");
-  if(!el) return;
-  const dados = calcularBenchmarkGastos(mi, state.year);
-  if(!dados){
-    el.innerHTML = '<p class="empty">Sem despesa categorizada neste mês ainda</p>';
-    return;
-  }
-  const linha = (label, d) => {
-    const diff = d.usuario - d.benchmark;
-    const cor = Math.abs(diff) <= 3 ? "var(--muted)" : (diff > 0 ? "var(--yellow)" : "var(--green)");
-    const sinal = diff > 0 ? "+" : "";
-    return `<div class="row">
-      <span class="name">${label}</span>
-      <span class="val">${d.usuario.toFixed(1)}% <span style="color:${cor};font-size:11.5px;">(média: ${d.benchmark.toFixed(1)}% · ${sinal}${diff.toFixed(1)}pp)</span></span>
-    </div>`;
-  };
-  el.innerHTML = linha("Alimentação", dados.alimentacao) + linha("Essenciais (moradia+alim.+transporte)", dados.essenciais);
-}
-function renderCategorias(lanc, mi){
+function renderCategorias(mi){
   const totals = {};
   debitoRows().forEach(it => {
     if(!it.categoria || it.tipo !== "Despesa" || !it.dataVenc) return;
@@ -2018,7 +2005,7 @@ function restaurarTodosArquivados(){
   refreshAlertasUI();
 }
 function refreshAlertasUI(){
-  renderAlertas(window._lancAtual, window._miAtual);
+  renderAlertas(window._miAtual);
   if(!document.getElementById("alertasModal").classList.contains("hidden")) renderAlertasModalContent();
 }
 
@@ -2195,8 +2182,8 @@ function gerarAlertasFatura(){
   return alertasFatura;
 }
 
-function renderAlertas(lanc, mi){
-  window._lancAtual = lanc; window._miAtual = mi;
+function renderAlertas(mi){
+  window._miAtual = mi;
   const alertas = [];
 
   const gastoPorCategoriaMes = (targetMi, targetYear) => {
@@ -2239,7 +2226,7 @@ function renderAlertas(lanc, mi){
   });
 
   // 3) Déficit no mês (despesa > receita)
-  const row = (n) => rowComRealCalculado(n, raw.balanco, state.year);
+  const row = (n) => rowComRealCalculado(n, state.year);
   const receitaReal = row(48)[mi] || 0, despesaReal = row(49)[mi] || 0;
   if(despesaReal > receitaReal && receitaReal > 0){
     alertas.push({ id: `deficit-${mi}-${state.year}`, type: "danger", icon: "📉",
@@ -2267,7 +2254,7 @@ function renderAlertas(lanc, mi){
   dispararNotificacoesDosAlertas();
 }
 
-function renderOrcadoReal(lanc, mi){
+function renderOrcadoReal(mi){
   const gastoPorCategoria = {};
   debitoRows().forEach(it => {
     if(!it.categoria || it.tipo !== "Despesa" || !it.dataVenc) return;
@@ -2514,7 +2501,7 @@ function renderInsights(mi){
     (insightTexto ? `<div style="border-top:1px solid var(--border);margin-top:8px;padding-top:10px;font-size:12.5px;">${insightTexto}</div>` : "");
 }
 
-function renderVencimentos(lanc){
+function renderVencimentos(){
   const today = new Date(); today.setHours(0,0,0,0);
   const items = debitoRows()
     .filter(it => it.status !== "✅ Pago" && it.dataVenc && it.tipo !== "Receita")
@@ -3246,49 +3233,15 @@ function calcularDeltaScore(scoreAtual, notasAtuais){
   Object.keys(notasAtuais).forEach(k => { deltaNotas[k] = notasAtuais[k] - (referencia.notas[k] || 0); });
   return { deltaScore: scoreAtual - referencia.score, deltaNotas, dataReferencia: referencia.data };
 }
-
-// Referência: IBGE, Pesquisa de Orçamentos Familiares (POF) 2017-2018 — última edição com resultado
-// publicado (a de 2024-2025 ainda está em campo). Só comparamos com as categorias que têm número
-// sólido e público — não inventamos percentual pra categoria sem fonte confiável.
-const BENCHMARK_POF_2017_2018 = {
-  alimentacao: 17.5, // % da despesa de consumo média das famílias brasileiras
-  essenciais: 72.2,  // moradia + alimentação + transporte juntos
-};
-function calcularBenchmarkGastos(mesIdx, ano){
-  const gastos = {};
-  debitoRows().forEach(it => {
-    if(it.tipo !== "Despesa" || !it.dataVenc) return;
-    const d = serialToDate(it.dataVenc);
-    if(d.getMonth() !== mesIdx || d.getFullYear() !== ano) return;
-    const cat = normalizeCatName(it.categoria || "");
-    gastos[cat] = (gastos[cat] || 0) + (it.valor || 0);
-  });
-  const totalDespesa = Object.values(gastos).reduce((s,v) => s+v, 0);
-  if(totalDespesa === 0) return null;
-
-  const somaCategoria = (palavrasChave) => Object.entries(gastos)
-    .filter(([cat]) => palavrasChave.some(p => cat.includes(p)))
-    .reduce((s,[,v]) => s+v, 0);
-
-  const alimentacaoUsuario = somaCategoria(["alimenta", "mercado", "comida"]);
-  const essenciaisUsuario = alimentacaoUsuario + somaCategoria(["moradia"]) + somaCategoria(["combustivel", "transporte"]);
-
-  return {
-    alimentacao: { usuario: alimentacaoUsuario / totalDespesa * 100, benchmark: BENCHMARK_POF_2017_2018.alimentacao },
-    essenciais: { usuario: essenciaisUsuario / totalDespesa * 100, benchmark: BENCHMARK_POF_2017_2018.essenciais },
-  };
-}
-// Substitui a leitura de raw.balanco pras linhas 48/49/50 (Real) por cálculo direto — as outras
-// linhas (Reserva, Meta) continuam vindo da planilha por enquanto.
-function rowComRealCalculado(n, balancoRaw, ano){
-  if(n === 48 || n === 49 || n === 50){
-    const receitaArr = calcRealAno("Receita", ano);
-    const despesaArr = calcRealAno("Despesa", ano);
-    if(n === 48) return receitaArr;
-    if(n === 49) return despesaArr;
-    return receitaArr.map((r, i) => r - despesaArr[i]);
-  }
-  return balancoRaw[n - 44] || [];
+// Receita/Despesa/Saldo Real do mês, calculados direto da aba Débito. Antes essa função também
+// caía de volta pra ler Reserva/Meta da aba Balanço — isso não existe mais: Reserva vem do
+// snapshot mensal (reservaHistoricaAno) e Meta é sempre 12x o salário bruto cadastrado.
+function rowComRealCalculado(n, ano){
+  const receitaArr = calcRealAno("Receita", ano);
+  const despesaArr = calcRealAno("Despesa", ano);
+  if(n === 48) return receitaArr;
+  if(n === 49) return despesaArr;
+  return receitaArr.map((r, i) => r - despesaArr[i]);
 }
 
 // Saldo de um "balde" de investimento (Reserva de Emergência / Renda Fixa / Renda Variável), calculado a partir
@@ -3319,6 +3272,53 @@ function calcSaldoInvestimento(categoriaAlvo){
     if(it.tipo === "Resgate Investimento") return s - (it.valor || 0);
     return s;
   }, baseline);
+}
+
+// ===================== SNAPSHOT MENSAL DE PATRIMÔNIO (aba "Patrimonio") =====================
+// Grava, uma vez por mês, um "retrato" do patrimônio na planilha (Reserva, Renda Fixa, Renda
+// Variável, Total, Dívidas, Patrimônio Líquido, Score). Isso cria histórico REAL — antes disso, o
+// patrimônio era sempre recalculado do saldo ATUAL, então não existia "como estava em março" de
+// verdade, só o valor de hoje reaproveitado pra todo mês. Nunca sobrescreve um mês já gravado.
+function anoMesChave(data){
+  return `${data.getFullYear()}-${String(data.getMonth()+1).padStart(2,"0")}`;
+}
+
+async function garantirSnapshotMensal(){
+  const hoje = new Date();
+  const chave = anoMesChave(hoje);
+  const jaExiste = (raw.patrimonio || []).some(r => String(r[0] || "").trim() === chave);
+  if(jaExiste) return;
+
+  const reserva = calcSaldoInvestimento("Reserva de Emergência");
+  const rendaFixa = calcSaldoInvestimento("Renda Fixa");
+  const rendaVariavel = calcSaldoInvestimento("Renda Variável");
+  const totalAtivos = reserva + rendaFixa + rendaVariavel;
+  const totalDividas = getDividasParsed().filter(d => !isDividaQuitada(d)).reduce((s,d) => s + (d.saldoDevedor || 0), 0);
+  const patrimonioLiquido = totalAtivos - totalDividas;
+  const { score } = calcularScoreSaudeFinanceira(hoje.getMonth(), hoje.getFullYear());
+  const linha = [chave, reserva, rendaFixa, rendaVariavel, totalAtivos, totalDividas, patrimonioLiquido, score];
+
+  try{
+    await appendRows("Patrimonio", "A:H", [linha]);
+    raw.patrimonio = [...(raw.patrimonio || []), linha]; // atualiza em memória — não precisa recarregar tudo de novo
+  }catch(err){
+    // Não trava o carregamento do app por causa disso — é histórico "nice to have", não algo crítico
+    // pro uso do dia a dia. Provavelmente a aba "Patrimonio" ainda não existe nessa planilha.
+    console.error("Não foi possível gravar o snapshot mensal de patrimônio:", err.message);
+  }
+}
+
+// Histórico de Reserva por mês, lido da aba Patrimonio — usado no gráfico de evolução, no lugar do
+// que antes vinha da aba Balanço. Meses sem snapshot (antes dessa funcionalidade existir, ou meses
+// futuros) aparecem como 0 no gráfico — não inventamos um valor pra eles.
+function reservaHistoricaAno(ano){
+  const porMes = {};
+  (raw.patrimonio || []).forEach(r => {
+    const m = String(r[0] || "").trim().match(/^(\d{4})-(\d{2})$/);
+    if(!m || +m[1] !== ano) return;
+    porMes[+m[2] - 1] = Number(r[1]) || 0; // coluna B = Reserva
+  });
+  return Array.from({ length: 12 }, (_, i) => porMes[i] ?? 0);
 }
 
 function categoriaOptions(selected){
@@ -3906,9 +3906,11 @@ const CARD_STYLES_RAW = {
   // ===== NÍVEL 1 — Banco + Modelo (o mais específico: mesmo modelo muda de cor conforme o banco) =====
   "nubank ultravioleta": { background: "linear-gradient(150deg, #2B0B45 0%, #5A189A 55%, #8A05BE 100%)", tier: 1 },
   "nubank infinite": { background: "linear-gradient(150deg, #1a1a1a 0%, #3d1155 55%, #8A05BE 100%)", tier: 1 },
-  "inter gold": { background: "linear-gradient(135deg, #cfa54a 0%, #8a6a1f 50%, #e8cf8a 100%)", light: true, tier: 1 },
-  "inter black": { background: "linear-gradient(150deg, #1c1c1c 0%, #000 100%)", tier: 1 },
-  "inter win": { background: "linear-gradient(135deg, #FF7A00 0%, #e86a00 100%)", tier: 1 },
+  "inter gold": { background: "linear-gradient(135deg, #FF8A00 0%, #E86A00 45%, #FF9D2E 100%)", tier: 1 },
+  "inter platinum": { background: GRAD_METAL_PLATINUM, light: true, tier: 1 },
+  "inter prime": { background: "linear-gradient(150deg, #1a1a1a 0%, #000 100%)", tier: 1 },
+  "inter black": { background: GRAD_BRADESCO_INFINITE, tier: 1 },
+  "inter win": { background: "linear-gradient(150deg, #0d1b2e 0%, #1b2a44 55%, #060d18 100%)", tier: 1 },
   "c6 carbon": { background: "linear-gradient(140deg, #2b2b2b 0%, #0a0a0a 55%, #3a3a3a 100%)", tier: 1 },
   "itau uniclass": { background: "linear-gradient(150deg, #001b3a 0%, #000 100%)", tier: 1 },
   "itau personnalite": { background: "linear-gradient(150deg, #0a0a0a 0%, #1a1a1a 100%)", tier: 1 },
@@ -5444,7 +5446,7 @@ function renderBalancoCardsShell(){
       tip:"Quanto da sua despesa do mês já consumiu do orçamento total definido no Cadastro.", valueStyle:"color:var(--yellow)" },
     { id:"cTaxaPoupanca", cardClass:"detalhado-only", accent:"var(--green)", label:"Índice de poupança",
       tip:"Percentual da receita acumulada no ano (Jan até o mês atual) que sobrou como saldo positivo.", valueStyle:"color:var(--green)" },
-    { id:"cComprometimento", accent:"var(--border)", label:"Comprometimento de renda", cardClass:"no-scroll",
+    { id:"cComprometimento", accent:"var(--border)", label:"Comprometimento de renda", cardClass:"no-scroll detalhado-only",
       tip:"Soma de todas as parcelas fixas (dívidas + compras parceladas no cartão) que vencem neste mês, dividida pelo salário bruto (Cadastro) — ou pela receita do mês, se o salário bruto não estiver preenchido.",
       extra:`<div id="comprometimentoChart" style="margin-top:10px;"></div>` },
     { id:"cScoreSaude", accent:"var(--gold)", label:"Score de saúde financeira", cardClass:"no-scroll wide-card",
@@ -5477,16 +5479,16 @@ function renderBalancoCardsShell(){
 }
 
 function renderCharts(){
-  const row = (n) => rowComRealCalculado(n, raw.balanco, state.year);
+  const row = (n) => rowComRealCalculado(n, state.year);
   const receita = row(48).map(v => v||0);
   const despesa = row(49).map(v => v||0);
   const saldo = row(50).map(v => v||0);
   const saldoPrevisto = [...Array(12)].map((_,i) => calcPrevisto("Receita", i, state.year) - calcPrevisto("Despesa", i, state.year));
-  const reserva = row(53).map(v => v||0);
+  const reserva = reservaHistoricaAno(state.year);
   // Meta unificada: sempre 12x o Salário Bruto cadastrado (mesma fonte usada no resto do app) — não
   // lê mais da planilha, que podia ter um valor diferente/desatualizado guardado ali.
   const salarioBrutoAno = getSalarioBruto();
-  const metaUnica = salarioBrutoAno > 0 ? salarioBrutoAno * 12 : (row(56)[0] || 0); // sem salário cadastrado, cai pro que já estava na planilha
+  const metaUnica = salarioBrutoAno > 0 ? salarioBrutoAno * 12 : 0; // sem salário cadastrado, meta fica em 0 até você preencher
   const meta = Array(12).fill(metaUnica);
   const mi = state.monthIdx;
 
