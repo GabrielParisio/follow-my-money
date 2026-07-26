@@ -5779,6 +5779,20 @@ function parseCsvText(text, delimiter){
   return text.split(/\r\n|\r|\n/).filter(l => l.length > 0).map(l => parseCsvLine(l, delimiter));
 }
 
+// Extratos do Bradesco aparecem em pelo menos dois formatos: o original do internet banking usa
+// ponto e vírgula (";"), exportações/encaminhamentos por outros apps às vezes vêm com vírgula (",").
+// Soma as ocorrências nas primeiras linhas (não só a primeira — ela pode ser um título tipo
+// "Extrato de: Ag: 3453 | Conta..." sem nenhum separador, o que estragaria a detecção).
+function detectarDelimitadorCsv(text){
+  const linhas = text.split(/\r\n|\r|\n/).filter(l => l.trim().length > 0).slice(0, 10);
+  let qtdPontoVirgula = 0, qtdVirgula = 0;
+  linhas.forEach(l => {
+    qtdPontoVirgula += (l.match(/;/g) || []).length;
+    qtdVirgula += (l.match(/,/g) || []).length;
+  });
+  return qtdPontoVirgula > qtdVirgula ? ";" : ",";
+}
+
 // ---- Parte 1: fatura de cartão (CSV) -> aba Crédito ----
 function parseFaturaCartaoCsv(csvText){
   const linhas = csvText.split(/\r\n|\r|\n/);
@@ -5885,9 +5899,10 @@ function parseValorBR(v){
 function parseDataBRCell(v){
   if(v instanceof Date) return v;
   const s = (v || "").toString().trim();
-  const m = s.match(/^(\d{2})\/(\d{2})\/(\d{2})$/);
+  const m = s.match(/^(\d{2})\/(\d{2})\/(\d{2}|\d{4})$/);
   if(!m) return null;
-  const dia = parseInt(m[1],10), mes = parseInt(m[2],10), ano = 2000 + parseInt(m[3],10);
+  const dia = parseInt(m[1],10), mes = parseInt(m[2],10);
+  const ano = m[3].length === 2 ? 2000 + parseInt(m[3],10) : parseInt(m[3],10);
   return new Date(ano, mes-1, dia);
 }
 
@@ -5897,6 +5912,9 @@ function parseExtratoDebitoRows(rows){
   let current = null;
   let section = "main"; // main | ultimos | futuros
   let ignorarResto = false;
+  // Comparação tolerante a acento/maiúscula — proteção extra caso alguma variação de mojibake
+  // escape do reparo de codificação feito em decodeCsvBytes().
+  const norm = (s) => (s || "").toString().normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase();
 
   for(let i = 0; i < rows.length; i++){
     if(ignorarResto) break;
@@ -5907,15 +5925,20 @@ function parseExtratoDebitoRows(rows){
     const credito = row[3];
     const debito = row[4];
 
-    if(dataRaw === "Saldos Invest Fácil"){ ignorarResto = true; break; }
-    if(dataRaw === "Últimos Lançamentos"){ section = "ultimos"; current = null; continue; }
-    if(dataRaw === "Lançamentos Futuros"){ section = "futuros"; current = null; continue; }
-    if(historico === "Histórico" && dataRaw === "Data") continue;
-    if(historico === "SALDO ANTERIOR") continue;
-    if(historico === "Total do Dia" || historico === "Total") continue;
+    if(norm(dataRaw) === norm("Saldos Invest Fácil")){ ignorarResto = true; break; }
+    // Linhas de "saldo-espelho" do Invest Fácil (uma por dia, tipo "15/05/26; Saldo Invest Fácil;51,75;")
+    // não são lançamentos de verdade — são só uma foto do saldo daquele produto naquele dia. Sem
+    // esse filtro, viravam lançamentos de valor zero contaminando a importação (o "51,75" cai na
+    // posição de Docto, não de valor, então credito/debito ficam vazios e a linha vira lixo).
+    if(norm(historico) === norm("Saldo Invest Fácil")) continue;
+    if(norm(dataRaw) === norm("Últimos Lançamentos")){ section = "ultimos"; current = null; continue; }
+    if(norm(dataRaw) === norm("Lançamentos Futuros")){ section = "futuros"; current = null; continue; }
+    if(norm(historico) === norm("Histórico") && norm(dataRaw) === norm("Data")) continue;
+    if(norm(historico) === norm("SALDO ANTERIOR")) continue;
+    if(norm(historico) === norm("Total do Dia") || norm(historico) === norm("Total")) continue;
     if(!dataRaw && !historico) continue;
 
-    const isDateRow = /^\d{2}\/\d{2}\/\d{2}$/.test(dataRaw);
+    const isDateRow = /^\d{2}\/\d{2}\/(\d{2}|\d{4})$/.test(dataRaw);
     if(isDateRow){
       if(section === "ultimos" && docto && mainDocto[docto]){ current = null; continue; }
       current = {
@@ -5931,15 +5954,46 @@ function parseExtratoDebitoRows(rows){
   return transacoes;
 }
 
+// Classifica um lançamento de extrato como Investimento/Resgate/Receita/Despesa. A categoria
+// automática só é sugerida pra Despesa/Receita (via sugerirCategoria, aplicado em quem chama esta
+// função) — aporte/resgate de investimento fica sempre com categoria em branco, pra escolha manual
+// (o "balde" certo — Reserva, Renda Fixa, Renda Variável — depende de contexto que o extrato sozinho
+// não entrega com segurança).
 function classificarLancamento(t){
   const desc = t.historico.toLowerCase();
   // "resg" pega tanto "Resgate" quanto abreviações como "Resg/vencto" — "invest" sozinho não pega
-  // "Resgate Inv Fac" (só tem "Inv" abreviado, não "Invest" por extenso).
+  // "Resgate Inv Fac" (só tem "Inv" abreviado, não "Investimento" por extenso).
   const isInvest = desc.indexOf("cdb") !== -1 || desc.indexOf("aplicac") !== -1 ||
-    desc.indexOf("invest") !== -1 || desc.indexOf("rent.inv") !== -1 || desc.indexOf("resg") !== -1;
+    desc.indexOf("invest") !== -1 || desc.indexOf("inv.facil") !== -1 || desc.indexOf("inv fac") !== -1 ||
+    desc.indexOf("resg") !== -1;
   const isEntrada = t.credito && t.credito !== 0;
-  if(isInvest) return isEntrada ? "Resgate Investimento" : "Investimento";
-  return isEntrada ? "Receita" : "Despesa";
+  if(isInvest){
+    return { tipo: isEntrada ? "Resgate Investimento" : "Investimento", categoria: "" };
+  }
+  return { tipo: isEntrada ? "Receita" : "Despesa", categoria: "" };
+}
+
+// Decodifica bytes de um CSV tentando lidar com os dois formatos que aparecem na prática:
+// o extrato antigo do app Bradesco (Latin-1) e exportações mais novas (UTF-8) — inclusive quando
+// vêm com um bug comum de "codificação dupla" (o arquivo foi lido como Latin-1 e resalvo em UTF-8
+// por engano em algum app no caminho, tipo WhatsApp), que transforma "Histórico" em "HistÃ³rico".
+function decodeCsvBytes(bytes){
+  let texto;
+  try{
+    texto = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+  }catch(e){
+    // Bytes inválidos como UTF-8 — é o formato antigo Latin-1 mesmo
+    return new TextDecoder("iso-8859-1").decode(bytes);
+  }
+  // Sinal de codificação dupla: "ï»¿" é o BOM UTF-8 mal-interpretado, ou sequências "Ã" seguidas
+  // de caractere de continuação são o padrão clássico de acento corrompido nesse cenário.
+  if(texto.indexOf("ï»¿") === 0 || /Ã[\u0080-\u00BF]/.test(texto)){
+    try{
+      const bytesRecuperados = Uint8Array.from(Array.from(texto).map(c => c.charCodeAt(0) & 0xFF));
+      texto = new TextDecoder("utf-8").decode(bytesRecuperados);
+    }catch(e){ /* se a tentativa de reparo falhar, segue com o texto original */ }
+  }
+  return texto.replace(/^\uFEFF/, ""); // remove o BOM real, se sobrar
 }
 
 async function handleImportExtratoDebito(file){
@@ -5959,8 +6013,8 @@ async function handleImportExtratoDebito(file){
       rows = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: true, defval: "" });
     } else {
       const bytes = new Uint8Array(buf);
-      const texto = new TextDecoder("iso-8859-1").decode(bytes);
-      rows = parseCsvText(texto, ",");
+      const texto = decodeCsvBytes(bytes);
+      rows = parseCsvText(texto, detectarDelimitadorCsv(texto));
     }
   }catch(err){
     statusEl.textContent = "❌ Não foi possível ler o arquivo: " + err.message;
@@ -5976,10 +6030,15 @@ async function handleImportExtratoDebito(file){
     const hoje = new Date(); hoje.setHours(0,0,0,0);
     const linhas = transacoes.map(t => {
       const valor = Math.abs(t.credito) + Math.abs(t.debito);
-      const lancamento = classificarLancamento(t);
+      const { tipo: lancamento } = classificarLancamento(t);
       const status = t.data <= hoje ? "✅ Pago" : "";
-      // B, C, D, E, F, G, H, I, J, K — E(Fixa), F ficam em branco; H(Categoria) recebe sugestão automática se houver
-      return [fmtDataBR(t.data), fmtDataBR(t.data), t.historico, "", "", "Bradesco", sugerirCategoria(t.historico) || "", lancamento, valor, status];
+      // B, C, D, E, F, G, H, I, J, K — E(Fixa), F ficam em branco.
+      // Categoria automática só pra gasto/receita (dicionário de palavras-chave) — aporte/resgate
+      // de investimento fica sempre sem categoria, pra escolha manual do balde certo (Reserva,
+      // Renda Fixa, Renda Variável), já que o extrato sozinho não entrega isso com segurança.
+      const ehInvestimento = lancamento === "Investimento" || lancamento === "Resgate Investimento";
+      const categoria = ehInvestimento ? "" : (sugerirCategoria(t.historico) || "");
+      return [fmtDataBR(t.data), fmtDataBR(t.data), t.historico, "", "", "Bradesco", categoria, lancamento, valor, status];
     });
 
     // Não importa de novo uma transação que já existe (mesma data + descrição + valor)
