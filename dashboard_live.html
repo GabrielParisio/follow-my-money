@@ -539,7 +539,8 @@
           <div id="chartReservaCombo"></div>
           <div class="legend">
             <span><i style="background:var(--blue)"></i>Reserva real</span>
-            <span><i style="background:var(--muted)"></i>Projeção</span>
+            <span><i style="background:var(--muted)"></i>Projeção (média)</span>
+            <span><i style="background:#A78BFA"></i>Projeção (previsto lançado)</span>
             <span><i style="background:var(--muted);opacity:.6;"></i>Meta (benchmark)</span>
           </div>
         </div>
@@ -5631,28 +5632,37 @@ function renderReservaCombo(saldo, saldoPrevisto, reserva, meta, mi){
   // quebra com "Cannot read properties of undefined").
   const reservaSegura = Array.from({ length: 12 }, (_, i) => reserva[i] || 0);
 
-  // Reserva real até o mês vigente, depois projeta usando a MÉDIA de saldo real acumulado nos
-  // meses já decorridos do ano — mais realista que confiar no Saldo Previsto de cada mês futuro
-  // (que normalmente está vazio, sem nenhum lançamento programado pra daqui a 3-4 meses).
+  // Reserva real até o mês vigente, depois DUAS projeções a partir daí:
+  // 1) por MÉDIA do saldo real acumulado nos meses já decorridos (mais realista quando não há
+  //    nada lançado ainda pros meses futuros — é a projeção "se o padrão de até agora continuar");
+  // 2) pelo Saldo PREVISTO de cada mês futuro (o que já está de fato lançado/agendado na planilha
+  //    pra cada mês, pago ou não) — fica mais próxima da realidade conforme a pessoa for
+  //    cadastrando lançamentos recorrentes/futuros; até lá, tende a ficar achatada perto de zero.
   const mesesDecorridos = mi + 1;
   const saldoAcumulado = saldo.slice(0, mesesDecorridos).reduce((s,v) => s + (v||0), 0);
   const mediaSaldoMensal = mesesDecorridos > 0 ? saldoAcumulado / mesesDecorridos : 0;
-  const projetado = reservaSegura.slice(0, mi+1);
+  const saldoPrevistoSeguro = Array.from({ length: 12 }, (_, i) => saldoPrevisto[i] || 0);
+
+  const projetado = reservaSegura.slice(0, mi+1); // projeção por média
   for(let i = mi+1; i < 12; i++){
     projetado.push(projetado[i-1] + mediaSaldoMensal);
+  }
+  const projetadoPrevisto = reservaSegura.slice(0, mi+1); // projeção pelo previsto lançado
+  for(let i = mi+1; i < 12; i++){
+    projetadoPrevisto.push(projetadoPrevisto[i-1] + saldoPrevistoSeguro[i]);
   }
   const salarioBruto = getSalarioBruto();
   const metaAno = salarioBruto > 0 ? salarioBruto * 12 : (meta[mi] || meta[0] || 0);
   const pctAlcancado = metaAno > 0 ? (projetado[11] / metaAno * 100) : 0;
+  const pctAlcancadoPrevisto = metaAno > 0 ? (projetadoPrevisto[11] / metaAno * 100) : 0;
 
   const W = 500, H = 260, PAD = 34, PADL = 52;
-  const maxV = Math.max(...reserva, ...projetado, metaAno, 1) * 1.15;
-  const minV = Math.min(0, ...projetado);
-  const pts = projetado.map((v,i) => ({
-    x: PADL + i * ((W-PADL-PAD)/11),
-    y: H - PAD - ((v - minV)/(maxV - minV)) * (H-PAD*2)
-  }));
-  const metaY = H - PAD - ((metaAno - minV)/(maxV - minV)) * (H-PAD*2);
+  const maxV = Math.max(...reserva, ...projetado, ...projetadoPrevisto, metaAno, 1) * 1.15;
+  const minV = Math.min(0, ...projetado, ...projetadoPrevisto);
+  const converter = (v) => H - PAD - ((v - minV)/(maxV - minV)) * (H-PAD*2);
+  const pts = projetado.map((v,i) => ({ x: PADL + i * ((W-PADL-PAD)/11), y: converter(v) }));
+  const ptsPrevisto = projetadoPrevisto.map((v,i) => ({ x: PADL + i * ((W-PADL-PAD)/11), y: converter(v) }));
+  const metaY = converter(metaAno);
   const groupW = (W-PADL-PAD)/11;
 
   let svg = yAxis(minV, maxV, W, H, PAD, PAD, PADL);
@@ -5664,27 +5674,35 @@ function renderReservaCombo(saldo, saldoPrevisto, reserva, meta, mi){
 
   const realPts = pts.slice(0, mi+1);
   const projPts = pts.slice(mi);
+  const projPrevistoPts = ptsPrevisto.slice(mi);
   svg += svgLine(realPts, "#60A5FA", W, H, true);
   svg += svgLine(projPts, "#9C968A", W, H, false).replace('stroke-width="2.5"','stroke-width="1.5" stroke-dasharray="5,4"');
+  svg += svgLine(projPrevistoPts, "#A78BFA", W, H, false).replace('stroke-width="2.5"','stroke-width="1.5" stroke-dasharray="2,3"');
 
   pts.forEach((p,i) => {
     const isProjected = i > mi;
     const color = isProjected ? "#9C968A" : "#60A5FA";
     const r = i === mi ? 6 : 3;
     svg += `<circle cx="${p.x}" cy="${p.y}" r="${r}" fill="${color}"/>`;
+    if(isProjected){
+      svg += `<circle cx="${ptsPrevisto[i].x}" cy="${ptsPrevisto[i].y}" r="3" fill="#A78BFA"/>`;
+    }
     const labelColor = i === mi ? "#F2EEE4" : "#9C968A";
     svg += `<text x="${p.x}" y="${H-10}" font-size="10" font-weight="${i===mi?'700':'400'}" fill="${labelColor}" text-anchor="middle">${MONTHS[i]}</text>`;
-    const tipHtml = `<b>${MONTHS_FULL[i]}</b><br>Reserva (${isProjected?"projetada":"real"}): ${fmtMoney(projetado[i])}<br>Saldo do mês: ${fmtMoney(saldo[i])}<br>Meta: ${fmtMoney(metaAno)}`;
+    const linhaPrevisto = isProjected ? `<br>Reserva (previsto lançado): ${fmtMoney(projetadoPrevisto[i])}` : "";
+    const tipHtml = `<b>${MONTHS_FULL[i]}</b><br>Reserva (${isProjected?"projeção por média":"real"}): ${fmtMoney(projetado[i])}${linhaPrevisto}<br>Saldo do mês: ${fmtMoney(saldo[i])}<br>Meta: ${fmtMoney(metaAno)}`;
     svg += `<rect x="${p.x - groupW/2}" y="0" width="${groupW}" height="${H}" fill="transparent" style="cursor:pointer;" onmousemove="showChartTooltip(event, '${tipHtml}')" onmouseleave="hideChartTooltip()"/>`;
   });
   el.innerHTML = `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;max-height:340px;">${svg}</svg>`;
 
   const pctColor = pctAlcancado >= 100 ? "var(--green)" : (pctAlcancado >= 70 ? "var(--yellow)" : "var(--red)");
+  const pctColorPrevisto = pctAlcancadoPrevisto >= 100 ? "var(--green)" : (pctAlcancadoPrevisto >= 70 ? "var(--yellow)" : "var(--red)");
   const pctAtualMeta = metaAno > 0 ? (reserva[mi] / metaAno * 100) : 0;
   const ritmoEsperadoAno = ((mi+1) / 12) * 100;
   const corRitmoAno = pctAtualMeta >= ritmoEsperadoAno ? "var(--green)" : "var(--red)";
   document.getElementById("cProjecaoSub").innerHTML =
-    `Projeção com base na média de saldo real dos últimos ${mesesDecorridos} mês${mesesDecorridos===1?"":"es"} (${fmtMoney(mediaSaldoMensal)}/mês) · <span style="color:${pctColor};font-weight:700;">${pctAlcancado.toFixed(0)}% da meta até Dez</span>` +
+    `Por média dos últimos ${mesesDecorridos} mês${mesesDecorridos===1?"":"es"} (${fmtMoney(mediaSaldoMensal)}/mês) · <span style="color:${pctColor};font-weight:700;">${pctAlcancado.toFixed(0)}% da meta até Dez</span>` +
+    `<br>Pelo previsto já lançado (Set-Dez) · <span style="color:${pctColorPrevisto};font-weight:700;">${pctAlcancadoPrevisto.toFixed(0)}% da meta até Dez</span>` +
     `<br>Hoje: ${pctAtualMeta.toFixed(0)}% da meta · <span style="color:${corRitmoAno};">esperado nessa altura do ano: ${ritmoEsperadoAno.toFixed(0)}%</span>`;
 }
 
