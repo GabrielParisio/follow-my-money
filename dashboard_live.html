@@ -4518,14 +4518,14 @@ function getDividasParsed(){
   const col = mapHeaders(header, {
     desc: /descri[cç][aã]o/i,
     credor: /credor|instituic|banco/i,
-    valorInicial: /valor inicial/i,
-    saldoDevedor: /saldo devedor|saldo atual/i,
-    numParcelas: /n[uú]mero de parcelas|qtd.*parcelas/i,
-    valorParcela: /valor da parcela/i,
-    parcelasPagas: /parcelas pagas/i,
-    taxaJuros: /taxa de juros|juros/i,
+    valorInicial: /valor\s*inicial/i,
+    saldoDevedor: /saldo\s*devedor|saldo\s*atual/i,
+    numParcelas: /n[uú]mero\s*de\s*parcelas|qtd.*parcelas/i,
+    valorParcela: /valor\s*da\s*parcela/i,
+    parcelasPagas: /parcelas\s*pagas/i,
+    taxaJuros: /taxa\s*de\s*juros|juros/i,
     status: /status/i,
-    vencimentoDia: /dia de vencimento|dia.*vencimento/i
+    vencimentoDia: /dia\s*de\s*vencimento|dia.*vencimento/i
   });
   // Guarda o mapeamento de colunas (a partir de B) pra saber em qual célula escrever ao editar
   window._dividasColMap = col;
@@ -4737,15 +4737,20 @@ function openDividaNovaForm(){
     <div class="edit-form" style="margin-bottom:0;">
       <div><label>Descrição</label><input id="dfDesc" placeholder="Ex: Financiamento do carro"></div>
       <div><label>Credor</label><input id="dfCredor" placeholder="Ex: Banco XYZ"></div>
-      <div><label>Valor inicial</label><input id="dfValorInicial" type="number" step="0.01" placeholder="0.00"></div>
-      <div><label>Saldo devedor</label><input id="dfSaldoDevedor" type="number" step="0.01" placeholder="0.00"></div>
-      <div><label>Nº de parcelas</label><input id="dfNumParcelas" type="number" step="1" placeholder="Ex: 48"></div>
-      <div><label>Valor da parcela</label><input id="dfValorParcela" type="number" step="0.01" placeholder="0.00"></div>
-      <div><label>Parcelas já pagas</label><input id="dfParcelasPagas" type="number" step="1" value="0"></div>
+      <div><label>Valor inicial</label><input id="dfValorInicial" type="number" step="0.01" placeholder="0.00" oninput="atualizarCalculoAutoDividaNova()"></div>
+      <div><label>Saldo devedor <span style="font-weight:400;color:var(--muted);">(calculado)</span></label>
+        <input id="dfSaldoDevedor" type="number" step="0.01" value="0.00" readonly style="opacity:0.7;cursor:not-allowed;">
+      </div>
+      <div><label>Nº de parcelas</label><input id="dfNumParcelas" type="number" step="1" placeholder="Ex: 48" oninput="atualizarCalculoAutoDividaNova()"></div>
+      <div><label>Valor da parcela</label><input id="dfValorParcela" type="number" step="0.01" placeholder="0.00" oninput="atualizarCalculoAutoDividaNova()"></div>
+      <div><label>Parcelas já pagas</label><input id="dfParcelasPagas" type="number" step="1" value="0" oninput="atualizarCalculoAutoDividaNova()"></div>
       <div><label>Dia de vencimento da parcela</label><input id="dfVencimentoDia" type="number" min="1" max="31" placeholder="Ex: 10"></div>
-      <div><label>Taxa de juros</label><input id="dfTaxaJuros" type="number" step="0.01" placeholder="0.00"></div>
+      <div><label>Taxa de juros (CET) <span style="font-weight:400;color:var(--muted);">(calculado)</span></label>
+        <input id="dfTaxaJuros" type="number" step="0.01" value="0.00" readonly style="opacity:0.7;cursor:not-allowed;">
+      </div>
       <div><label>Status</label><input id="dfStatus" value="Em aberto"></div>
       <div style="grid-column:1/-1;font-size:11px;color:var(--muted);">
+        Saldo devedor e Taxa de juros são calculados automaticamente a partir do Valor inicial, Nº de parcelas, Valor da parcela e Parcelas já pagas — não precisa (nem dá pra) digitar. A taxa mostrada é o <b>CET</b> (Custo Efetivo Total) implícito na operação, deduzido matematicamente desses números — não necessariamente igual à taxa nominal do contrato.<br>
         Ao salvar, as parcelas que faltam já são lançadas automaticamente na aba Débito — sempre a partir do mês vigente, nunca antes (mesmo que "Parcelas já pagas" esteja desatualizado).
       </div>
       <div class="actions">
@@ -4753,6 +4758,29 @@ function openDividaNovaForm(){
         <button class="cancel-btn" onclick="closeDividaEditForm()">Cancelar</button>
       </div>
     </div>`;
+}
+
+// Recalcula Saldo Devedor e Taxa de Juros (CET) em tempo real, conforme a pessoa preenche os
+// outros campos — reaproveita a mesma matemática de amortização já usada pras dívidas existentes
+// (calcSaldoDevedorAmortizado / taxaImplicita), só que aqui pra uma dívida ainda sendo cadastrada.
+function atualizarCalculoAutoDividaNova(){
+  const valorInicial = parseFloat(document.getElementById("dfValorInicial")?.value) || 0;
+  const numParcelas = parseInt(document.getElementById("dfNumParcelas")?.value, 10) || 0;
+  const valorParcela = parseFloat(document.getElementById("dfValorParcela")?.value) || 0;
+  const parcelasPagas = parseInt(document.getElementById("dfParcelasPagas")?.value, 10) || 0;
+
+  const saldoEl = document.getElementById("dfSaldoDevedor");
+  const taxaEl = document.getElementById("dfTaxaJuros");
+  if(!saldoEl || !taxaEl) return;
+
+  const saldoCalc = calcSaldoDevedorAmortizado(valorInicial, valorParcela, numParcelas, parcelasPagas);
+  if(saldoCalc === null){
+    saldoEl.value = "0.00";
+    taxaEl.value = "0.00";
+    return;
+  }
+  saldoEl.value = saldoCalc.toFixed(2);
+  taxaEl.value = (taxaImplicita(valorInicial, valorParcela, numParcelas) * 100).toFixed(2);
 }
 
 // Lança no Débito as parcelas que ainda faltam de uma dívida, sempre a partir do mês vigente —
@@ -4812,9 +4840,18 @@ async function saveDividaNova(){
   const col = window._dividasColMap || {};
 
   try{
+    const nomesAmigaveis = {
+      desc: "Descrição", credor: "Credor", valorInicial: "Valor Inicial", saldoDevedor: "Saldo Devedor",
+      numParcelas: "Nº de Parcelas", valorParcela: "Valor da Parcela", parcelasPagas: "Parcelas Pagas",
+      vencimentoDia: "Dia de Vencimento", taxaJuros: "Taxa de Juros", status: "Status"
+    };
     const campos = { desc, credor, valorInicial, saldoDevedor, numParcelas, valorParcela, parcelasPagas, vencimentoDia, taxaJuros, status };
+    const colunasNaoEncontradas = [];
     for(const [chave, valor] of Object.entries(campos)){
-      if(col[chave] === undefined || col[chave] < 0) continue;
+      if(col[chave] === undefined || col[chave] < 0){
+        colunasNaoEncontradas.push(nomesAmigaveis[chave] || chave);
+        continue;
+      }
       await writeCell(`Dívidas!${dividaColLetter(col[chave])}${nextRow}`, valor);
     }
     const qtdLancada = await gerarLancamentosParcelasDivida({ desc, numParcelas, parcelasPagas, valorParcela, vencimentoDia });
@@ -4822,10 +4859,17 @@ async function saveDividaNova(){
     await loadData();
     renderDividas();
     renderLancamentos();
-    showToast(
-      "Dívida cadastrada" + (qtdLancada > 0 ? ` · ${qtdLancada} parcela${qtdLancada===1?"":"s"} lançada${qtdLancada===1?"":"s"} no Débito` : ""),
-      "success"
-    );
+    if(colunasNaoEncontradas.length > 0){
+      showToast(
+        `Dívida cadastrada, mas não achei a coluna certa na planilha pra: ${colunasNaoEncontradas.join(", ")}. Esses campos ficaram em branco — confere se a linha 1 da aba Dívidas tem esses cabeçalhos escritos.`,
+        "error"
+      );
+    } else {
+      showToast(
+        "Dívida cadastrada" + (qtdLancada > 0 ? ` · ${qtdLancada} parcela${qtdLancada===1?"":"s"} lançada${qtdLancada===1?"":"s"} no Débito` : ""),
+        "success"
+      );
+    }
   }catch(err){
     showToast("Não foi possível cadastrar a dívida: " + err.message, "error");
   }
