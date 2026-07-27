@@ -806,7 +806,10 @@
           <button class="connect-btn" id="novoLancBtn">+ Novo lançamento</button>
         </div>
       </div>
-      <input id="lancSearchInput" type="text" placeholder="🔎 Buscar por descrição..." style="width:100%;background:var(--panel);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:9px 12px;font-size:13px;margin-bottom:14px;">
+      <div style="display:flex;gap:8px;margin-bottom:14px;">
+        <input id="lancSearchInput" type="text" placeholder="🔎 Buscar por descrição..." style="flex:1;background:var(--panel);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:9px 12px;font-size:13px;">
+        <button class="connect-btn" id="lancFiltroSemCategoriaBtn" onclick="toggleLancFiltroSemCategoria()" style="flex-shrink:0;white-space:nowrap;">🏷️ Sem categoria</button>
+      </div>
       <div id="lancBulkBar" class="hidden" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:12px;padding:10px 14px;background:var(--card);border:1px solid var(--border);border-radius:10px;">
         <span id="lancBulkCount" style="font-size:13px;color:var(--muted);"></span>
         <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
@@ -3381,6 +3384,7 @@ function categoriaOptions(selected){
 
 let lancSelectedRows = new Set();
 let lancSearchQuery = "";
+let lancFiltroSemCategoria = false;
 
 function setupLancSearch(){
   const input = document.getElementById("lancSearchInput");
@@ -3390,6 +3394,11 @@ function setupLancSearch(){
     lancSearchQuery = input.value.trim().toLowerCase();
     renderLancamentos();
   });
+}
+
+function toggleLancFiltroSemCategoria(){
+  lancFiltroSemCategoria = !lancFiltroSemCategoria;
+  renderLancamentos();
 }
 
 function renderLancamentos(){
@@ -3402,12 +3411,28 @@ function renderLancamentos(){
   if(lancSearchQuery){
     items = items.filter(it => String(it.desc || "").toLowerCase().includes(lancSearchQuery));
   }
+  if(lancFiltroSemCategoria){
+    items = items.filter(it => !it.categoria);
+  }
+
+  const filtroBtn = document.getElementById("lancFiltroSemCategoriaBtn");
+  if(filtroBtn){
+    const semCategoriaNoMes = debitoRows()
+      .filter(it => it.dataVenc && serialToDate(it.dataVenc).getMonth() === mi && serialToDate(it.dataVenc).getFullYear() === state.year)
+      .filter(it => !it.categoria).length;
+    filtroBtn.textContent = lancFiltroSemCategoria ? "✕ Ver todos" : `🏷️ Sem categoria (${semCategoriaNoMes})`;
+    filtroBtn.style.background = lancFiltroSemCategoria ? "var(--gold)" : "";
+    filtroBtn.style.color = lancFiltroSemCategoria ? "#1A1917" : "";
+    filtroBtn.style.borderColor = lancFiltroSemCategoria ? "var(--gold)" : "";
+  }
 
   const el = document.getElementById("lancTable");
   if(items.length === 0){
-    el.innerHTML = lancSearchQuery
-      ? `<p class="empty">Nenhum lançamento com "${lancSearchQuery}" neste mês</p>`
-      : '<p class="empty">Nenhum lançamento neste mês</p>';
+    el.innerHTML = lancFiltroSemCategoria
+      ? '<p class="empty">Nenhum lançamento sem categoria neste mês 🎉</p>'
+      : (lancSearchQuery
+        ? `<p class="empty">Nenhum lançamento com "${lancSearchQuery}" neste mês</p>`
+        : '<p class="empty">Nenhum lançamento neste mês</p>');
     updateLancBulkBar();
     return;
   }
@@ -3631,6 +3656,8 @@ function openEditForm(row){
         </select>
       </div>
       <div><label>Valor</label><input id="fValor" type="number" step="0.01" value="${it.valor}"></div>
+      <div><label>Parcelas</label><input id="fParcelas" type="number" min="1" step="1" value="1"></div>
+      <div style="grid-column:1/-1;font-size:11px;color:var(--muted);margin-top:-6px;">Aumentar as parcelas divide o valor e cria as parcelas futuras automaticamente — não mexe em parcelas já existentes.</div>
       <div class="actions">
         <button class="save-btn" onclick="saveEdit(${row})">Salvar alterações</button>
         <button class="cancel-btn" onclick="closeForm()">Cancelar</button>
@@ -3688,17 +3715,55 @@ async function saveEdit(row){
   const desc = document.getElementById("fDesc").value;
   const cat = document.getElementById("fCat").value;
   const tipo = document.getElementById("fTipo").value;
-  const valor = parseFloat(document.getElementById("fValor").value) || 0;
+  const valorTotal = parseFloat(document.getElementById("fValor").value) || 0;
+  const parcelasEl = document.getElementById("fParcelas");
+  const numParcelas = Math.max(1, parseInt(parcelasEl ? parcelasEl.value : 1) || 1);
+
+  // Precisa da Conta e da data original pra gerar as parcelas futuras — não vêm do formulário
+  // (o form de edição não tem esses campos), busca de novo nos dados já carregados.
+  const it = debitoRows().find(x => x.row === row);
+  const conta = it ? it.conta : "";
+  const dataBaseSerial = it ? (it.dataVenc || it.dataLanc) : null;
+
+  // Divide o valor em parcelas iguais — a última absorve a diferença de arredondamento, mesmo
+  // princípio já usado no "Novo lançamento".
+  const valorParcela = numParcelas > 1 ? Math.round((valorTotal / numParcelas) * 100) / 100 : valorTotal;
+  const descBase = desc.replace(/\s*\(\d+\/\d+\)\s*$/, ""); // tira um sufixo "(n/N)" que já existisse, evita duplicar
+  const descParcela1 = numParcelas > 1 ? `${descBase} (1/${numParcelas})` : desc;
+
+  if(numParcelas > 1 && !dataBaseSerial){
+    showToast("Não consegui achar a data original desse lançamento pra gerar as parcelas futuras.", "error");
+    return;
+  }
+
   try{
-    await writeCell(`Débito!D${row}`, desc);
+    await writeCell(`Débito!D${row}`, descParcela1);
     await writeCell(`Débito!H${row}`, cat);
     await writeCell(`Débito!I${row}`, tipo);
-    await writeCell(`Débito!J${row}`, valor);
+    await writeCell(`Débito!J${row}`, valorParcela);
+
+    if(numParcelas > 1){
+      const dataBase = serialToDate(dataBaseSerial);
+      const novasLinhas = [];
+      for(let n = 1; n < numParcelas; n++){
+        const ehUltima = n === numParcelas - 1;
+        // Última parcela absorve a diferença de arredondamento, pra soma bater exatamente com o total.
+        const valorDestaParcela = ehUltima
+          ? Math.round((valorTotal - valorParcela * (numParcelas - 1)) * 100) / 100
+          : valorParcela;
+        const dataParcela = new Date(dataBase.getFullYear(), dataBase.getMonth() + n, dataBase.getDate());
+        const dataBR = fmtDataBR(dataParcela);
+        const descParcela = `${descBase} (${n+1}/${numParcelas})`;
+        novasLinhas.push([dataBR, dataBR, descParcela, "", "", conta, cat, tipo, valorDestaParcela, ""]);
+      }
+      for(const linha of novasLinhas) await appendRow("Débito", linha);
+    }
+
     closeForm();
     await loadData();
     renderLancamentos();
     renderCredito();
-    showToast("Lançamento atualizado", "success");
+    showToast(numParcelas > 1 ? `Lançamento dividido em ${numParcelas} parcelas` : "Lançamento atualizado", "success");
   }catch(err){
     showToast("Não foi possível salvar: " + err.message, "error");
   }
@@ -6062,7 +6127,13 @@ function parseValorBR(v){
   return neg ? -n : n;
 }
 function parseDataBRCell(v){
-  if(v instanceof Date) return v;
+  if(v instanceof Date){
+    // O SheetJS (cellDates:true) monta esse Date usando os componentes em UTC. Se usarmos esse
+    // objeto direto, .getDate()/.getMonth() (que leem em horário LOCAL) voltam um dia em fusos
+    // atrás de UTC — Brasil é UTC-3, "03/07 00:00 UTC" vira "02/07 21:00" local. Reconstrói a
+    // data usando os componentes UTC (a data real pretendida), não os locais.
+    return new Date(v.getUTCFullYear(), v.getUTCMonth(), v.getUTCDate());
+  }
   const s = (v || "").toString().trim();
   const m = s.match(/^(\d{2})\/(\d{2})\/(\d{2}|\d{4})$/);
   if(!m) return null;
@@ -6084,7 +6155,14 @@ function parseExtratoDebitoRowsBradesco(rows){
   for(let i = 0; i < rows.length; i++){
     if(ignorarResto) break;
     const row = rows[i];
-    const dataRaw = (row[0] || "").toString().trim();
+    // A coluna de data pode chegar como objeto Date (quando o Excel formata a coluna como data de
+    // verdade) ou como texto puro (quando vem como string "DD/MM/AAAA"). Se for Date, formata
+    // usando os componentes UTC — não faz .toString() cru, que lê em horário local e pode voltar
+    // um dia (Brasil é UTC-3) além de nem bater com o padrão DD/MM/AAAA esperado mais abaixo.
+    const dataRawOriginal = row[0];
+    const dataRaw = dataRawOriginal instanceof Date
+      ? fmtDataBR(new Date(dataRawOriginal.getUTCFullYear(), dataRawOriginal.getUTCMonth(), dataRawOriginal.getUTCDate()))
+      : (dataRawOriginal || "").toString().trim();
     const historico = (row[1] || "").toString().trim();
     const docto = (row[2] || "").toString().trim();
     const credito = row[3];
