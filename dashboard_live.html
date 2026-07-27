@@ -1783,6 +1783,7 @@ function render(){
       { label: "Endividamento", nota: notas.endividamento },
       { label: "Liquidez", nota: notas.liquidez },
       { label: "Patrimônio", nota: notas.patrimonio },
+      { label: "Comportamento", nota: notas.comportamento },
     ];
     document.getElementById("scoreBreakdown").innerHTML = itens.map(it => {
       const cor = it.nota >= 70 ? "var(--green)" : it.nota >= 40 ? "var(--yellow)" : "var(--red)";
@@ -2436,6 +2437,7 @@ function renderRelatorio(mi){
     { label: "Endividamento", nota: notas.endividamento },
     { label: "Liquidez", nota: notas.liquidez },
     { label: "Patrimônio", nota: notas.patrimonio },
+    { label: "Comportamento", nota: notas.comportamento },
   ];
 
   // Gastos por categoria do mês
@@ -3123,18 +3125,20 @@ function openScoreDetalheModal(){
   const { score, notas, delta, mediaAcumulada } = dados;
   const faixa = faixaScore(score);
   const componentes = [
-    { chave: "fluxo", label: "Fluxo de Caixa", peso: 22, nota: notas.fluxo,
+    { chave: "fluxo", label: "Fluxo de Caixa", peso: 16.7, nota: notas.fluxo,
       desc: "Saldo médio (receita - despesa) dos últimos 6 meses, como % da receita média. Mede se sobra dinheiro no fim do mês, de forma consistente." },
-    { chave: "poupanca", label: "Capacidade de Poupança", peso: 22, nota: notas.poupanca,
+    { chave: "poupanca", label: "Capacidade de Poupança", peso: 16.7, nota: notas.poupanca,
       desc: "Quanto sobrou da receita deste mês. Nota 0 em 0%, nota 100 a partir de 30%." },
-    { chave: "endividamento", label: "Endividamento", peso: 22, nota: notas.endividamento,
+    { chave: "endividamento", label: "Endividamento", peso: 16.7, nota: notas.endividamento,
       desc: "Parcelas fixas (dívidas + compras parceladas) divididas pela renda. Nota 100 até 20%, cai até 0 acima de 50%." },
-    { chave: "liquidez", label: "Liquidez", peso: 17, nota: notas.liquidez,
+    { chave: "liquidez", label: "Liquidez", peso: 16.6, nota: notas.liquidez,
       desc: "Reserva de Emergência dividida pela despesa mensal média — quantos meses você sobrevive sem receita nenhuma. Nota 100 a partir de 12 meses." },
-    { chave: "patrimonio", label: "Patrimônio", peso: 17, nota: notas.patrimonio,
+    { chave: "patrimonio", label: "Patrimônio", peso: 16.6, nota: notas.patrimonio,
       desc: "Patrimônio líquido positivo (60 pts) + cresceu nos últimos 12 meses (40 pts)." },
+    { chave: "comportamento", label: "Comportamento Financeiro", peso: 16.7, nota: notas.comportamento,
+      desc: "Pontualidade dos compromissos fixos nos últimos 6 meses (peso 50%), estabilidade do saldo mês a mês (25%) e tendência do comprometimento de renda — caindo ou subindo (25%)." },
   ];
-  const nomesPilar = { fluxo: "Fluxo de Caixa", poupanca: "Poupança", endividamento: "Endividamento", liquidez: "Liquidez", patrimonio: "Patrimônio" };
+  const nomesPilar = { fluxo: "Fluxo de Caixa", poupanca: "Poupança", endividamento: "Endividamento", liquidez: "Liquidez", patrimonio: "Patrimônio", comportamento: "Comportamento" };
   const mediaHtml = mediaAcumulada && mediaAcumulada.mesesConsiderados > 1 ? `
     <div style="display:flex;justify-content:space-between;align-items:center;background:var(--card);border:1px solid var(--border);border-radius:10px;padding:10px 14px;margin-bottom:12px;">
       <span style="font-size:12.5px;color:var(--muted);">Média acumulada (Jan-${MONTHS[dados.mesIdx ?? new Date().getMonth()]}, ${mediaAcumulada.mesesConsiderados} meses)</span>
@@ -3178,7 +3182,6 @@ function openScoreDetalheModal(){
         <div style="font-size:11.5px;color:var(--muted);">${c.desc}</div>
       </div>`;
     }).join("")}
-    <p style="font-size:10.5px;color:var(--muted);text-align:center;margin-top:4px;">Um 6º pilar (Comportamento Financeiro) está planejado pra mais adiante — ainda não entra nesse cálculo.</p>
   `;
   document.getElementById("scoreDetalheModal").classList.remove("hidden");
 }
@@ -3275,15 +3278,82 @@ function calcularScoreSaudeFinanceira(mesIdx, ano){
   });
   const notaPatrimonio = (patrimonioPositivo ? 60 : 0) + (aportesLiquidos12m > 0 ? 40 : 0);
 
-  // Pesos originais (20/20/20/15/15) escalados pra somar 100, já que o pilar de Comportamento
-  // Financeiro (10%) foi deferido e não entra no cálculo ainda.
-  const pesos = { fluxo: 22.2, poupanca: 22.2, endividamento: 22.2, liquidez: 16.7, patrimonio: 16.7 };
+  // ---- 6) Comportamento Financeiro (peso igual aos outros, ~16,7%) — mede HÁBITO ao longo do
+  // tempo, não uma foto do momento (isso já é o papel dos outros 5 pilares). Não julga categoria de
+  // gasto (não é papel do app dizer como você deve gastar) — só disciplina observável nos dados.
+  //
+  // 6a) Pontualidade (peso 50% do pilar): dos compromissos fixos (fatura de cartão + parcela de
+  // dívida) com vencimento nos últimos 6 meses ANTES de hoje, quantos % estão marcados como pagos.
+  // Um compromisso vencido e ainda não pago é, por definição, um atraso.
+  const seisAtras = new Date(ano, mi - 6, 1);
+  const compromissosPassados = debitoRows().filter(it => {
+    if(!it.dataVenc) return false;
+    const d = serialToDate(it.dataVenc);
+    if(d < seisAtras || d >= fimDoMesCalculado) return false;
+    if(d >= hoje) return false; // só compromissos que já venceram, não os que ainda vão vencer
+    return ehCategoriaFaturaCartao(it.categoria) || /\(parcela \d+\/\d+\)/.test(it.desc || "");
+  });
+  const compromissosPagos = compromissosPassados.filter(it => it.status === "✅ Pago").length;
+  const pctPontualidade = compromissosPassados.length > 0 ? (compromissosPagos / compromissosPassados.length * 100) : 100; // sem compromisso vencido = nada a cobrar, nota cheia
+  const notaPontualidade = interpolarNota(pctPontualidade, [[0,0],[70,40],[90,75],[100,100]]);
+
+  // 6b) Estabilidade do saldo (peso 25%): desvio padrão do saldo real dos últimos 6 meses, como %
+  // da receita média do período — quanto menor a oscilação mês a mês, mais previsível/disciplinado.
+  const saldos6m = [];
+  for(let i = 1; i <= 6; i++){
+    const d = new Date(ano, mi - i, 1);
+    const r = calcReal("Receita", d.getMonth(), d.getFullYear());
+    const de = calcReal("Despesa", d.getMonth(), d.getFullYear());
+    if(r === 0 && de === 0) continue;
+    saldos6m.push(r - de);
+  }
+  let notaEstabilidade = 50; // neutro quando não há dado suficiente pra medir variação
+  if(saldos6m.length >= 2 && somaReceita6m > 0){
+    const mediaSaldos = saldos6m.reduce((s,v) => s+v, 0) / saldos6m.length;
+    const variancia = saldos6m.reduce((s,v) => s + Math.pow(v - mediaSaldos, 2), 0) / saldos6m.length;
+    const desvioPadrao = Math.sqrt(variancia);
+    const receitaMedia6m = somaReceita6m / mesesComDado6m;
+    const desvioPctReceita = receitaMedia6m > 0 ? (desvioPadrao / receitaMedia6m * 100) : 100;
+    notaEstabilidade = interpolarNota(desvioPctReceita, [[10,100],[25,75],[50,40],[100,0]]);
+  }
+
+  // 6c) Tendência do comprometimento (peso 25%): compara o comprometimento médio dos últimos 3
+  // meses com o dos 3 meses anteriores a esses — caindo ou estável pontua bem, subindo pontua mal.
+  // (não é o VALOR do comprometimento — isso já é o pilar Endividamento — é a DIREÇÃO.)
+  function comprometimentoDoMes(mIdx, anoRef){
+    const inicio = new Date(anoRef, mIdx, 1), fim = new Date(anoRef, mIdx+1, 1);
+    const dividasParc = dividasAtivas.reduce((s,d) => s + (d.valorParcela||0), 0);
+    const credParc = (raw.compras || [])
+      .filter(c => c[2] && c[7] && isCompraParcelada(c))
+      .filter(c => { const d = serialToDate(c[7]); return d >= inicio && d < fim; })
+      .reduce((s,c) => s + (c[5] || c[4] || 0), 0);
+    const renda = calcPrevisto("Receita", mIdx, anoRef);
+    return renda > 0 ? ((dividasParc + credParc) / renda * 100) : null;
+  }
+  let notaTendencia = 50; // neutro sem dado suficiente pra comparar
+  const recentes = [], antigos = [];
+  for(let i = 0; i < 3; i++){ const d = new Date(ano, mi - i, 1); const c = comprometimentoDoMes(d.getMonth(), d.getFullYear()); if(c !== null) recentes.push(c); }
+  for(let i = 3; i < 6; i++){ const d = new Date(ano, mi - i, 1); const c = comprometimentoDoMes(d.getMonth(), d.getFullYear()); if(c !== null) antigos.push(c); }
+  if(recentes.length > 0 && antigos.length > 0){
+    const mediaRecente = recentes.reduce((s,v)=>s+v,0) / recentes.length;
+    const mediaAntiga = antigos.reduce((s,v)=>s+v,0) / antigos.length;
+    const deltaPontosPercentuais = mediaRecente - mediaAntiga; // negativo = melhorou (comprometimento caindo)
+    notaTendencia = interpolarNota(deltaPontosPercentuais, [[-20,100],[0,70],[10,30],[30,0]]);
+  }
+
+  const notaComportamento = notaPontualidade * 0.5 + notaEstabilidade * 0.25 + notaTendencia * 0.25;
+
+  // Pesos iguais entre os 6 pilares — sem dado histórico suficiente pra calibrar pesos diferenciados
+  // por regressão, peso igual é a distribuição estatisticamente mais defensável (mesmo princípio
+  // usado em índices compostos como o IDH), em vez de inventar uma importância relativa arbitrária.
+  const pesos = { fluxo: 16.7, poupanca: 16.7, endividamento: 16.7, liquidez: 16.6, patrimonio: 16.6, comportamento: 16.7 };
   const notaFinal0a100 =
     notaFluxo * (pesos.fluxo/100) +
     notaPoupanca * (pesos.poupanca/100) +
     notaEndividamento * (pesos.endividamento/100) +
     notaLiquidez * (pesos.liquidez/100) +
-    notaPatrimonio * (pesos.patrimonio/100);
+    notaPatrimonio * (pesos.patrimonio/100) +
+    notaComportamento * (pesos.comportamento/100);
 
   const notas = {
     fluxo: Math.round(notaFluxo),
@@ -3291,6 +3361,7 @@ function calcularScoreSaudeFinanceira(mesIdx, ano){
     endividamento: Math.round(notaEndividamento),
     liquidez: Math.round(notaLiquidez),
     patrimonio: Math.round(notaPatrimonio),
+    comportamento: Math.round(notaComportamento),
   };
   const score = Math.round(notaFinal0a100 * 10); // escala 0-1000, igual score de crédito
 
