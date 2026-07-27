@@ -541,7 +541,7 @@
             <span><i style="background:var(--blue)"></i>Reserva real</span>
             <span><i style="background:var(--muted)"></i>Projeção (média)</span>
             <span><i style="background:#A78BFA"></i>Projeção (previsto lançado)</span>
-            <span><i style="background:var(--muted);opacity:.6;"></i>Meta (benchmark)</span>
+            <span><i style="background:var(--gold)"></i>Meta (benchmark)</span>
           </div>
         </div>
       </div>
@@ -859,6 +859,25 @@
       </div>
       <div id="lancTable" style="overflow-x:auto;"></div>
     </div>
+    <div class="chart-panel">
+      <details>
+        <summary style="cursor:pointer;font-weight:700;font-size:15px;">📥 Importar extrato de débito</summary>
+        <p style="font-size:12.5px;color:var(--muted);margin:10px 0 14px;">
+          Roda tudo aqui no navegador — não depende de Apps Script. A coluna "Categoria" fica em branco de propósito; escolha depois no menu suspenso de cada linha.
+        </p>
+        <div style="background:rgba(232,170,61,.08);border:1px solid rgba(232,170,61,.3);border-radius:10px;padding:12px 14px;margin-bottom:16px;font-size:12.5px;line-height:1.6;">
+          ⚠️ <b>Fase beta:</b> a leitura automática hoje foi construída em cima do formato de arquivo do <b>Bradesco</b> especificamente. Com outro banco, é <b>provável que a importação não funcione</b>. Mesmo assim, <b>incentivamos você a testar</b> — se der erro, tira um print e me manda, ajuda a expandir o suporte.
+        </div>
+        <div class="edit-form" style="margin-bottom:0;">
+          <div>
+            <label>Extrato de débito (XLS ou PDF)</label>
+            <select id="importDebitoBanco" style="margin-bottom:6px;"></select>
+            <input type="file" id="importDebitoInput" accept=".xls,.pdf">
+          </div>
+        </div>
+        <div id="importStatusDebito" style="margin-top:12px;font-size:12.5px;white-space:pre-wrap;"></div>
+      </details>
+    </div>
   </div>
 
   <div id="view-credito" class="view">
@@ -964,6 +983,34 @@
     </div>
     <div id="credito-ladoalado" class="hidden"></div>
     </div>
+    <div class="chart-panel">
+      <details>
+        <summary style="cursor:pointer;font-weight:700;font-size:15px;">📥 Importar fatura de cartão</summary>
+        <p style="font-size:12.5px;color:var(--muted);margin:10px 0 14px;">
+          Roda tudo aqui no navegador — não depende de Apps Script. A coluna "Categoria" fica em branco de propósito; escolha depois no menu suspenso de cada linha.
+        </p>
+        <div style="background:rgba(232,170,61,.08);border:1px solid rgba(232,170,61,.3);border-radius:10px;padding:12px 14px;margin-bottom:16px;font-size:12.5px;line-height:1.6;">
+          ⚠️ <b>Fase beta:</b> a leitura automática hoje foi construída em cima do formato de arquivo do <b>Bradesco</b> especificamente. Com outro banco, é <b>provável que a importação não funcione</b>.
+          <br><br>
+          📌 <b>Escolha só um formato por período:</b> o Bradesco escreve as descrições de forma diferente no CSV e no PDF. Como a detecção de duplicata compara a descrição, importar os dois do mesmo período <b>vai duplicar todos os lançamentos</b>.
+          <br><br>
+          Mesmo assim, <b>incentivamos você a testar</b> — se der erro, tira um print e me manda, ajuda a expandir o suporte.
+        </div>
+        <div class="edit-form" style="margin-bottom:0;">
+          <div>
+            <label>Fatura de cartão (CSV)</label>
+            <select id="importFaturaBanco" style="margin-bottom:6px;"></select>
+            <input type="file" id="importFaturaInput" accept=".csv">
+          </div>
+          <div>
+            <label>Fatura em PDF (foto do app do banco)</label>
+            <select id="importFaturaPdfBanco" style="margin-bottom:6px;"></select>
+            <input type="file" id="importFaturaPdfInput" accept=".pdf">
+          </div>
+        </div>
+        <div id="importStatusCredito" style="margin-top:12px;font-size:12.5px;white-space:pre-wrap;"></div>
+      </details>
+    </div>
   </div>
 
   <div id="view-dividas" class="view">
@@ -983,24 +1030,6 @@
   </div>
 
   <div id="view-cadastro" class="view">
-    <div class="chart-panel" id="changelogDevPanel" style="border-color:var(--purple);">
-      <details>
-        <summary style="cursor:pointer;font-weight:700;font-size:15px;color:var(--purple);">🛠️ Changelog (uso interno de desenvolvimento)</summary>
-        <p style="font-size:11.5px;color:var(--muted);margin:10px 0 12px;">Só pra acompanhar o progresso enquanto o app está sendo construído — some depois que não precisar mais.</p>
-        <ul style="font-size:12.5px;line-height:1.7;padding-left:18px;margin:0;color:var(--text);">
-          <li>Tema claro/escuro, com alternância e persistência entre visitas</li>
-          <li>App instalável (PWA) — manifest, ícones e service worker</li>
-          <li>"Real" do Balanço migrado da planilha pro cálculo direto em JS</li>
-          <li>Reserva Inicial no Cadastro, integrada ao cálculo de patrimônio</li>
-          <li>Projeção de patrimônio em 12 meses, baseada na média real dos últimos meses</li>
-          <li>Excluir e categorizar em lote também na aba Débito (antes só existia na Crédito)</li>
-          <li>Detecção de compra parcelada na importação — lança as parcelas futuras automaticamente</li>
-          <li>Status de fatura (paga/atrasada/em aberto/sem gastos) dinâmico e sincronizado entre abas</li>
-          <li>Importação de fatura em PDF via OCR, com tela de conferência antes de gravar</li>
-          <li>Correção de bug de correspondência de texto no catálogo de cartões (chave curta "nu" batendo dentro de "platinum")</li>
-        </ul>
-      </details>
-    </div>
     <div class="chart-panel" id="roadmapDevPanel" style="border-color:var(--blue);">
       <details>
         <summary style="cursor:pointer;font-weight:700;font-size:15px;color:var(--blue);">🗺️ Roadmap (próximos passos)</summary>
@@ -1017,37 +1046,6 @@
         Preenche tudo de uma vez num formulário só — nome, salário, orçamento, categorias e cartões. Sem precisar mexer em planilha nenhuma.
       </p>
       <button class="connect-btn" style="background:var(--gold);color:#1A1917;border:none;font-weight:700;" onclick="openConfigInicialModal()">Começar Configuração Inicial</button>
-    </div>
-    <div class="chart-panel">
-      <h2>📥 Importar dados</h2>
-      <p style="font-size:12.5px;color:var(--muted);margin-top:-6px;margin-bottom:14px;">
-        Roda tudo aqui no navegador — não depende mais do Apps Script da planilha. A coluna "Categoria" fica em branco de propósito; escolha depois no menu suspenso de cada linha.
-      </p>
-      <div style="background:rgba(232,170,61,.08);border:1px solid rgba(232,170,61,.3);border-radius:10px;padding:12px 14px;margin-bottom:16px;font-size:12.5px;line-height:1.6;">
-        ⚠️ <b>Fase beta:</b> a leitura automática hoje foi construída em cima do formato de arquivo do <b>Bradesco</b> especificamente (é o único banco testado até agora). Com outro banco, é <b>provável que a importação não funcione</b> — o app foi desenhado pra procurar frases e colunas exatas do extrato do Bradesco.
-        <br><br>
-        📌 <b>Escolha só um formato por período:</b> o Bradesco escreve as descrições de forma diferente no XLS ("Resgate Inv Fac") e no PDF ("RENTAB.INVEST FACILCRED*"). Como a detecção de duplicata compara a descrição, importar os dois do mesmo período <b>vai duplicar todos os lançamentos</b>.
-        <br><br>
-        Mesmo assim, <b>incentivamos você a testar com o extrato do seu banco</b> — é assim que a gente descobre o que precisa ajustar. Se der erro (ou importar tudo errado), <b>tira um print da tela e me manda</b> — isso ajuda bastante a expandir o suporte pra outros bancos.
-      </div>
-      <div class="edit-form" style="margin-bottom:0;">
-        <div>
-          <label>Fatura de cartão (CSV)</label>
-          <select id="importFaturaBanco" style="margin-bottom:6px;"></select>
-          <input type="file" id="importFaturaInput" accept=".csv">
-        </div>
-        <div>
-          <label>Extrato de débito (XLS ou PDF)</label>
-          <select id="importDebitoBanco" style="margin-bottom:6px;"></select>
-          <input type="file" id="importDebitoInput" accept=".xls,.pdf">
-        </div>
-        <div>
-          <label>Fatura em PDF (foto do app do banco)</label>
-          <select id="importFaturaPdfBanco" style="margin-bottom:6px;"></select>
-          <input type="file" id="importFaturaPdfInput" accept=".pdf">
-        </div>
-      </div>
-      <div id="importStatus" style="margin-top:12px;font-size:12.5px;white-space:pre-wrap;"></div>
     </div>
 
     <div class="chart-panel">
@@ -3557,6 +3555,7 @@ function popularFiltroCategoriaDebito(){
 function renderLancamentos(){
   setupLancSearch();
   popularFiltroCategoriaDebito();
+  popularSeletoresBancoImportacao();
   const mi = state.monthIdx;
   let items = debitoRows()
     .filter(it => it.dataVenc && serialToDate(it.dataVenc).getMonth() === mi && serialToDate(it.dataVenc).getFullYear() === state.year)
@@ -5668,8 +5667,8 @@ function renderReservaCombo(saldo, saldoPrevisto, reserva, meta, mi){
   let svg = yAxis(minV, maxV, W, H, PAD, PAD, PADL);
 
   // Linha de benchmark: meta de reserva definida no Cadastro
-  svg += `<line x1="${PADL}" y1="${metaY}" x2="${W-PAD}" y2="${metaY}" stroke="var(--muted)" stroke-width="1.5" stroke-dasharray="6,4"/>`;
-  svg += `<text x="${W-PAD}" y="${metaY-6}" font-size="10" fill="var(--muted)" text-anchor="end">Meta ${fmtMoney(metaAno)}</text>`;
+  svg += `<line x1="${PADL}" y1="${metaY}" x2="${W-PAD}" y2="${metaY}" stroke="var(--gold)" stroke-width="1.5" stroke-dasharray="6,4"/>`;
+  svg += `<text x="${W-PAD}" y="${metaY-6}" font-size="10" fill="var(--gold)" text-anchor="end">Meta ${fmtMoney(metaAno)}</text>`;
   svg += `<line x1="${pts[mi].x}" y1="${PAD*0.3}" x2="${pts[mi].x}" y2="${H-PAD}" stroke="#60A5FA" stroke-width="1.5" stroke-dasharray="4"/>`;
 
   const realPts = pts.slice(0, mi+1);
@@ -5707,6 +5706,7 @@ function renderReservaCombo(saldo, saldoPrevisto, reserva, meta, mi){
 }
 
 function renderCredito(){
+  popularSeletoresBancoImportacao();
   const cartoesExistem = (raw.cartoes || []).filter(r => r[0]).length > 0;
   const emptyStateEl = document.getElementById("creditoEmptyState");
   const conteudoEl = document.getElementById("creditoConteudo");
@@ -6599,10 +6599,6 @@ function renderDetalheAnual(){
   if(sideEl) sideEl.innerHTML = html;
 }
 
-// Changelog de desenvolvimento — só pra acompanhar o que foi feito enquanto o app está sendo
-// construído. Pra esconder depois (quando não precisar mais), é só trocar pra false aqui.
-const MOSTRAR_CHANGELOG_DEV = true;
-
 const LOGO_DATA_URI = "data:image/png;base64,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";
 
 // ===================== IMPORTAÇÃO DE FATURA/EXTRATO (portado do Apps Script Code.gs) =====================
@@ -6739,7 +6735,7 @@ function parseFaturaCartaoCsvBradesco(csvText){
 }
 
 async function handleImportFaturaCartao(file){
-  const statusEl = document.getElementById("importStatus");
+  const statusEl = document.getElementById("importStatusCredito");
   const bancoEscolhido = document.getElementById("importFaturaBanco")?.value || "Bradesco";
   const leitor = leitorBancoCredito(bancoEscolhido);
   if(!leitor){
@@ -6889,7 +6885,7 @@ function preencherDatasHerdadas(transacoes){
 }
 
 async function handleImportExtratoDebito(file){
-  const statusEl = document.getElementById("importStatus");
+  const statusEl = document.getElementById("importStatusDebito");
   const bancoEscolhido = document.getElementById("importDebitoBanco")?.value || "Bradesco";
   const leitor = leitorBancoDebito(bancoEscolhido);
   if(!leitor){
@@ -7247,7 +7243,7 @@ function parseFaturaPDFTextoBradesco(texto){
 }
 
 async function handleImportFaturaPDF(file){
-  const statusEl = document.getElementById("importStatus");
+  const statusEl = document.getElementById("importStatusCredito");
   const bancoEscolhido = document.getElementById("importFaturaPdfBanco")?.value || "Bradesco";
   const leitor = leitorBancoCredito(bancoEscolhido);
   if(!leitor){
@@ -7582,10 +7578,6 @@ function setupModalOutsideClickClose(){
 
 window.onload = () => {
   aplicarTema(localStorage.getItem("ftm_tema") || "dark");
-  if(!MOSTRAR_CHANGELOG_DEV){
-    const changelogEl = document.getElementById("changelogDevPanel");
-    if(changelogEl) changelogEl.remove();
-  }
   if("serviceWorker" in navigator){
     navigator.serviceWorker.register("service-worker.js").catch(() => {}); // se falhar, o app continua funcionando normal, só sem instalação
   }
