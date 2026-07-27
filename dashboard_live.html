@@ -935,7 +935,10 @@
       <div id="dividasTimeline"></div>
     </div>
     <div class="chart-panel">
-      <h2>Dívidas</h2>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
+        <h2 style="margin:0;">Dívidas</h2>
+        <button class="connect-btn" onclick="openDividaNovaForm()">+ Nova dívida</button>
+      </div>
       <div id="dividasTable" style="overflow-x:auto;"></div>
     </div>
   </div>
@@ -3800,14 +3803,15 @@ async function saveEdit(row){
   }
 }
 
-async function saveNew(){
-  // Ajusta o dia pro último dia válido daquele mês — sem isso, "dia 31" num mês de 28/30 dias
-  // (ex: fevereiro) estoura pro mês seguinte no Date nativo do JS (31/fev vira 3/mar).
-  function diaClampeadoNoMes(ano, mesIdx, diaDesejado){
-    const ultimoDiaDoMes = new Date(ano, mesIdx + 1, 0).getDate();
-    return Math.min(diaDesejado, ultimoDiaDoMes);
-  }
+// Ajusta o dia pro último dia válido daquele mês — sem isso, "dia 31" num mês de 28/30 dias
+// (ex: fevereiro) estoura pro mês seguinte no Date nativo do JS (31/fev vira 3/mar). Usada em
+// qualquer lugar que gere datas futuras repetidas (parcelas, recorrência, dívidas).
+function diaClampeadoNoMes(ano, mesIdx, diaDesejado){
+  const ultimoDiaDoMes = new Date(ano, mesIdx + 1, 0).getDate();
+  return Math.min(diaDesejado, ultimoDiaDoMes);
+}
 
+async function saveNew(){
   const dataStr = document.getElementById("fData").value;
   const desc = document.getElementById("fDesc").value;
   const cat = document.getElementById("fCat").value;
@@ -4397,7 +4401,20 @@ function openSimuladorQuitacao(row){
         <input id="simAporteExtra" type="number" step="0.01" min="0" value="100" oninput="renderSimuladorQuitacao()">
       </div>
     </div>
-    <div id="simuladorResultado"></div>`;
+    <div id="simuladorResultado"></div>
+    <div style="margin-top:18px;padding-top:16px;border-top:1px solid var(--border);">
+      <h3 style="font-size:13.5px;margin:0 0 10px;">✅ Já quitei — registrar de verdade</h3>
+      <div class="edit-form" style="margin-bottom:0;">
+        <div><label>Data da quitação</label><input id="quitacaoData" type="date" value="${new Date().toISOString().slice(0,10)}"></div>
+        <div><label>Valor pago nesse ato</label><input id="quitacaoValor" type="number" step="0.01" value="${d.saldoDevedor.toFixed(2)}"></div>
+        <div class="actions">
+          <button class="save-btn" onclick="registrarQuitacaoDivida(${row})">Registrar quitação</button>
+        </div>
+      </div>
+      <p style="font-size:11px;color:var(--muted);margin:8px 0 0;">
+        Lança o valor pago como despesa na data escolhida, marca a dívida como quitada, e cancela qualquer parcela futura dessa dívida que já estivesse lançada no Débito (pra não cobrar de novo).
+      </p>
+    </div>`;
   document.getElementById("simuladorQuitacaoModal").classList.remove("hidden");
   renderSimuladorQuitacao();
 }
@@ -4435,6 +4452,59 @@ function renderSimuladorQuitacao(){
       </div>
     </div>`;
 }
+// Registra a quitação de verdade (diferente do simulador, que só calcula): lança o valor
+// efetivamente pago como despesa na data escolhida, marca a dívida como quitada na planilha, e
+// cancela qualquer parcela FUTURA dessa dívida que já tivesse sido lançada automaticamente no
+// Débito (pela geração automática de parcelas) — sem isso, ela continuaria cobrando os meses que
+// não vão mais acontecer.
+async function registrarQuitacaoDivida(row){
+  const d = (window._dividasCache || []).find(x => x.row === row);
+  if(!d) return;
+  const dataStr = document.getElementById("quitacaoData").value;
+  const valorPago = parseFloat(document.getElementById("quitacaoValor").value) || 0;
+  if(!dataStr || valorPago <= 0){
+    showToast("Preencha a data e um valor pago maior que zero.", "error");
+    return;
+  }
+  if(!confirm(`Registrar quitação de "${d.desc}" em ${dataStr.split("-").reverse().join("/")} no valor de ${fmtMoney(valorPago)}? Essa ação não pode ser desfeita.`)) return;
+
+  const [y, m, dia] = dataStr.split("-").map(Number);
+  const dataQuitacao = new Date(y, m - 1, dia);
+  const dataBR = fmtDataBR(dataQuitacao);
+
+  try{
+    // 1) Lança a despesa da quitação no Débito
+    const categoriaDivida = (raw.cadastro || []).map(r => r[0]).find(c => normalizeCatName(c).includes("divida")) || "";
+    await appendRow("Débito", [dataBR, dataBR, `Quitação: ${d.desc}`, "", "", "", categoriaDivida, "Despesa", valorPago, dataQuitacao <= new Date() ? "✅ Pago" : ""]);
+
+    // 2) Marca a dívida como quitada na planilha
+    const col = window._dividasColMap || {};
+    if(col.status >= 0) await writeCell(`Dívidas!${dividaColLetter(col.status)}${row}`, "Quitada");
+    if(col.saldoDevedor >= 0) await writeCell(`Dívidas!${dividaColLetter(col.saldoDevedor)}${row}`, 0);
+
+    // 3) Cancela parcelas futuras dessa dívida já lançadas no Débito (geradas automaticamente ao
+    // cadastrar), com vencimento depois da data de quitação — não mexe em parcelas já vencidas/pagas.
+    const prefixoParcela = normalizeCatName(`${d.desc} (parcela`);
+    const parcelasFuturas = debitoRows().filter(it =>
+      normalizeCatName(it.desc).startsWith(prefixoParcela) &&
+      it.status !== "✅ Pago" &&
+      it.dataVenc && serialToDate(it.dataVenc) > dataQuitacao
+    );
+    const colunas = ["B","C","D","E","F","G","H","I","J","K"];
+    for(const it of parcelasFuturas){
+      await writeCellsBatch(colunas.map(c => ({ range: `Débito!${c}${it.row}`, value: "" })));
+    }
+
+    closeSimuladorQuitacao();
+    await loadData();
+    renderDividas();
+    renderLancamentos();
+    showToast(`Dívida quitada` + (parcelasFuturas.length > 0 ? ` · ${parcelasFuturas.length} parcela${parcelasFuturas.length===1?"":"s"} futura${parcelasFuturas.length===1?"":"s"} cancelada${parcelasFuturas.length===1?"":"s"}` : ""), "success");
+  }catch(err){
+    showToast("Não foi possível registrar a quitação: " + err.message, "error");
+  }
+}
+
 function closeSimuladorQuitacao(){
   document.getElementById("simuladorQuitacaoModal").classList.add("hidden");
   document.getElementById("simuladorQuitacaoBody").innerHTML = "";
@@ -4459,6 +4529,7 @@ function getDividasParsed(){
   });
   // Guarda o mapeamento de colunas (a partir de B) pra saber em qual célula escrever ao editar
   window._dividasColMap = col;
+  window._dividasHeaderRowIdx = headerRowIdx;
   return all.slice(headerRowIdx + 1)
     .map((r, i) => {
       const valorInicial = col.valorInicial >= 0 ? r[col.valorInicial] || 0 : 0;
@@ -4657,6 +4728,109 @@ function setupDividasFiltroToggle(){
 }
 
 // ===================== EDIÇÃO DE DÍVIDAS =====================
+function openDividaNovaForm(){
+  const modal = document.getElementById("dividaEditModal");
+  modal.classList.remove("hidden");
+  delete modal.dataset.editingRow;
+  document.getElementById("dividaEditTitle").textContent = "Nova dívida";
+  document.getElementById("dividaFormBody").innerHTML = `
+    <div class="edit-form" style="margin-bottom:0;">
+      <div><label>Descrição</label><input id="dfDesc" placeholder="Ex: Financiamento do carro"></div>
+      <div><label>Credor</label><input id="dfCredor" placeholder="Ex: Banco XYZ"></div>
+      <div><label>Valor inicial</label><input id="dfValorInicial" type="number" step="0.01" placeholder="0.00"></div>
+      <div><label>Saldo devedor</label><input id="dfSaldoDevedor" type="number" step="0.01" placeholder="0.00"></div>
+      <div><label>Nº de parcelas</label><input id="dfNumParcelas" type="number" step="1" placeholder="Ex: 48"></div>
+      <div><label>Valor da parcela</label><input id="dfValorParcela" type="number" step="0.01" placeholder="0.00"></div>
+      <div><label>Parcelas já pagas</label><input id="dfParcelasPagas" type="number" step="1" value="0"></div>
+      <div><label>Dia de vencimento da parcela</label><input id="dfVencimentoDia" type="number" min="1" max="31" placeholder="Ex: 10"></div>
+      <div><label>Taxa de juros</label><input id="dfTaxaJuros" type="number" step="0.01" placeholder="0.00"></div>
+      <div><label>Status</label><input id="dfStatus" value="Em aberto"></div>
+      <div style="grid-column:1/-1;font-size:11px;color:var(--muted);">
+        Ao salvar, as parcelas que faltam já são lançadas automaticamente na aba Débito — sempre a partir do mês vigente, nunca antes (mesmo que "Parcelas já pagas" esteja desatualizado).
+      </div>
+      <div class="actions">
+        <button class="save-btn" onclick="saveDividaNova()">Cadastrar dívida</button>
+        <button class="cancel-btn" onclick="closeDividaEditForm()">Cancelar</button>
+      </div>
+    </div>`;
+}
+
+// Lança no Débito as parcelas que ainda faltam de uma dívida, sempre a partir do mês vigente —
+// nunca lança parcela com vencimento anterior a hoje, mesmo que "Parcelas pagas" esteja
+// desatualizado (a pessoa pode ter esquecido de atualizar esse número).
+async function gerarLancamentosParcelasDivida(divida){
+  const parcelasRestantes = Math.max(0, (divida.numParcelas || 0) - (divida.parcelasPagas || 0));
+  if(parcelasRestantes === 0 || !divida.valorParcela) return 0;
+
+  const hoje = new Date();
+  const diaVenc = divida.vencimentoDia && divida.vencimentoDia > 0 ? divida.vencimentoDia : hoje.getDate();
+  const categoriaDivida = (raw.cadastro || []).map(r => r[0]).find(c => normalizeCatName(c).includes("divida")) || "";
+
+  // O laço abaixo começa em n=0 = mês vigente e só anda pra frente — isso já garante sozinho a
+  // regra de nunca lançar parcela de mês anterior, mesmo que o dia de vencimento deste mês já
+  // tenha passado (nesse caso a parcela deste mês some com data no passado recente, o que é
+  // correto: ela ainda é "deste mês", só que já vencida).
+  let lancados = 0;
+  for(let n = 0; n < parcelasRestantes; n++){
+    const mesIdxAlvo = hoje.getMonth() + n;
+    const anoAlvo = hoje.getFullYear() + Math.floor(mesIdxAlvo / 12);
+    const mesAlvo = mesIdxAlvo % 12;
+    const dataParcela = new Date(anoAlvo, mesAlvo, diaClampeadoNoMes(anoAlvo, mesAlvo, diaVenc));
+    const dataBR = fmtDataBR(dataParcela);
+    const numeroParcela = (divida.parcelasPagas || 0) + n + 1;
+    const desc = `${divida.desc} (parcela ${numeroParcela}/${divida.numParcelas})`;
+    const rowValues = [dataBR, dataBR, desc, "", "", "", categoriaDivida, "Despesa", divida.valorParcela, ""];
+    await appendRow("Débito", rowValues);
+    lancados++;
+  }
+  return lancados;
+}
+
+async function saveDividaNova(){
+  const desc = document.getElementById("dfDesc").value.trim();
+  const credor = document.getElementById("dfCredor").value.trim();
+  const valorInicial = parseFloat(document.getElementById("dfValorInicial").value) || 0;
+  const saldoDevedor = parseFloat(document.getElementById("dfSaldoDevedor").value) || 0;
+  const numParcelas = parseInt(document.getElementById("dfNumParcelas").value, 10) || 0;
+  const valorParcela = parseFloat(document.getElementById("dfValorParcela").value) || 0;
+  const parcelasPagas = parseInt(document.getElementById("dfParcelasPagas").value, 10) || 0;
+  const vencimentoDia = parseInt(document.getElementById("dfVencimentoDia").value, 10) || 0;
+  const taxaJuros = parseFloat(document.getElementById("dfTaxaJuros").value) || 0;
+  const status = document.getElementById("dfStatus").value.trim();
+
+  if(!desc || !numParcelas || !valorParcela){
+    showToast("Preencha ao menos Descrição, Nº de parcelas e Valor da parcela.", "error");
+    return;
+  }
+
+  // Acha a próxima linha livre da tabela de Dívidas (mesmo princípio já usado em Categorias/Cartões)
+  const dividasAtuais = window._dividasCache || [];
+  const headerRowIdx = window._dividasHeaderRowIdx;
+  const nextRow = dividasAtuais.length
+    ? Math.max(...dividasAtuais.map(d => d.row)) + 1
+    : (typeof headerRowIdx === "number" ? headerRowIdx + 2 : 2);
+  const col = window._dividasColMap || {};
+
+  try{
+    const campos = { desc, credor, valorInicial, saldoDevedor, numParcelas, valorParcela, parcelasPagas, vencimentoDia, taxaJuros, status };
+    for(const [chave, valor] of Object.entries(campos)){
+      if(col[chave] === undefined || col[chave] < 0) continue;
+      await writeCell(`Dívidas!${dividaColLetter(col[chave])}${nextRow}`, valor);
+    }
+    const qtdLancada = await gerarLancamentosParcelasDivida({ desc, numParcelas, parcelasPagas, valorParcela, vencimentoDia });
+    closeDividaEditForm();
+    await loadData();
+    renderDividas();
+    renderLancamentos();
+    showToast(
+      "Dívida cadastrada" + (qtdLancada > 0 ? ` · ${qtdLancada} parcela${qtdLancada===1?"":"s"} lançada${qtdLancada===1?"":"s"} no Débito` : ""),
+      "success"
+    );
+  }catch(err){
+    showToast("Não foi possível cadastrar a dívida: " + err.message, "error");
+  }
+}
+
 function openDividaEditForm(row){
   const d = (window._dividasCache || []).find(x => x.row === row);
   if(!d) return;
