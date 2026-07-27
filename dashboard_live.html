@@ -976,14 +976,17 @@
       <div class="edit-form" style="margin-bottom:0;">
         <div>
           <label>Fatura de cartão (CSV)</label>
+          <select id="importFaturaBanco" style="margin-bottom:6px;"></select>
           <input type="file" id="importFaturaInput" accept=".csv">
         </div>
         <div>
           <label>Extrato de débito (XLS ou PDF)</label>
+          <select id="importDebitoBanco" style="margin-bottom:6px;"></select>
           <input type="file" id="importDebitoInput" accept=".xls,.pdf">
         </div>
         <div>
-          <label>Fatura em PDF (App Bradesco)</label>
+          <label>Fatura em PDF (foto do app do banco)</label>
+          <select id="importFaturaPdfBanco" style="margin-bottom:6px;"></select>
           <input type="file" id="importFaturaPdfInput" accept=".pdf">
         </div>
       </div>
@@ -1040,6 +1043,18 @@
       <p style="font-size:12px;color:var(--muted);margin-top:-8px;margin-bottom:14px;">Use um emoji no início do nome (ex: "🏠 Moradia") pra manter o padrão visual do resto do app.</p>
       <div id="cadCategoriaForm" class="hidden"></div>
       <div id="cadCategoriasTable" style="overflow-x:auto;"></div>
+    </div>
+
+    <div class="chart-panel">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
+        <h2 style="margin:0;">🏦 Contas de débito</h2>
+        <button class="connect-btn" onclick="addCadastroContaDebito()">+ Nova conta</button>
+      </div>
+      <p style="font-size:12px;color:var(--muted);margin-top:-8px;margin-bottom:14px;">
+        Diz ao app qual banco cada conta usa, pra escolher o leitor de extrato certo na hora de importar. Sem nenhuma conta cadastrada, o app assume Bradesco.
+      </p>
+      <div id="cadContaDebitoNovoForm" class="hidden" style="margin-bottom:14px;"></div>
+      <div id="cadContasDebitoTable" style="overflow-x:auto;"></div>
     </div>
 
     <div class="chart-panel">
@@ -1327,7 +1342,7 @@ setInterval(updateLastUpdatedLabel, 30000);
 async function loadData(){
   setLoading(true);
   try{
-    const [cadastro, orcadoTotal, cartoes, compras, nomeUsuario, debito, dividas, salarioBruto, reservaInicial, patrimonio] = await fetchRanges([
+    const [cadastro, orcadoTotal, cartoes, compras, nomeUsuario, debito, dividas, salarioBruto, reservaInicial, patrimonio, contasDebito] = await fetchRanges([
       "Cadastro!B7:F60",
       "Cadastro!F4",
       "Cadastro!H7:K20",
@@ -1337,9 +1352,10 @@ async function loadData(){
       "Dívidas!B1:M",
       "Cadastro!T8",
       "Cadastro!T10",
-      "Patrimonio!A2:H"
+      "Patrimonio!A2:H",
+      "Cadastro!M7:N20"
     ]);
-    raw = { cadastro, orcadoTotal, cartoes, compras, nomeUsuario, debito, dividas, salarioBruto, reservaInicial, patrimonio };
+    raw = { cadastro, orcadoTotal, cartoes, compras, nomeUsuario, debito, dividas, salarioBruto, reservaInicial, patrimonio, contasDebito };
     await garantirSnapshotMensal();
     state.lastUpdated = Date.now();
     updateLastUpdatedLabel();
@@ -3464,7 +3480,7 @@ function updateLancBulkBar(){
 // automaticamente usando o mesmo motor de sugestão já usado na importação (histórico categorizado
 // + dicionário de palavras-chave). Nunca sobrescreve uma categoria que já foi escolhida — só
 // preenche o que está em branco.
-// Mesma lógica de palavra-chave do classificarLancamento() (usado na importação), aplicada aqui
+// Mesma lógica de palavra-chave do classificarLancamentoBradesco() (usado na importação), aplicada aqui
 // pra ACHAR lançamentos que JÁ FORAM importados com Tipo errado (Receita/Despesa em vez de
 // Investimento/Resgate Investimento) — corrige o que ficou pra trás antes dessa palavra-chave existir.
 function pareceAporteOuResgate(desc){
@@ -4587,6 +4603,8 @@ function renderCadastro(){
   if(reservaInicialInput && document.activeElement !== reservaInicialInput) reservaInicialInput.value = reservaInicial || "";
   renderCadCategoriasTable();
   renderCadCartoesTable();
+  renderCadContasDebitoTable();
+  popularSeletoresBancoImportacao();
   renderCartoesOrfaosAviso();
   renderNotifStatus();
 }
@@ -4806,6 +4824,125 @@ const BANCOS_CONHECIDOS = [
   "Porto Seguro", "Neon", "Mercado Pago", "Sicoob", "Sicredi", "Digio", "Agibank",
   "American Express", "Amazon", "Genérico"
 ];
+
+// ===================== REGISTRO DE BANCOS SUPORTADOS NA IMPORTAÇÃO =====================
+// Cada banco expõe um conjunto de leitores (débito e crédito). Hoje só o Bradesco está
+// implementado — os outros nomes em BANCOS_CONHECIDOS aparecem nos seletores de importação, mas
+// caem no aviso de "banco ainda não suportado" até alguém escrever o parser correspondente.
+// Pra adicionar um banco novo: escrever as funções de leitura (mesmo formato das do Bradesco, mais
+// abaixo neste arquivo) e adicionar uma entrada aqui — nenhum outro lugar do código precisa mudar.
+const BANCOS_IMPORTACAO = {
+  bradesco: {
+    nome: "Bradesco",
+    debito: {
+      parseXls: (...args) => parseExtratoDebitoRowsBradesco(...args),
+      parsePdf: (...args) => parseExtratoDebitoPdfBradesco(...args),
+      classificarLancamento: (...args) => classificarLancamentoBradesco(...args),
+    },
+    credito: {
+      parseFaturaCsv: (...args) => parseFaturaCartaoCsvBradesco(...args),
+      parseFaturaPdfTexto: (...args) => parseFaturaPDFTextoBradesco(...args),
+    }
+  }
+};
+function chaveBanco(nomeBanco){
+  return normalizeCatName(nomeBanco || "bradesco").trim() || "bradesco";
+}
+function leitorBancoDebito(nomeBanco){
+  return BANCOS_IMPORTACAO[chaveBanco(nomeBanco)]?.debito || null;
+}
+function leitorBancoCredito(nomeBanco){
+  return BANCOS_IMPORTACAO[chaveBanco(nomeBanco)]?.credito || null;
+}
+
+// Preenche os 3 seletores de banco da tela de importação, sugerindo como padrão o banco já
+// cadastrado (da primeira conta de débito, ou do primeiro cartão) — mas sempre editável, pra quem
+// tiver mais de um banco.
+function popularSeletoresBancoImportacao(){
+  const contas = getCadastroContasDebitoParsed();
+  const cartoes = getCadastroCartoesParsed();
+  const bancoContaPadrao = contas[0]?.banco || "Bradesco";
+  const bancoCartaoPadrao = cartoes[0]?.bandeira || "Bradesco";
+  const preencher = (id, padrao) => {
+    const el = document.getElementById(id);
+    if(!el) return;
+    if(el.dataset.preenchido === "1") return; // já populado antes, não sobrescreve escolha manual do usuário
+    el.dataset.preenchido = "1";
+    el.innerHTML = BANCOS_CONHECIDOS.filter(b => b !== "Genérico").map(b => `<option value="${b}" ${b===padrao?"selected":""}>${b}</option>`).join("");
+  };
+  preencher("importDebitoBanco", bancoContaPadrao);
+  preencher("importFaturaBanco", bancoCartaoPadrao);
+  preencher("importFaturaPdfBanco", bancoCartaoPadrao);
+}
+
+// ---- Contas de débito por banco (Cadastro!M7:N20) ----
+// Cada conta bancária cadastrada aqui diz ao app qual PARSER de extrato usar na importação — sem
+// isso, o app não tem como saber se um arquivo é do Bradesco, do Itaú, etc.
+function getCadastroContasDebitoParsed(){
+  return (raw.contasDebito || []).map((r,i) => ({ row: 7+i, nome: r[0]||"", banco: r[1]||"" })).filter(c => c.nome);
+}
+function renderCadContasDebitoTable(){
+  const contas = getCadastroContasDebitoParsed();
+  const el = document.getElementById("cadContasDebitoTable");
+  if(!el) return;
+  if(contas.length === 0){
+    el.innerHTML = '<p class="empty">Nenhuma conta cadastrada ainda — sem isso, a importação de extrato assume Bradesco por padrão.</p>';
+    return;
+  }
+  const rows = contas.map(c => `
+    <tr>
+      <td data-label="Nome da conta"><input value="${c.nome}" onchange="saveCadContaDebitoCampo(${c.row}, 'M', this.value)" style="background:transparent;border:none;color:var(--text);width:100%;font-size:13px;"></td>
+      <td data-label="Banco">
+        <select onchange="saveCadContaDebitoCampo(${c.row}, 'N', this.value)" style="background:transparent;border:none;color:var(--text);width:100%;font-size:13px;">
+          ${BANCOS_CONHECIDOS.map(b => `<option value="${b}" ${b===c.banco?"selected":""}>${b}</option>`).join("")}
+        </select>
+      </td>
+      <td><button class="icon-btn" onclick="deleteCadContaDebito(${c.row})" title="Remover">🗑️</button></td>
+    </tr>`).join("");
+  el.innerHTML = `<table class="lanc"><thead><tr><th>Nome da conta</th><th>Banco</th><th></th></tr></thead><tbody>${rows}</tbody></table>`;
+}
+async function saveCadContaDebitoCampo(row, col, value){
+  await salvarEAtualizar(() => writeCell(`Cadastro!${col}${row}`, value), [renderCadastro], "Conta atualizada");
+}
+function addCadastroContaDebito(){
+  const contas = getCadastroContasDebitoParsed();
+  const maxRow = 20; // limite do range Cadastro!M7:N20
+  const nextRow = contas.length ? Math.max(...contas.map(c=>c.row))+1 : 7;
+  if(nextRow > maxRow){ showToast("Limite de contas atingido — me chama que eu amplio o espaço na planilha.", "error"); return; }
+  const formEl = document.getElementById("cadContaDebitoNovoForm");
+  formEl.classList.remove("hidden");
+  formEl.innerHTML = `
+    <div class="edit-form" style="margin-bottom:0;">
+      <div><label>Nome da conta</label><input id="novaContaNome" placeholder="Ex: Conta Corrente, Banco Principal..."></div>
+      <div><label>Banco</label>
+        <select id="novaContaBanco">${BANCOS_CONHECIDOS.map(b => `<option value="${b}">${b}</option>`).join("")}</select>
+      </div>
+      <div class="actions">
+        <button class="save-btn" onclick="saveCadastroContaDebitoNovo(${nextRow})">Adicionar</button>
+        <button class="cancel-btn" onclick="closeCadastroContaDebitoNovoForm()">Cancelar</button>
+      </div>
+    </div>`;
+  formEl.scrollIntoView({ behavior: "smooth", block: "center" });
+}
+function closeCadastroContaDebitoNovoForm(){
+  const formEl = document.getElementById("cadContaDebitoNovoForm");
+  formEl.classList.add("hidden");
+  formEl.innerHTML = "";
+}
+async function saveCadastroContaDebitoNovo(row){
+  const nome = document.getElementById("novaContaNome").value.trim();
+  const banco = document.getElementById("novaContaBanco").value;
+  if(!nome){ showToast("Informe o nome da conta", "error"); return; }
+  await salvarEAtualizar(async () => {
+    await writeCell(`Cadastro!M${row}`, nome);
+    await writeCell(`Cadastro!N${row}`, banco);
+    closeCadastroContaDebitoNovoForm();
+  }, [renderCadastro], "Conta adicionada", "Não foi possível adicionar");
+}
+async function deleteCadContaDebito(row){
+  if(!confirm("Remover essa conta? Os lançamentos já importados continuam existindo, só a conta some da lista.")) return;
+  await salvarEAtualizar(() => clearRange(`Cadastro!M${row}:N${row}`), [renderCadastro], "Conta removida", "Não foi possível remover");
+}
 
 function addCadastroCartao(){
   const cartoes = getCadastroCartoesParsed();
@@ -5816,7 +5953,7 @@ function getNomeCartaoPorDigitos(digitos){
 
 
 // ---- Parte 1: fatura de cartão (CSV) -> aba Crédito ----
-function parseFaturaCartaoCsv(csvText){
+function parseFaturaCartaoCsvBradesco(csvText){
   const linhas = csvText.split(/\r\n|\r|\n/);
   let anoFatura = null, dataEmissao = null, cartaoAtual = null, pararProcessamento = false;
   const transacoes = [];
@@ -5881,6 +6018,12 @@ function parseFaturaCartaoCsv(csvText){
 
 async function handleImportFaturaCartao(file){
   const statusEl = document.getElementById("importStatus");
+  const bancoEscolhido = document.getElementById("importFaturaBanco")?.value || "Bradesco";
+  const leitor = leitorBancoCredito(bancoEscolhido);
+  if(!leitor){
+    statusEl.textContent = `❌ Importação de fatura do ${bancoEscolhido} ainda não é suportada — só Bradesco por enquanto. Manda um print do formato do seu banco que eu adiciono suporte.`;
+    return;
+  }
   statusEl.textContent = "Lendo arquivo...";
   try{
     const buf = await file.arrayBuffer();
@@ -5889,7 +6032,7 @@ async function handleImportFaturaCartao(file){
     try{ texto = new TextDecoder("iso-8859-1").decode(bytes); }
     catch(e){ texto = new TextDecoder("utf-8").decode(bytes); }
 
-    const { transacoes, vencimento, puladasNaoCompra } = parseFaturaCartaoCsv(texto);
+    const { transacoes, vencimento, puladasNaoCompra } = leitor.parseFaturaCsv(texto);
     if(transacoes.length === 0){
       statusEl.textContent = "Nenhuma transação nova encontrada nesse CSV.";
       return;
@@ -5928,7 +6071,7 @@ function parseDataBRCell(v){
   return new Date(ano, mes-1, dia);
 }
 
-function parseExtratoDebitoRows(rows){
+function parseExtratoDebitoRowsBradesco(rows){
   const transacoes = [];
   const mainDocto = {};
   let current = null;
@@ -5981,7 +6124,7 @@ function parseExtratoDebitoRows(rows){
 // função) — aporte/resgate de investimento fica sempre com categoria em branco, pra escolha manual
 // (o "balde" certo — Reserva, Renda Fixa, Renda Variável — depende de contexto que o extrato sozinho
 // não entrega com segurança).
-function classificarLancamento(t){
+function classificarLancamentoBradesco(t){
   const desc = t.historico.toLowerCase();
   // "resg" pega tanto "Resgate" quanto abreviações como "Resg/vencto" — "invest" sozinho não pega
   // "Resgate Inv Fac" (só tem "Inv" abreviado, não "Investimento" por extenso).
@@ -6012,10 +6155,16 @@ function preencherDatasHerdadas(transacoes){
 
 async function handleImportExtratoDebito(file){
   const statusEl = document.getElementById("importStatus");
+  const bancoEscolhido = document.getElementById("importDebitoBanco")?.value || "Bradesco";
+  const leitor = leitorBancoDebito(bancoEscolhido);
+  if(!leitor){
+    statusEl.textContent = `❌ Importação de extrato do ${bancoEscolhido} ainda não é suportada — só Bradesco por enquanto. Manda um print do formato do seu banco que eu adiciono suporte.`;
+    return;
+  }
   const isXls = /\.xls$/i.test(file.name);
   const isPdf = /\.pdf$/i.test(file.name);
   if(!isXls && !isPdf){
-    statusEl.textContent = "❌ Extrato de débito aceita apenas XLS ou PDF. Exporta o extrato do internet banking do Bradesco num desses formatos.";
+    statusEl.textContent = "❌ Extrato de débito aceita apenas XLS ou PDF.";
     return;
   }
 
@@ -6024,7 +6173,7 @@ async function handleImportExtratoDebito(file){
     if(isPdf){
       statusEl.textContent = "Carregando ferramenta de leitura de PDF (primeira vez pode demorar um pouco)...";
       await garantirPdf();
-      transacoesBrutas = await parseExtratoDebitoPdf(file, statusEl);
+      transacoesBrutas = await leitor.parsePdf(file, statusEl);
     } else {
       statusEl.textContent = "Carregando ferramenta de leitura de planilha...";
       await garantirXLSX();
@@ -6033,7 +6182,7 @@ async function handleImportExtratoDebito(file){
       const wb = XLSX.read(buf, { type: "array", cellDates: true });
       const sheet = wb.Sheets[wb.SheetNames[0]];
       const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: true, defval: "" });
-      transacoesBrutas = parseExtratoDebitoRows(rows);
+      transacoesBrutas = leitor.parseXls(rows);
     }
   }catch(err){
     statusEl.textContent = "❌ Não foi possível ler o arquivo: " + err.message;
@@ -6051,7 +6200,7 @@ async function handleImportExtratoDebito(file){
     const hoje = new Date(); hoje.setHours(0,0,0,0);
     const linhas = transacoes.map(t => {
       const valor = Math.abs(t.credito) + Math.abs(t.debito);
-      const { tipo: lancamento } = classificarLancamento(t);
+      const { tipo: lancamento } = leitor.classificarLancamento(t);
       const status = t.data <= hoje ? "✅ Pago" : "";
       // B, C, D, E, F, G, H, I, J, K — E(Fixa), F ficam em branco.
       // Categoria automática só pra gasto/receita (dicionário de palavras-chave) — aporte/resgate
@@ -6152,12 +6301,16 @@ function textoDaLinha(linha){
   return texto.trim();
 }
 
+// Detecta só a LINHA do cabeçalho (pra saber onde a tabela começa e pular o cabeçalho/logo da
+// página) — não usa mais a posição X das colunas pra nada além disso.
 // Posições de coluna medidas diretamente no layout real do extrato "Bradesco Celular" — usadas
 // como reforço quando a detecção dinâmica por item exato não encontra todas as colunas (porque o
-// pdf.js quebrou os rótulos do cabeçalho em fragmentos, por exemplo).
+// pdf.js quebrou os rótulos do cabeçalho em fragmentos, por exemplo). IMPORTANTE: esse layout
+// distingue Crédito de Débito só pela COLUNA (não usa sinal "-" como o extrato de internet
+// banking do Bradesco usa) — por isso a posição X de cada coluna importa de verdade aqui.
 const BOUNDS_PDF_BRADESCO_CELULAR = { data: 46, historico: 110, docto: 305, credito: 385, debito: 452, saldo: 520 };
 
-function detectarColunasPdf(itens){
+function detectarColunasPdfBradesco(itens){
   const linhas = agruparEmLinhas(itens);
   let headerY = null;
   for(const linha of linhas){
@@ -6196,7 +6349,7 @@ function colunaDoX(x, bounds){
 
 // Lê o PDF inteiro e devolve as transações no mesmo formato do importador de XLS
 // ({ data, historico, docto, credito, debito }), pra reaproveitar todo o resto do fluxo.
-async function parseExtratoDebitoPdf(file, statusEl){
+async function parseExtratoDebitoPdfBradesco(file, statusEl){
   const buf = await file.arrayBuffer();
   const pdf = await pdfjsLib.getDocument({ data: buf }).promise;
   const transacoes = [];
@@ -6211,7 +6364,7 @@ async function parseExtratoDebitoPdf(file, statusEl){
       .map(i => ({ texto: i.str.trim(), x: i.transform[4], y: -i.transform[5] })); // y negativo = de cima pra baixo
     if(itens.length === 0) continue;
 
-    const { bounds, headerY } = detectarColunasPdf(itens);
+    const { bounds, headerY } = detectarColunasPdfBradesco(itens);
     if(bounds) ultimosBounds = bounds;
     const boundsUso = bounds || ultimosBounds;
     if(!boundsUso) continue; // nenhuma página até agora teve uma tabela reconhecível
@@ -6264,6 +6417,7 @@ async function parseExtratoDebitoPdf(file, statusEl){
   return transacoes;
 }
 
+
 // Só o pdf.js, sem OCR — usado pelo extrato de débito em PDF, que tem camada de texto de verdade
 // (diferente da fatura fotografada pelo app, que precisa de OCR).
 async function garantirPdf(){
@@ -6301,7 +6455,7 @@ async function extrairTextoPdfViaOcr(file, statusEl){
 
 // Mesma lógica de reconhecimento de linha de transação usada no CSV de fatura, adaptada ao layout
 // do extrato do app (colunas "Data / Histórico / Moeda de origem / US$ / Cotação US$ / R$").
-function parseFaturaPDFTexto(texto){
+function parseFaturaPDFTextoBradesco(texto){
   const linhas = texto.split(/\r\n|\r|\n/);
   let cartaoAtual = null;
   let dataEmissao = null;
@@ -6359,11 +6513,17 @@ function parseFaturaPDFTexto(texto){
 
 async function handleImportFaturaPDF(file){
   const statusEl = document.getElementById("importStatus");
+  const bancoEscolhido = document.getElementById("importFaturaPdfBanco")?.value || "Bradesco";
+  const leitor = leitorBancoCredito(bancoEscolhido);
+  if(!leitor){
+    statusEl.textContent = `❌ Importação de fatura em PDF do ${bancoEscolhido} ainda não é suportada — só Bradesco por enquanto. Manda um print do formato do seu banco que eu adiciono suporte.`;
+    return;
+  }
   try{
     statusEl.textContent = "Carregando ferramentas de leitura de PDF (primeira vez pode demorar um pouco)...";
     await garantirPdfEOcr();
     const texto = await extrairTextoPdfViaOcr(file, statusEl);
-    const { transacoes, vencimento } = parseFaturaPDFTexto(texto);
+    const { transacoes, vencimento } = leitor.parseFaturaPdfTexto(texto);
     if(transacoes.length === 0){
       statusEl.textContent = "Não consegui reconhecer nenhuma transação nesse PDF. O layout pode ter mudado — me avisa que eu ajusto.";
       return;
