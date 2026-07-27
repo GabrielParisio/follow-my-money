@@ -806,8 +806,9 @@
           <button class="connect-btn" id="novoLancBtn">+ Novo lançamento</button>
         </div>
       </div>
-      <div style="display:flex;gap:8px;margin-bottom:14px;">
-        <input id="lancSearchInput" type="text" placeholder="🔎 Buscar por descrição..." style="flex:1;background:var(--panel);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:9px 12px;font-size:13px;">
+      <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;">
+        <input id="lancSearchInput" type="text" placeholder="🔎 Buscar por descrição..." style="flex:1;min-width:160px;background:var(--panel);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:9px 12px;font-size:13px;">
+        <select id="lancFiltroCategoriaSelect" onchange="setLancFiltroCategoria(this.value)" style="background:var(--panel);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:9px 12px;font-size:13px;flex-shrink:0;"></select>
         <button class="connect-btn" id="lancFiltroSemCategoriaBtn" onclick="toggleLancFiltroSemCategoria()" style="flex-shrink:0;white-space:nowrap;">🏷️ Sem categoria</button>
       </div>
       <div id="lancBulkBar" class="hidden" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:12px;padding:10px 14px;background:var(--card);border:1px solid var(--border);border-radius:10px;">
@@ -904,6 +905,7 @@
                 <option value="desc-az">Descrição (A-Z)</option>
                 <option value="desc-za">Descrição (Z-A)</option>
               </select>
+              <select id="creditFiltroCategoriaSelect" onchange="setCreditCategoryFilterFromSelect(this.value)" style="background:var(--panel);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:7px 9px;font-size:12.5px;"></select>
               <button class="connect-btn" onclick="abrirNovaCompraModal()">+ Nova compra</button>
               <button class="connect-btn" onclick="detectarERemoverDuplicatas()">🔍 Detectar e remover duplicatas</button>
             </div>
@@ -3391,6 +3393,7 @@ function categoriaOptions(selected){
 let lancSelectedRows = new Set();
 let lancSearchQuery = "";
 let lancFiltroSemCategoria = false;
+let lancFiltroCategoria = "";
 
 function setupLancSearch(){
   const input = document.getElementById("lancSearchInput");
@@ -3407,8 +3410,23 @@ function toggleLancFiltroSemCategoria(){
   renderLancamentos();
 }
 
+function setLancFiltroCategoria(valor){
+  lancFiltroCategoria = valor;
+  renderLancamentos();
+}
+
+function popularFiltroCategoriaDebito(){
+  const sel = document.getElementById("lancFiltroCategoriaSelect");
+  if(!sel) return;
+  const categorias = (raw.cadastro || []).map(r => r[0]).filter(Boolean);
+  const valorAtual = sel.value || lancFiltroCategoria;
+  sel.innerHTML = `<option value="">Todas as categorias</option>` +
+    categorias.map(c => `<option value="${c}" ${c===valorAtual?"selected":""}>${c}</option>`).join("");
+}
+
 function renderLancamentos(){
   setupLancSearch();
+  popularFiltroCategoriaDebito();
   const mi = state.monthIdx;
   let items = debitoRows()
     .filter(it => it.dataVenc && serialToDate(it.dataVenc).getMonth() === mi && serialToDate(it.dataVenc).getFullYear() === state.year)
@@ -3419,6 +3437,9 @@ function renderLancamentos(){
   }
   if(lancFiltroSemCategoria){
     items = items.filter(it => !it.categoria);
+  }
+  if(lancFiltroCategoria){
+    items = items.filter(it => it.categoria === lancFiltroCategoria);
   }
 
   const filtroBtn = document.getElementById("lancFiltroSemCategoriaBtn");
@@ -3703,7 +3724,11 @@ function openNewForm(){
       </div>
       <div><label>Conta</label><input id="fConta" placeholder="Ex: Banco Principal"></div>
       <div><label>Valor total</label><input id="fValor" type="number" step="0.01" placeholder="0.00"></div>
-      <div><label>Parcelas</label><input id="fParcelas" type="number" min="1" step="1" value="1"></div>
+      <div><label>Parcelas</label><input id="fParcelas" type="number" min="1" step="1" value="1" onchange="if(this.value>1) document.getElementById('fRecorrente').checked=false;"></div>
+      <div style="grid-column:1/-1;display:flex;align-items:center;gap:8px;margin-top:4px;">
+        <input type="checkbox" id="fRecorrente" onchange="if(this.checked) document.getElementById('fParcelas').value=1;">
+        <label style="margin:0;font-size:12.5px;color:var(--text);text-transform:none;font-weight:400;cursor:pointer;" for="fRecorrente">🔁 Lançamento recorrente — repete o mesmo valor todo mês até dezembro deste ano</label>
+      </div>
       <div class="actions">
         <button class="save-btn" onclick="saveNew()">Adicionar lançamento</button>
         <button class="cancel-btn" onclick="closeForm()">Cancelar</button>
@@ -3776,6 +3801,13 @@ async function saveEdit(row){
 }
 
 async function saveNew(){
+  // Ajusta o dia pro último dia válido daquele mês — sem isso, "dia 31" num mês de 28/30 dias
+  // (ex: fevereiro) estoura pro mês seguinte no Date nativo do JS (31/fev vira 3/mar).
+  function diaClampeadoNoMes(ano, mesIdx, diaDesejado){
+    const ultimoDiaDoMes = new Date(ano, mesIdx + 1, 0).getDate();
+    return Math.min(diaDesejado, ultimoDiaDoMes);
+  }
+
   const dataStr = document.getElementById("fData").value;
   const desc = document.getElementById("fDesc").value;
   const cat = document.getElementById("fCat").value;
@@ -3784,24 +3816,44 @@ async function saveNew(){
   const valorTotal = parseFloat(document.getElementById("fValor").value) || 0;
   const parcelasEl = document.getElementById("fParcelas");
   const numParcelas = Math.max(1, parseInt(parcelasEl ? parcelasEl.value : 1) || 1);
+  const recorrenteEl = document.getElementById("fRecorrente");
+  const recorrente = recorrenteEl ? recorrenteEl.checked : false;
   if(!desc || !valorTotal){ showToast("Preencha ao menos descrição e valor.", "error"); return; }
 
   const [y, m, d] = dataStr.split("-").map(Number);
-  const valorParcela = Math.round((valorTotal / numParcelas) * 100) / 100;
 
   try{
-    for(let n = 0; n < numParcelas; n++){
-      const dataParcela = new Date(y, (m - 1) + n, d);
-      const dataBR = `${String(dataParcela.getDate()).padStart(2,"0")}/${String(dataParcela.getMonth()+1).padStart(2,"0")}/${dataParcela.getFullYear()}`;
-      const descParcela = numParcelas > 1 ? `${desc} (${n+1}/${numParcelas})` : desc;
-      const rowValues = [dataBR, dataBR, descParcela, "", "", conta, cat, tipo, valorParcela, ""];
-      await appendRow("Débito", rowValues);
+    if(recorrente){
+      // Repete o MESMO valor (não divide, diferente de parcela) em todo mês a partir da data
+      // escolhida até dezembro daquele ano — marca a coluna "Fixa" pra deixar isso registrado.
+      const mesInicial = m - 1; // 0-indexed
+      for(let mesIdx = mesInicial; mesIdx <= 11; mesIdx++){
+        const dataOcorrencia = new Date(y, mesIdx, diaClampeadoNoMes(y, mesIdx, d));
+        const dataBR = `${String(dataOcorrencia.getDate()).padStart(2,"0")}/${String(dataOcorrencia.getMonth()+1).padStart(2,"0")}/${dataOcorrencia.getFullYear()}`;
+        const rowValues = [dataBR, dataBR, desc, "Sim", "", conta, cat, tipo, valorTotal, ""];
+        await appendRow("Débito", rowValues);
+      }
+    } else {
+      const valorParcela = Math.round((valorTotal / numParcelas) * 100) / 100;
+      for(let n = 0; n < numParcelas; n++){
+        const mesIdxParcela = (m - 1) + n;
+        const anoParcela = y + Math.floor(mesIdxParcela / 12);
+        const dataParcela = new Date(anoParcela, mesIdxParcela % 12, diaClampeadoNoMes(anoParcela, mesIdxParcela % 12, d));
+        const dataBR = `${String(dataParcela.getDate()).padStart(2,"0")}/${String(dataParcela.getMonth()+1).padStart(2,"0")}/${dataParcela.getFullYear()}`;
+        const descParcela = numParcelas > 1 ? `${desc} (${n+1}/${numParcelas})` : desc;
+        const rowValues = [dataBR, dataBR, descParcela, "", "", conta, cat, tipo, valorParcela, ""];
+        await appendRow("Débito", rowValues);
+      }
     }
     closeForm();
     await loadData();
     renderLancamentos();
     renderCredito();
-    showToast(numParcelas > 1 ? `${numParcelas} parcelas adicionadas` : "Lançamento adicionado", "success");
+    showToast(
+      recorrente ? `Lançamento recorrente adicionado (${12 - (m-1)} meses, até dezembro)` :
+      numParcelas > 1 ? `${numParcelas} parcelas adicionadas` : "Lançamento adicionado",
+      "success"
+    );
   }catch(err){
     showToast("Não foi possível adicionar: " + err.message, "error");
   }
@@ -4234,6 +4286,22 @@ function toggleCreditCategoryFilter(key){
     state.creditCategoryFilter = (state.creditCategoryFilter === key) ? null : key;
   }
   renderCredito();
+}
+
+// Mesmo filtro de categoria de cima, só que via dropdown explícito em vez de clicar no gráfico —
+// aqui é escolha direta (define), não alterna como o clique no gráfico.
+function setCreditCategoryFilterFromSelect(nomeCategoria){
+  state.creditCategoryFilter = nomeCategoria ? normalizeCatName(nomeCategoria) : null;
+  renderCredito();
+}
+function popularFiltroCategoriaCredito(){
+  const sel = document.getElementById("creditFiltroCategoriaSelect");
+  if(!sel) return;
+  const categorias = (raw.cadastro || []).map(r => r[0]).filter(Boolean);
+  const chaveAtual = state.creditCategoryFilter;
+  const valorAtual = categorias.find(c => normalizeCatName(c) === chaveAtual) || "";
+  sel.innerHTML = `<option value="">Todas as categorias</option>` +
+    categorias.map(c => `<option value="${c}" ${c===valorAtual?"selected":""}>${c}</option>`).join("");
 }
 
 // ===================== DÍVIDAS =====================
@@ -5137,6 +5205,7 @@ function renderCredito(){
 
   setupCardSelect();
   setupCreditLayoutToggle();
+  popularFiltroCategoriaCredito();
 
   if(state.creditLayout === "ladoalado"){
     renderCreditoLadoLado();
