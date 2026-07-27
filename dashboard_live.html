@@ -933,6 +933,7 @@
               <select id="creditFiltroCategoriaSelect" onchange="setCreditCategoryFilterFromSelect(this.value)" style="background:var(--panel);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:7px 9px;font-size:12.5px;"></select>
               <button class="connect-btn" id="creditFiltroSemCategoriaBtn" onclick="toggleCreditFiltroSemCategoria()" style="white-space:nowrap;">🏷️ Sem categoria</button>
               <button class="connect-btn" onclick="abrirNovaCompraModal()">+ Nova compra</button>
+              <button class="connect-btn" onclick="analisarCategoriasCredito()">🏷️ Categorizar automaticamente</button>
               <button class="connect-btn" onclick="detectarERemoverDuplicatas()">🔍 Detectar e remover duplicatas</button>
             </div>
           </div>
@@ -3612,6 +3613,29 @@ async function corrigirTipoInvestimentoDebito(){
   }, [renderLancamentos, render, renderCharts], `${candidatos.length} lançamento${candidatos.length===1?"":"s"} reclassificado${candidatos.length===1?"":"s"}`);
 }
 
+async function analisarCategoriasCredito(){
+  const semCategoria = (raw.compras || []).map((c, i) => ({ c, row: 10 + i })).filter(({c}) => c[2] && !c[3]);
+  if(semCategoria.length === 0){
+    showToast("Todas as compras já têm categoria", "success");
+    return;
+  }
+  const updates = [];
+  semCategoria.forEach(({c, row}) => {
+    const sugestao = sugerirCategoria(c[2]);
+    if(sugestao) updates.push({ range: `Crédito!E${row}`, value: sugestao });
+  });
+  if(updates.length === 0){
+    showToast(`Não encontrei sugestão pra nenhuma das ${semCategoria.length} compra(s) sem categoria`, "error");
+    return;
+  }
+  const semSugestao = semCategoria.length - updates.length;
+  await salvarEAtualizar(async () => {
+    await writeCellsBatch(updates);
+  }, [renderCredito],
+    `${updates.length} compra${updates.length===1?"":"s"} categorizada${updates.length===1?"":"s"} automaticamente` +
+    (semSugestao > 0 ? ` · ${semSugestao} sem sugestão, precisam ser feitas na mão` : ""));
+}
+
 async function analisarCategoriasDebito(){
   const semCategoria = debitoRows().filter(it => it.desc && !it.categoria);
   if(semCategoria.length === 0){
@@ -5988,6 +6012,8 @@ function getGruposCompraDuplicada(){
   const grupos = {};
   (raw.compras || []).forEach((c, i) => {
     if(!c[2]) return; // sem descrição, ignora (linha vazia)
+    if(isCompraParcelada(c)) return; // parcelas de uma compra parcelada compartilham data/descrição/valor
+                                       // total DE PROPÓSITO — isso não é duplicata, é o normal
     const row = 10 + i;
     const dataBR = c[0] ? fmtDataBR(serialToDate(c[0])) : "";
     const key = chaveTransacaoImport(dataBR, c[2], c[4] || 0);
