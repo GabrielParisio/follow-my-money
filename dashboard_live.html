@@ -675,6 +675,16 @@
     </div>
   </div>
 
+  <div id="cadCategoriaEditModal" class="modal-overlay hidden">
+    <div class="modal-box">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
+        <h2 style="margin:0;">🏷️ Editar categoria</h2>
+        <button class="icon-btn" style="font-size:20px;" onclick="closeCadCategoriaEditModal()">✕</button>
+      </div>
+      <div id="cadCategoriaEditModalBody"></div>
+    </div>
+  </div>
+
   <div id="duplicatasModal" class="modal-overlay hidden">
     <div class="modal-box">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
@@ -990,6 +1000,16 @@
         </ul>
       </details>
     </div>
+    <div class="chart-panel" id="roadmapDevPanel" style="border-color:var(--blue);">
+      <details>
+        <summary style="cursor:pointer;font-weight:700;font-size:15px;color:var(--blue);">🗺️ Roadmap (próximos passos)</summary>
+        <p style="font-size:11.5px;color:var(--muted);margin:10px 0 12px;">O que ainda está no radar, sem data definida — ordem não é prioridade.</p>
+        <ul style="font-size:12.5px;line-height:1.7;padding-left:18px;margin:0;color:var(--text);">
+          <li>Desenvolvimento mais completo da aba Investimentos — hoje é basicamente 3 cards e um gráfico de alocação; falta histórico de rentabilidade, comparação com benchmark, e detalhamento por ativo</li>
+          <li>Desenvolvimento mais completo do Patrimônio Total — hoje o card do Resumo é o único lugar que mostra isso; falta uma visão dedicada com composição (ativos - dívidas), evolução histórica de verdade (usando o snapshot mensal) e projeção de longo prazo</li>
+        </ul>
+      </details>
+    </div>
     <div class="chart-panel" style="border-color:var(--gold);">
       <h2>🚀 Primeira vez aqui?</h2>
       <p style="font-size:12.5px;color:var(--muted);margin-top:-6px;margin-bottom:14px;">
@@ -1076,8 +1096,7 @@
         <h2 style="margin:0;">🏷️ Orçamento por categoria</h2>
         <button class="connect-btn" onclick="addCadastroCategoria()">+ Nova categoria</button>
       </div>
-      <p style="font-size:12px;color:var(--muted);margin-top:-8px;margin-bottom:14px;">Use um emoji no início do nome (ex: "🏠 Moradia") pra manter o padrão visual do resto do app.</p>
-      <div id="cadCategoriaForm" class="hidden"></div>
+      <p style="font-size:12px;color:var(--muted);margin-top:-8px;margin-bottom:14px;">Use um emoji no início do nome (ex: "🏠 Moradia") pra manter o padrão visual do resto do app. Toca num card pra editar.</p>
       <div id="cadCategoriasTable" style="overflow-x:auto;"></div>
     </div>
 
@@ -1629,15 +1648,17 @@ function render(){
   document.getElementById("cPct").textContent = fmtPct(pct);
   const hoje = new Date();
   const isMesAtualReal = mi === hoje.getMonth() && state.year === hoje.getFullYear();
-  if(isMesAtualReal){
+  if(isMesAtualReal && orcado > 0){
     const diasNoMes = new Date(state.year, mi+1, 0).getDate();
     const ritmoEsperado = (hoje.getDate() / diasNoMes) * 100;
     const pctAtual = pct * 100;
     const corRitmo = pctAtual > ritmoEsperado + 10 ? "var(--red)" : (pctAtual > ritmoEsperado ? "var(--yellow)" : "var(--green)");
     document.getElementById("cPctSub").innerHTML =
       `de ${fmtMoney(orcado)} previsto <span style="color:${corRitmo};">· esperado até hoje: ${ritmoEsperado.toFixed(0)}%</span>`;
-  } else {
+  } else if(orcado > 0){
     document.getElementById("cPctSub").textContent = "de " + fmtMoney(orcado) + " previsto";
+  } else {
+    document.getElementById("cPctSub").textContent = "Nenhum orçamento definido no Cadastro";
   }
 
   // Variação vs mês anterior + vs mesmo mês do ano anterior
@@ -5157,35 +5178,48 @@ function renderCadCategoriasTable(){
     el.innerHTML = '<p class="empty">Nenhuma categoria cadastrada ainda</p>';
     return;
   }
-  const rows = categorias.map(c => `
-    <tr>
-      <td data-label="Categoria">${c.nome}</td>
-      <td data-label="Orçamento" style="text-align:right;">${fmtMoney(c.orcado)}</td>
-      <td><button class="icon-btn" onclick="openCadCategoriaEditForm(${c.row})" title="Editar">✏️</button></td>
-    </tr>`).join("");
-  el.innerHTML = `<table class="lanc"><thead><tr><th>Categoria</th><th style="text-align:right;">Orçamento mensal</th><th></th></tr></thead><tbody>${rows}</tbody></table>`;
+  // Custo total = gasto real dessa categoria no mês vigente (Débito + Crédito combinados) — mesmo
+  // cálculo já usado no gráfico "Gastos por categoria" da Visão Mensal.
+  const gastosMes = raw ? gastosPorCategoriaCombinado(state.monthIdx, state.monthIdx) : {};
+  const cards = categorias.map(c => {
+    const gasto = gastosMes[c.nome] || 0;
+    const pct = c.orcado > 0 ? (gasto / c.orcado * 100) : null;
+    const corBarra = pct === null ? "var(--border)" : pct > 100 ? "var(--red)" : pct > 85 ? "var(--yellow)" : "var(--green)";
+    return `
+    <div class="chart-panel" style="cursor:pointer;margin-bottom:10px;padding:14px 16px;" onclick="openCadCategoriaEditForm(${c.row})">
+      <div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px;">
+        <span style="font-weight:600;font-size:13.5px;">${c.nome}</span>
+        <span style="font-size:11.5px;color:var(--muted);">✏️ editar</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:baseline;margin-top:8px;gap:10px;">
+        <div><span style="font-size:11px;color:var(--muted);">Custo total (${MONTHS_FULL[state.monthIdx]})</span><br><span style="font-size:16px;font-weight:700;">${fmtMoney(gasto)}</span></div>
+        <div style="text-align:right;"><span style="font-size:11px;color:var(--muted);">Orçamento mensal</span><br><span style="font-size:16px;font-weight:700;color:var(--muted);">${fmtMoney(c.orcado)}</span></div>
+      </div>
+      ${c.orcado > 0 ? `<div style="height:6px;background:var(--border);border-radius:3px;margin-top:10px;overflow:hidden;">
+        <div style="height:100%;width:${Math.min(100, pct)}%;background:${corBarra};"></div>
+      </div><div style="font-size:11px;color:${corBarra};margin-top:4px;">${pct.toFixed(0)}% do orçamento</div>` : ""}
+    </div>`;
+  }).join("");
+  el.innerHTML = `<div style="display:flex;flex-direction:column;">${cards}</div>`;
 }
 function openCadCategoriaEditForm(row){
   const c = getCadastroCategoriasParsed().find(x => x.row === row);
   if(!c) return;
-  const formEl = document.getElementById("cadCategoriaForm");
-  formEl.classList.remove("hidden");
-  formEl.innerHTML = `
-    <div class="edit-form">
+  document.getElementById("cadCategoriaEditModalBody").innerHTML = `
+    <div class="edit-form" style="margin-bottom:0;">
       <div><label>Categoria</label><input id="cadCatFormNome" value="${c.nome}"></div>
       <div><label>Orçamento mensal</label><input id="cadCatFormOrcado" type="number" step="0.01" value="${c.orcado}"></div>
       <div class="actions">
         <button class="save-btn" onclick='saveCadCategoriaEdit(${row}, ${JSON.stringify(c.nome)})'>Salvar alterações</button>
-        <button class="cancel-btn" onclick="closeCadCategoriaForm()">Cancelar</button>
-        <button class="cancel-btn" style="color:var(--red);border-color:var(--red);margin-left:auto;" onclick='deleteCadCategoria(${row}); closeCadCategoriaForm();'>Excluir</button>
+        <button class="cancel-btn" onclick="closeCadCategoriaEditModal()">Cancelar</button>
+        <button class="cancel-btn" style="color:var(--red);border-color:var(--red);margin-left:auto;" onclick='deleteCadCategoria(${row}); closeCadCategoriaEditModal();'>Excluir</button>
       </div>
     </div>`;
-  formEl.scrollIntoView({ behavior: "smooth", block: "center" });
+  document.getElementById("cadCategoriaEditModal").classList.remove("hidden");
 }
-function closeCadCategoriaForm(){
-  const formEl = document.getElementById("cadCategoriaForm");
-  formEl.classList.add("hidden");
-  formEl.innerHTML = "";
+function closeCadCategoriaEditModal(){
+  document.getElementById("cadCategoriaEditModal").classList.add("hidden");
+  document.getElementById("cadCategoriaEditModalBody").innerHTML = "";
 }
 // Renomear uma categoria precisa também atualizar os lançamentos já feitos com o nome antigo —
 // senão eles "descolam" da categoria (mesmo problema que já resolvemos pro nome de cartão).
@@ -5211,7 +5245,7 @@ async function saveCadCategoriaEdit(row, nomeAntigo){
     if(nomeAntigo && nome !== nomeAntigo){
       reconectados = await reconectarLancamentosDaCategoria(nomeAntigo, nome);
     }
-    closeCadCategoriaForm();
+    closeCadCategoriaEditModal();
   }, [renderCadastro], reconectados ? `Categoria atualizada — ${reconectados} lançamento${reconectados===1?"":"s"} reconectado${reconectados===1?"":"s"}` : "Categoria atualizada");
 }
 async function addCadastroCategoria(){
@@ -5525,12 +5559,16 @@ function renderReservaCombo(saldo, saldoPrevisto, reserva, meta, mi){
   // array vazio deixa "projetado" mais curto que 12 posições, e o acesso a pts[mi] mais na frente
   // quebra com "Cannot read properties of undefined").
   const reservaSegura = Array.from({ length: 12 }, (_, i) => reserva[i] || 0);
-  const saldoPrevistoSeguro = Array.from({ length: 12 }, (_, i) => saldoPrevisto[i] || 0);
 
-  // Reserva real até o mês vigente, depois soma o Saldo Previsto (já calculado pela planilha) mês a mês
+  // Reserva real até o mês vigente, depois projeta usando a MÉDIA de saldo real acumulado nos
+  // meses já decorridos do ano — mais realista que confiar no Saldo Previsto de cada mês futuro
+  // (que normalmente está vazio, sem nenhum lançamento programado pra daqui a 3-4 meses).
+  const mesesDecorridos = mi + 1;
+  const saldoAcumulado = saldo.slice(0, mesesDecorridos).reduce((s,v) => s + (v||0), 0);
+  const mediaSaldoMensal = mesesDecorridos > 0 ? saldoAcumulado / mesesDecorridos : 0;
   const projetado = reservaSegura.slice(0, mi+1);
   for(let i = mi+1; i < 12; i++){
-    projetado.push(projetado[i-1] + saldoPrevistoSeguro[i]);
+    projetado.push(projetado[i-1] + mediaSaldoMensal);
   }
   const salarioBruto = getSalarioBruto();
   const metaAno = salarioBruto > 0 ? salarioBruto * 12 : (meta[mi] || meta[0] || 0);
@@ -5575,7 +5613,7 @@ function renderReservaCombo(saldo, saldoPrevisto, reserva, meta, mi){
   const ritmoEsperadoAno = ((mi+1) / 12) * 100;
   const corRitmoAno = pctAtualMeta >= ritmoEsperadoAno ? "var(--green)" : "var(--red)";
   document.getElementById("cProjecaoSub").innerHTML =
-    `Baseado no Saldo Previsto da planilha (Ago-Dez) · <span style="color:${pctColor};font-weight:700;">${pctAlcancado.toFixed(0)}% da meta até Dez</span>` +
+    `Projeção com base na média de saldo real dos últimos ${mesesDecorridos} mês${mesesDecorridos===1?"":"es"} (${fmtMoney(mediaSaldoMensal)}/mês) · <span style="color:${pctColor};font-weight:700;">${pctAlcancado.toFixed(0)}% da meta até Dez</span>` +
     `<br>Hoje: ${pctAtualMeta.toFixed(0)}% da meta · <span style="color:${corRitmoAno};">esperado nessa altura do ano: ${ritmoEsperadoAno.toFixed(0)}%</span>`;
 }
 
