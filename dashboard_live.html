@@ -2187,10 +2187,16 @@ function gerarAlertasFatura(){
       const pagamentoExistente = debitoRows().find(it => normalizeCatName(it.desc) === descEsperada);
       const valorPago = pagamentoExistente ? (pagamentoExistente.valor || 0) : 0;
       const diferenca = Math.round((faturaValor - valorPago) * 100) / 100;
-      if(pagamentoExistente && diferenca <= 0.01) return; // totalmente paga, sem alerta
+      const pagoDeVerdade = pagamentoExistente && pagamentoExistente.status === "✅ Pago";
+      if(pagoDeVerdade && diferenca <= 0.01) return; // totalmente paga, sem alerta
 
       const dataVencimentoFatura = new Date(ano, mesIdx, diaVenc);
-      if(pagamentoExistente){
+      if(pagamentoExistente && !pagoDeVerdade && diferenca <= 0.01){
+        // Pagamento lançado com data futura (ainda Pendente) — não é "atrasada" nem precisa de
+        // alerta de reconciliação, só um lembrete leve de que já está agendado.
+        alertasFatura.push({ id: `fatura-agendada-${nomeCartao}-${mesIdx}-${ano}`, type: "warn", icon: "🕓",
+          html: `<b>${nomeCartao}</b> — pagamento de ${nomeMes}/${ano} já está agendado, ainda não efetivado` });
+      } else if(pagamentoExistente){
         // Já existe um pagamento lançado pra esse cartão+mês, mas o valor não bate com o total da
         // fatura — pode ser gasto novo depois do pagamento, ou erro de digitação. Isso é reconciliação,
         // diferente de "esqueceu de pagar" (o alerta abaixo), então avisa sempre, não só quando atrasa.
@@ -5183,8 +5189,14 @@ function renderCredito(){
   const pagamentoExistente = debitoRows().find(it => normalizeCatName(it.desc) === descEsperada);
   const valorPago = pagamentoExistente ? (pagamentoExistente.valor || 0) : 0;
   const diferenca = Math.round((faturaValor - valorPago) * 100) / 100;
-  const totalmentePaga = pagamentoExistente && diferenca <= 0.01;
-  const diferencaPendente = pagamentoExistente && diferenca > 0.01;
+  // "Paga" exige o lançamento existir E estar com status Pago de verdade — só existir a linha não
+  // basta, porque "Lançar pagamento desta fatura" com data futura cria um lançamento Pendente
+  // (só vira Pago quando aquele dia chegar). Sem essa checagem, a fatura aparecia como paga antes
+  // da hora.
+  const pagoDeVerdade = pagamentoExistente && pagamentoExistente.status === "✅ Pago";
+  const totalmentePaga = pagoDeVerdade && diferenca <= 0.01;
+  const diferencaPendente = pagoDeVerdade && diferenca > 0.01;
+  const pagamentoAgendado = pagamentoExistente && !pagoDeVerdade;
 
   // Vencida = data de vencimento do cartão, no mês/ano em exibição, já passou e ainda não foi (totalmente) paga
   const diaVenc = Number(vencimentoDia) || 5;
@@ -5213,6 +5225,13 @@ function renderCredito(){
     faturaValEl.style.color = "var(--yellow)";
     lancarBtnEl.textContent = `💳 Lançar diferença (${fmtMoney(diferenca)})`;
     subExtra = ` · já pago ${fmtMoney(valorPago)} de ${fmtMoney(faturaValor)} · falta ${fmtMoney(diferenca)}`;
+  } else if(pagamentoAgendado){
+    // Pagamento lançado, mas com data futura — ainda não aconteceu de fato (fica Pendente até lá)
+    faturaLabelEl.textContent = "Pagamento agendado";
+    faturaValEl.style.color = "var(--blue)";
+    lancarBtnEl.textContent = "🕓 Pagamento já agendado";
+    const dataAgendada = pagamentoExistente.dataVenc ? fmtDate(serialToDate(pagamentoExistente.dataVenc)) : "";
+    subExtra = dataAgendada ? ` · agendado pra ${dataAgendada}` : " · agendado, ainda não efetivado";
   } else if(atrasada){
     faturaLabelEl.textContent = "Fatura atrasada";
     faturaValEl.style.color = "var(--red)";
