@@ -665,6 +665,16 @@
     </div>
   </div>
 
+  <div id="excluirDividaModal" class="modal-overlay hidden">
+    <div class="modal-box">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+        <h2 style="margin:0;color:var(--red);">🗑️ Excluir dívida</h2>
+        <button class="icon-btn" style="font-size:20px;" onclick="closeExcluirDividaModal()">✕</button>
+      </div>
+      <div id="excluirDividaModalBody"></div>
+    </div>
+  </div>
+
   <div id="duplicatasModal" class="modal-overlay hidden">
     <div class="modal-box">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
@@ -4916,9 +4926,69 @@ function openDividaEditForm(row){
       <div class="actions">
         <button class="save-btn" onclick="saveDividaEdit(${row})">Salvar alterações</button>
         <button class="cancel-btn" onclick="closeDividaEditForm()">Cancelar</button>
+        <button class="cancel-btn" style="color:var(--red);border-color:var(--red);margin-left:auto;" onclick="abrirExcluirDividaModal(${row})">🗑️ Excluir dívida e parcelas</button>
       </div>
     </div>`;
 }
+// Acha todos os lançamentos de Débito que pertencem a essa dívida — tanto as parcelas geradas
+// automaticamente ("{desc} (parcela N/M)") quanto uma eventual quitação já registrada
+// ("Quitação: {desc}"), pra mostrar tudo antes de excluir.
+function acharLancamentosDaDivida(desc){
+  const prefixoParcela = normalizeCatName(`${desc} (parcela`);
+  const prefixoQuitacao = normalizeCatName(`Quitação: ${desc}`);
+  return debitoRows().filter(it =>
+    normalizeCatName(it.desc).startsWith(prefixoParcela) || normalizeCatName(it.desc) === prefixoQuitacao
+  );
+}
+
+function abrirExcluirDividaModal(row){
+  const d = (window._dividasCache || []).find(x => x.row === row);
+  if(!d) return;
+  const lancamentos = acharLancamentosDaDivida(d.desc);
+  window._excluirDividaPendente = { row, desc: d.desc, lancamentos };
+
+  const linhasHtml = lancamentos.length === 0
+    ? '<p class="empty">Nenhum lançamento de Débito encontrado pra essa dívida (só a linha da dívida em si será removida).</p>'
+    : lancamentos.map(it => `<div class="row" style="padding:6px 0;border-bottom:1px solid var(--border);">
+        <span class="name">${it.desc}</span>
+        <span class="val">${fmtDataBR(serialToDate(it.dataVenc))} · ${fmtMoney(it.valor)}${it.status==="✅ Pago" ? " · já pago" : ""}</span>
+      </div>`).join("");
+
+  document.getElementById("excluirDividaModalBody").innerHTML = `
+    <p style="font-size:12.5px;color:var(--muted);margin:0 0 12px;">
+      Vai excluir a dívida <b>"${d.desc}"</b> da aba Dívidas e ${lancamentos.length} lançamento(s) relacionado(s) na aba Débito, listados abaixo — inclusive parcelas já pagas, se houver.
+    </p>
+    <div style="max-height:320px;overflow-y:auto;margin-bottom:14px;">${linhasHtml}</div>
+    <p style="font-size:11.5px;color:var(--red);margin:0 0 14px;">Essa ação não pode ser desfeita.</p>
+    <div class="actions">
+      <button class="save-btn" style="background:var(--red);border-color:var(--red);" onclick="confirmarExclusaoDivida()">Excluir dívida e ${lancamentos.length} lançamento(s)</button>
+      <button class="cancel-btn" onclick="closeExcluirDividaModal()">Cancelar</button>
+    </div>`;
+  document.getElementById("excluirDividaModal").classList.remove("hidden");
+}
+function closeExcluirDividaModal(){
+  document.getElementById("excluirDividaModal").classList.add("hidden");
+  window._excluirDividaPendente = null;
+}
+async function confirmarExclusaoDivida(){
+  const pendente = window._excluirDividaPendente;
+  if(!pendente) return;
+  const colunasDividas = ["B","C","D","E","F","G","H","I","J","K","L","M"];
+  const colunasDebito = ["B","C","D","E","F","G","H","I","J","K"];
+
+  await salvarEAtualizar(async () => {
+    const updates = [
+      ...colunasDividas.map(col => ({ range: `Dívidas!${col}${pendente.row}`, value: "" })),
+      ...pendente.lancamentos.flatMap(it => colunasDebito.map(col => ({ range: `Débito!${col}${it.row}`, value: "" })))
+    ];
+    await writeCellsBatch(updates);
+    closeExcluirDividaModal();
+    closeDividaEditForm();
+  }, [renderDividas, renderLancamentos],
+    `Dívida e ${pendente.lancamentos.length} lançamento(s) excluídos`,
+    "Não foi possível excluir a dívida");
+}
+
 function closeDividaEditForm(){
   document.getElementById("dividaEditModal").classList.add("hidden");
 }
