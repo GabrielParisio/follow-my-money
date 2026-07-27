@@ -1137,7 +1137,7 @@
 const CLIENT_ID = "731969839924-q6sqieddpjsp3tb0fl202cissgsmpoh9.apps.googleusercontent.com";
 
 // Planilha "modelo" usada para gerar o link de cópia pra novos usuários
-const TEMPLATE_SPREADSHEET_ID = "1lu-dVgI5PkR79lDBJkosf5KN_9YDQkk5E7WSrYTn3YA";
+const TEMPLATE_SPREADSHEET_ID = "1Kttayt0-msSOdKkZlUJ9l7wwBNWVLj2Fbz1tZndP-u0";
 
 // Nome (ou parte dele) que identifica a planilha de cada usuário no Drive dele
 // ==========================================================
@@ -2426,6 +2426,12 @@ function renderRelatorio(mi){
   const receitaMes = calcReal("Receita", mi, ano);
   const despesaMes = calcReal("Despesa", mi, ano);
   const saldoMes = receitaMes - despesaMes;
+  // Previsto — inclui a provisão de fatura de cartão ainda não lançada como pagamento. Sem isso,
+  // um mês futuro (ou o mês vigente antes de tudo ser pago) aparecia zerado no relatório, mesmo
+  // já tendo gasto esperado de cartão.
+  const receitaPrevistaMes = calcPrevisto("Receita", mi, ano);
+  const despesaPrevistaMes = calcPrevisto("Despesa", mi, ano);
+  const saldoPrevistoMes = receitaPrevistaMes - despesaPrevistaMes;
 
   // Score
   const { score, notas } = calcularScoreSaudeFinanceira(mi, ano);
@@ -2467,9 +2473,12 @@ function renderRelatorio(mi){
       ${linha("Patrimônio líquido", fmtMoney(patrimonioLiquido), patrimonioLiquido >= 0 ? "var(--green)" : "var(--red)")}
     `) +
     secao(`📅 ${MONTHS_FULL[mi]}/${ano}`, `
-      ${linha("Receita", fmtMoney(receitaMes), "var(--green)")}
-      ${linha("Despesa", fmtMoney(despesaMes), "var(--red)")}
-      ${linha("Saldo", fmtMoney(saldoMes), saldoMes >= 0 ? "var(--green)" : "var(--red)")}
+      ${linha("Receita (real)", fmtMoney(receitaMes), "var(--green)")}
+      ${linha("Receita (previsto)", fmtMoney(receitaPrevistaMes))}
+      ${linha("Despesa (real)", fmtMoney(despesaMes), "var(--red)")}
+      ${linha("Despesa (previsto, com fatura de cartão)", fmtMoney(despesaPrevistaMes))}
+      ${linha("Saldo (real)", fmtMoney(saldoMes), saldoMes >= 0 ? "var(--green)" : "var(--red)")}
+      ${linha("Saldo (previsto)", fmtMoney(saldoPrevistoMes), saldoPrevistoMes >= 0 ? "var(--green)" : "var(--red)")}
     `) +
     secao("📈 Score de Saúde Financeira", `
       <div style="display:flex;align-items:baseline;gap:10px;margin-bottom:12px;">
