@@ -665,6 +665,16 @@
     </div>
   </div>
 
+  <div id="duplicatasModal" class="modal-overlay hidden">
+    <div class="modal-box">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+        <h2 style="margin:0;">🔍 Duplicatas encontradas</h2>
+        <button class="icon-btn" style="font-size:20px;" onclick="closeDuplicatasModal()">✕</button>
+      </div>
+      <div id="duplicatasModalBody"></div>
+    </div>
+  </div>
+
   <div id="simuladorQuitacaoModal" class="modal-overlay hidden">
     <div class="modal-box">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
@@ -5819,9 +5829,10 @@ function getGruposCompraDuplicada(){
   (raw.compras || []).forEach((c, i) => {
     if(!c[2]) return; // sem descrição, ignora (linha vazia)
     const row = 10 + i;
-    const key = chaveTransacaoImport(c[0] ? fmtDataBR(serialToDate(c[0])) : "", c[2], c[4] || 0);
+    const dataBR = c[0] ? fmtDataBR(serialToDate(c[0])) : "";
+    const key = chaveTransacaoImport(dataBR, c[2], c[4] || 0);
     if(!grupos[key]) grupos[key] = [];
-    grupos[key].push({ row, categoria: c[3] || "" });
+    grupos[key].push({ row, categoria: c[3] || "", desc: c[2], dataBR, valor: c[4] || 0 });
   });
   return Object.values(grupos).filter(g => g.length > 1);
 }
@@ -5838,9 +5849,10 @@ function getGruposLancamentoDuplicado(){
   const grupos = {};
   debitoRows().forEach(it => {
     if(!it.desc || !it.dataVenc) return;
-    const key = chaveTransacaoImport(fmtDataBR(serialToDate(it.dataVenc)), it.desc, it.valor || 0);
+    const dataBR = fmtDataBR(serialToDate(it.dataVenc));
+    const key = chaveTransacaoImport(dataBR, it.desc, it.valor || 0);
     if(!grupos[key]) grupos[key] = [];
-    grupos[key].push({ row: it.row, categoria: it.categoria || "" });
+    grupos[key].push({ row: it.row, categoria: it.categoria || "", desc: it.desc, dataBR, valor: it.valor || 0 });
   });
   return Object.values(grupos).filter(g => g.length > 1);
 }
@@ -5850,26 +5862,7 @@ async function detectarERemoverDuplicatasDebito(){
     showToast("Nenhuma duplicata encontrada (mesma data, descrição e valor)", "success");
     return;
   }
-  const totalRemover = grupos.reduce((s,g) => s + (g.length - 1), 0);
-  const confirmar = confirm(
-    `Encontrei ${grupos.length} grupo(s) de lançamentos duplicados (mesma data, descrição e valor), ` +
-    `totalizando ${totalRemover} linha(s) a remover.\n\n` +
-    `Em cada grupo, mantenho a cópia que já tem categoria preenchida (ou a primeira, se nenhuma tiver) ` +
-    `e removo as outras.\n\nConfirma a remoção? Essa ação não pode ser desfeita.`
-  );
-  if(!confirmar) return;
-
-  await salvarEAtualizar(async () => {
-    const rowsParaRemover = [];
-    grupos.forEach(g => {
-      const idxComCategoria = g.findIndex(item => item.categoria);
-      const manterIdx = idxComCategoria !== -1 ? idxComCategoria : 0;
-      g.forEach((item, idx) => { if(idx !== manterIdx) rowsParaRemover.push(item.row); });
-    });
-    const colunas = ["B","C","D","E","F","G","H","I","J","K"];
-    const updates = rowsParaRemover.flatMap(row => colunas.map(col => ({ range: `Débito!${col}${row}`, value: "" })));
-    await writeCellsBatch(updates);
-  }, [renderLancamentos], `${totalRemover} linha(s) duplicada(s) removida(s)`, "Não foi possível remover as duplicatas");
+  mostrarModalDuplicatas(grupos, "debito");
 }
 
 async function detectarERemoverDuplicatas(){
@@ -5878,14 +5871,50 @@ async function detectarERemoverDuplicatas(){
     showToast("Nenhuma duplicata encontrada (mesma data, descrição e valor)", "success");
     return;
   }
+  mostrarModalDuplicatas(grupos, "credito");
+}
+
+// Mostra os grupos de verdade (descrição, data, valor, quantas cópias) antes de pedir confirmação
+// — em vez do confirm() nativo do navegador, que só dá pra mostrar um número, não uma lista.
+function mostrarModalDuplicatas(grupos, tipo){
+  window._duplicatasGruposPendente = grupos;
+  window._duplicatasTipoPendente = tipo;
   const totalRemover = grupos.reduce((s,g) => s + (g.length - 1), 0);
-  const confirmar = confirm(
-    `Encontrei ${grupos.length} grupo(s) de compras duplicadas (mesma data, descrição e valor), ` +
-    `totalizando ${totalRemover} linha(s) a remover.\n\n` +
-    `Em cada grupo, mantenho a cópia que já tem categoria preenchida (ou a primeira, se nenhuma tiver) ` +
-    `e removo as outras.\n\nConfirma a remoção? Essa ação não pode ser desfeita.`
-  );
-  if(!confirmar) return;
+  const linhasHtml = grupos.map(g => {
+    const idxComCategoria = g.findIndex(item => item.categoria);
+    const manterIdx = idxComCategoria !== -1 ? idxComCategoria : 0;
+    return `<div class="row" style="align-items:flex-start;padding:8px 0;border-bottom:1px solid var(--border);">
+      <div>
+        <div style="font-weight:600;">${g[0].desc}</div>
+        <div style="font-size:11.5px;color:var(--muted);">${g[0].dataBR} · ${fmtMoney(g[0].valor)} · ${g.length} cópias encontradas</div>
+      </div>
+      <div style="text-align:right;font-size:11px;color:var(--green);white-space:nowrap;">mantém 1${g[idxComCategoria] ? " (com categoria)" : ""}</div>
+    </div>`;
+  }).join("");
+  document.getElementById("duplicatasModalBody").innerHTML = `
+    <p style="font-size:12.5px;color:var(--muted);margin:0 0 12px;">
+      ${grupos.length} grupo(s) duplicado(s), ${totalRemover} linha(s) a remover no total. Em cada grupo, mantenho a cópia com categoria preenchida (ou a primeira, se nenhuma tiver).
+    </p>
+    <div style="max-height:340px;overflow-y:auto;margin-bottom:14px;">${linhasHtml}</div>
+    <div class="actions">
+      <button class="save-btn" style="background:var(--red);border-color:var(--red);" onclick="confirmarRemocaoDuplicatas()">Remover ${totalRemover} linha(s) duplicada(s)</button>
+      <button class="cancel-btn" onclick="closeDuplicatasModal()">Cancelar</button>
+    </div>`;
+  document.getElementById("duplicatasModal").classList.remove("hidden");
+}
+function closeDuplicatasModal(){
+  document.getElementById("duplicatasModal").classList.add("hidden");
+  window._duplicatasGruposPendente = null;
+  window._duplicatasTipoPendente = null;
+}
+async function confirmarRemocaoDuplicatas(){
+  const grupos = window._duplicatasGruposPendente;
+  const tipo = window._duplicatasTipoPendente;
+  if(!grupos || !tipo) return;
+  const totalRemover = grupos.reduce((s,g) => s + (g.length - 1), 0);
+  const sheetName = tipo === "debito" ? "Débito" : "Crédito";
+  const colunas = tipo === "debito" ? ["B","C","D","E","F","G","H","I","J","K"] : ["B","C","D","E","F","G","H","I"];
+  const aposCarregar = tipo === "debito" ? [renderLancamentos] : [renderCredito];
 
   await salvarEAtualizar(async () => {
     const rowsParaRemover = [];
@@ -5894,10 +5923,10 @@ async function detectarERemoverDuplicatas(){
       const manterIdx = idxComCategoria !== -1 ? idxComCategoria : 0;
       g.forEach((item, idx) => { if(idx !== manterIdx) rowsParaRemover.push(item.row); });
     });
-    const colunas = ["B","C","D","E","F","G","H","I"];
-    const updates = rowsParaRemover.flatMap(row => colunas.map(col => ({ range: `Crédito!${col}${row}`, value: "" })));
+    const updates = rowsParaRemover.flatMap(row => colunas.map(col => ({ range: `${sheetName}!${col}${row}`, value: "" })));
     await writeCellsBatch(updates);
-  }, [renderCredito], `${totalRemover} linha(s) duplicada(s) removida(s)`, "Não foi possível remover as duplicatas");
+    closeDuplicatasModal();
+  }, aposCarregar, `${totalRemover} linha(s) duplicada(s) removida(s)`, "Não foi possível remover as duplicatas");
 }
 
 async function saveCreditCategoriaInline(row, categoria){
