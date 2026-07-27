@@ -829,6 +829,11 @@
       <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;">
         <input id="lancSearchInput" type="text" placeholder="🔎 Buscar por descrição..." style="flex:1;min-width:160px;background:var(--panel);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:9px 12px;font-size:13px;">
         <select id="lancFiltroCategoriaSelect" onchange="setLancFiltroCategoria(this.value)" style="background:var(--panel);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:9px 12px;font-size:13px;flex-shrink:0;"></select>
+        <select id="lancFiltroStatusSelect" onchange="setLancFiltroStatus(this.value)" style="background:var(--panel);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:9px 12px;font-size:13px;flex-shrink:0;">
+          <option value="">Todos os status</option>
+          <option value="pago">✅ Pago</option>
+          <option value="pendente">Pendente</option>
+        </select>
         <button class="connect-btn" id="lancFiltroSemCategoriaBtn" onclick="toggleLancFiltroSemCategoria()" style="flex-shrink:0;white-space:nowrap;">🏷️ Sem categoria</button>
       </div>
       <div id="lancBulkBar" class="hidden" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:12px;padding:10px 14px;background:var(--card);border:1px solid var(--border);border-radius:10px;">
@@ -926,10 +931,12 @@
                 <option value="desc-za">Descrição (Z-A)</option>
               </select>
               <select id="creditFiltroCategoriaSelect" onchange="setCreditCategoryFilterFromSelect(this.value)" style="background:var(--panel);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:7px 9px;font-size:12.5px;"></select>
+              <button class="connect-btn" id="creditFiltroSemCategoriaBtn" onclick="toggleCreditFiltroSemCategoria()" style="white-space:nowrap;">🏷️ Sem categoria</button>
               <button class="connect-btn" onclick="abrirNovaCompraModal()">+ Nova compra</button>
               <button class="connect-btn" onclick="detectarERemoverDuplicatas()">🔍 Detectar e remover duplicatas</button>
             </div>
           </div>
+          <input id="creditSearchInput" type="text" placeholder="🔎 Buscar por descrição..." style="width:100%;background:var(--panel);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:9px 12px;font-size:13px;margin-bottom:14px;">
           <div id="creditBulkBar" class="hidden" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:12px;padding:10px 14px;background:var(--card);border:1px solid var(--border);border-radius:10px;">
             <span id="creditBulkCount" style="font-size:13px;color:var(--muted);"></span>
             <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
@@ -1121,7 +1128,7 @@ const MONTHS_FULL = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julh
 
 let accessToken = null;
 let SPREADSHEET_ID = null;
-let state = { monthIdx: new Date().getMonth(), year: new Date().getFullYear(), cardIdx: 0, creditLayout: "unico", creditCategoryFilter: null };
+let state = { monthIdx: new Date().getMonth(), year: new Date().getFullYear(), cardIdx: 0, creditLayout: "unico", creditCategoryFilter: null, creditFiltroSemCategoria: false, creditSearchQuery: "" };
 let raw = null;
 let valoresOcultos = (localStorage.getItem("ftm_valores_ocultos") === "1");
 
@@ -3417,6 +3424,12 @@ let lancSelectedRows = new Set();
 let lancSearchQuery = "";
 let lancFiltroSemCategoria = false;
 let lancFiltroCategoria = "";
+let lancFiltroStatus = "";
+
+function setLancFiltroStatus(valor){
+  lancFiltroStatus = valor;
+  renderLancamentos();
+}
 
 function setupLancSearch(){
   const input = document.getElementById("lancSearchInput");
@@ -3464,6 +3477,11 @@ function renderLancamentos(){
   if(lancFiltroCategoria){
     items = items.filter(it => it.categoria === lancFiltroCategoria);
   }
+  if(lancFiltroStatus === "pago"){
+    items = items.filter(it => it.status === "✅ Pago");
+  } else if(lancFiltroStatus === "pendente"){
+    items = items.filter(it => it.status !== "✅ Pago");
+  }
 
   const filtroBtn = document.getElementById("lancFiltroSemCategoriaBtn");
   if(filtroBtn){
@@ -3487,9 +3505,13 @@ function renderLancamentos(){
     return;
   }
   const allSelected = items.length > 0 && items.every(it => lancSelectedRows.has(it.row));
-  const selecionarTodasHtml = `<div style="margin-bottom:8px;"><label style="display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--muted);cursor:pointer;width:fit-content;">
-    <input type="checkbox" ${allSelected?"checked":""} onchange="toggleLancSelectAll(this.checked)"> Selecionar todas
-  </label></div>`;
+  const filtroAtivo = !!(lancSearchQuery || lancFiltroSemCategoria || lancFiltroCategoria || lancFiltroStatus);
+  const selecionarTodasHtml = `<div style="margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
+    <label style="display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--muted);cursor:pointer;width:fit-content;">
+      <input type="checkbox" ${allSelected?"checked":""} onchange="toggleLancSelectAll(this.checked)"> Selecionar todas
+    </label>
+    ${filtroAtivo ? `<button class="connect-btn" style="color:var(--red);border-color:var(--red);font-size:12px;padding:6px 10px;" onclick="excluirTodosFiltradosLanc()">🗑️ Excluir os ${items.length} filtrado${items.length===1?"":"s"}</button>` : ""}
+  </div>`;
   const cards = items.map(it => lancRowHtml(it)).join("");
   el.innerHTML = selecionarTodasHtml + cards;
   updateLancBulkBar();
@@ -3639,6 +3661,11 @@ async function bulkMarkLancamentos(marcarPago){
   }
 }
 
+function excluirTodosFiltradosLanc(){
+  toggleLancSelectAll(true);
+  bulkExcluirLancamentos();
+}
+
 async function bulkExcluirLancamentos(){
   const rows = Array.from(lancSelectedRows);
   if(rows.length === 0) return;
@@ -3695,6 +3722,7 @@ function openEditForm(row){
   formEl.dataset.editingRow = row;
   formEl.innerHTML = `
     <div class="edit-form" style="margin-bottom:0;">
+      <div><label>Data</label><input id="fDataEdit" type="date" value="${it.dataVenc ? serialToDate(it.dataVenc).toISOString().slice(0,10) : ""}"></div>
       <div><label>Descrição</label><input id="fDesc" value="${it.desc}"></div>
       <div><label>Categoria</label><select id="fCat">${categoriaOptions(it.categoria)}</select></div>
       <div><label>Tipo</label>
@@ -3772,12 +3800,21 @@ async function saveEdit(row){
   const valorTotal = parseFloat(document.getElementById("fValor").value) || 0;
   const parcelasEl = document.getElementById("fParcelas");
   const numParcelas = Math.max(1, parseInt(parcelasEl ? parcelasEl.value : 1) || 1);
+  const dataEditStr = document.getElementById("fDataEdit")?.value; // AAAA-MM-DD
 
-  // Precisa da Conta e da data original pra gerar as parcelas futuras — não vêm do formulário
-  // (o form de edição não tem esses campos), busca de novo nos dados já carregados.
+  // Precisa da Conta pra gerar as parcelas futuras — não vem do formulário (o form de edição não
+  // tem esse campo), busca de novo nos dados já carregados.
   const it = debitoRows().find(x => x.row === row);
   const conta = it ? it.conta : "";
-  const dataBaseSerial = it ? (it.dataVenc || it.dataLanc) : null;
+  // A data usada como base é a que a pessoa escolheu no formulário — só cai pra data original se
+  // por algum motivo o campo estiver vazio.
+  let dataBaseSerial = it ? (it.dataVenc || it.dataLanc) : null;
+  let dataBR = null;
+  if(dataEditStr){
+    const [y, m, d] = dataEditStr.split("-").map(Number);
+    dataBR = `${String(d).padStart(2,"0")}/${String(m).padStart(2,"0")}/${y}`;
+    dataBaseSerial = { anoManual: y, mesManual: m - 1, diaManual: d }; // usado só se precisar gerar parcelas futuras
+  }
 
   // Divide o valor em parcelas iguais — a última absorve a diferença de arredondamento, mesmo
   // princípio já usado no "Novo lançamento".
@@ -3791,13 +3828,19 @@ async function saveEdit(row){
   }
 
   try{
+    if(dataBR){
+      await writeCell(`Débito!B${row}`, dataBR);
+      await writeCell(`Débito!C${row}`, dataBR);
+    }
     await writeCell(`Débito!D${row}`, descParcela1);
     await writeCell(`Débito!H${row}`, cat);
     await writeCell(`Débito!I${row}`, tipo);
     await writeCell(`Débito!J${row}`, valorParcela);
 
     if(numParcelas > 1){
-      const dataBase = serialToDate(dataBaseSerial);
+      const dataBase = dataEditStr
+        ? new Date(dataBaseSerial.anoManual, dataBaseSerial.mesManual, dataBaseSerial.diaManual)
+        : serialToDate(dataBaseSerial);
       const novasLinhas = [];
       for(let n = 1; n < numParcelas; n++){
         const ehUltima = n === numParcelas - 1;
@@ -3805,10 +3848,10 @@ async function saveEdit(row){
         const valorDestaParcela = ehUltima
           ? Math.round((valorTotal - valorParcela * (numParcelas - 1)) * 100) / 100
           : valorParcela;
-        const dataParcela = new Date(dataBase.getFullYear(), dataBase.getMonth() + n, dataBase.getDate());
-        const dataBR = fmtDataBR(dataParcela);
+        const dataParcela = new Date(dataBase.getFullYear(), dataBase.getMonth() + n, diaClampeadoNoMes(dataBase.getFullYear(), dataBase.getMonth() + n, dataBase.getDate()));
+        const dataBRParcela = fmtDataBR(dataParcela);
         const descParcela = `${descBase} (${n+1}/${numParcelas})`;
-        novasLinhas.push([dataBR, dataBR, descParcela, "", "", conta, cat, tipo, valorDestaParcela, ""]);
+        novasLinhas.push([dataBRParcela, dataBRParcela, descParcela, "", "", conta, cat, tipo, valorDestaParcela, ""]);
       }
       for(const linha of novasLinhas) await appendRow("Débito", linha);
     }
@@ -4300,6 +4343,20 @@ function setupCreditLayoutToggle(){
       document.getElementById("credito-ladoalado").classList.toggle("hidden", state.creditLayout !== "ladoalado");
       if(raw) renderCredito();
     });
+  });
+}
+
+function toggleCreditFiltroSemCategoria(){
+  state.creditFiltroSemCategoria = !state.creditFiltroSemCategoria;
+  renderCredito();
+}
+function setupCreditSearch(){
+  const input = document.getElementById("creditSearchInput");
+  if(!input || input.dataset.wired === "1") return;
+  input.dataset.wired = "1";
+  input.addEventListener("input", () => {
+    state.creditSearchQuery = input.value.trim().toLowerCase();
+    renderCredito();
   });
 }
 
@@ -5665,11 +5722,30 @@ function renderCredito(){
   renderCreditCategoryChart(compras, "creditCatChart");
 
   const el = document.getElementById("creditPurchases");
-  const filtered = state.creditCategoryFilter
+  setupCreditSearch();
+  let filtered = state.creditCategoryFilter
     ? compras.filter(c => normalizeCatName(c[3]) === state.creditCategoryFilter)
     : compras;
+  if(state.creditFiltroSemCategoria){
+    filtered = filtered.filter(c => !c[3]);
+  }
+  if(state.creditSearchQuery){
+    filtered = filtered.filter(c => String(c[2] || "").toLowerCase().includes(state.creditSearchQuery));
+  }
+  const semCategoriaBtn = document.getElementById("creditFiltroSemCategoriaBtn");
+  if(semCategoriaBtn){
+    const semCategoriaNoMes = compras.filter(c => !c[3]).length;
+    semCategoriaBtn.textContent = state.creditFiltroSemCategoria ? "✕ Ver todas" : `🏷️ Sem categoria (${semCategoriaNoMes})`;
+    semCategoriaBtn.style.background = state.creditFiltroSemCategoria ? "var(--gold)" : "";
+    semCategoriaBtn.style.color = state.creditFiltroSemCategoria ? "#1A1917" : "";
+    semCategoriaBtn.style.borderColor = state.creditFiltroSemCategoria ? "var(--gold)" : "";
+  }
   if(filtered.length === 0){
-    el.innerHTML = state.creditCategoryFilter
+    el.innerHTML = state.creditSearchQuery
+      ? `<p class="empty">Nenhuma compra com "${state.creditSearchQuery}" em ` + MONTHS_FULL[state.monthIdx] + '</p>'
+      : state.creditFiltroSemCategoria
+      ? '<p class="empty">Nenhuma compra sem categoria em ' + MONTHS_FULL[state.monthIdx] + ' 🎉</p>'
+      : state.creditCategoryFilter
       ? '<p class="empty">Nenhuma compra dessa categoria em ' + MONTHS_FULL[state.monthIdx] + '</p>'
       : '<p class="empty">Nenhuma compra neste cartão em ' + MONTHS_FULL[state.monthIdx] + '</p>';
     window._creditPurchasesCache = [];
@@ -5715,10 +5791,14 @@ function renderCredito(){
       </div>
     </div>`;
   }).join("");
+  const filtroAtivoCredito = !!(state.creditSearchQuery || state.creditFiltroSemCategoria || state.creditCategoryFilter);
   const selecionarTodasHtml = window._creditPurchasesCache.length > 0
-    ? `<div style="margin-bottom:8px;"><label style="display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--muted);cursor:pointer;width:fit-content;">
-        <input type="checkbox" ${allSelected?"checked":""} onchange="toggleCreditSelectAll(this.checked)"> Selecionar todas
-      </label></div>`
+    ? `<div style="margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
+        <label style="display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--muted);cursor:pointer;width:fit-content;">
+          <input type="checkbox" ${allSelected?"checked":""} onchange="toggleCreditSelectAll(this.checked)"> Selecionar todas
+        </label>
+        ${filtroAtivoCredito ? `<button class="connect-btn" style="color:var(--red);border-color:var(--red);font-size:12px;padding:6px 10px;" onclick="excluirTodosFiltradosCredito()">🗑️ Excluir os ${window._creditPurchasesCache.length} filtrado${window._creditPurchasesCache.length===1?"":"s"}</button>` : ""}
+      </div>`
     : "";
   el.innerHTML = selecionarTodasHtml + cards;
   updateCreditBulkBar();
@@ -5882,6 +5962,11 @@ async function bulkCategorizarCompras(){
     creditSelectedRows.clear();
   }, [renderCredito], `${rows.length} compra${rows.length===1?"":"s"} categorizada${rows.length===1?"":"s"}`, "Não foi possível categorizar em lote");
 }
+function excluirTodosFiltradosCredito(){
+  toggleCreditSelectAll(true);
+  bulkExcluirCompras();
+}
+
 async function bulkExcluirCompras(){
   const rows = Array.from(creditSelectedRows);
   if(rows.length === 0) return;
@@ -6011,9 +6096,11 @@ async function saveCreditCategoriaInline(row, categoria){
 function openCreditEditForm(row){
   const item = (window._creditPurchasesCache || []).find(x => x.row === row);
   if(!item) return;
-  const [data, cartao, desc, cat, valorTotal, valorParcela] = item.c;
+  const [data, cartao, desc, cat, valorTotal, valorParcela, parcela, vencimento] = item.c;
   document.getElementById("creditEditFormBody").innerHTML = `
     <div class="edit-form" style="margin-bottom:0;">
+      <div><label>Data da compra</label><input id="ceData" type="date" value="${data ? serialToDate(data).toISOString().slice(0,10) : ""}"></div>
+      <div><label>Vencimento</label><input id="ceVencimento" type="date" value="${vencimento ? serialToDate(vencimento).toISOString().slice(0,10) : ""}"></div>
       <div><label>Descrição</label><input id="ceDesc" value="${desc}"></div>
       <div><label>Categoria</label><select id="ceCat">${categoriaOptions(cat)}</select></div>
       <div><label>Valor total</label><input id="ceValorTotal" type="number" step="0.01" value="${valorTotal}"></div>
@@ -6035,14 +6122,21 @@ async function saveCreditEdit(row){
   const cat = document.getElementById("ceCat").value;
   const valorTotal = parseFloat(document.getElementById("ceValorTotal").value) || 0;
   const valorParcela = parseFloat(document.getElementById("ceValorParcela").value) || 0;
+  const dataStr = document.getElementById("ceData")?.value; // AAAA-MM-DD
+  const vencimentoStr = document.getElementById("ceVencimento")?.value; // AAAA-MM-DD
+  const paraDataBR = (iso) => { const [y,m,d] = iso.split("-").map(Number); return `${String(d).padStart(2,"0")}/${String(m).padStart(2,"0")}/${y}`; };
+
   await salvarEAtualizar(async () => {
-    // Crédito!B10:I -> D=Descrição E=Categoria F=Valor total G=Valor da parcela
-    await writeCellsBatch([
+    // Crédito!B10:I -> B=Data D=Descrição E=Categoria F=Valor total G=Valor da parcela I=Vencimento
+    const updates = [
       { range: `Crédito!D${row}`, value: desc },
       { range: `Crédito!E${row}`, value: cat },
       { range: `Crédito!F${row}`, value: valorTotal },
       { range: `Crédito!G${row}`, value: valorParcela },
-    ]);
+    ];
+    if(dataStr) updates.push({ range: `Crédito!B${row}`, value: paraDataBR(dataStr) });
+    if(vencimentoStr) updates.push({ range: `Crédito!I${row}`, value: paraDataBR(vencimentoStr) });
+    await writeCellsBatch(updates);
     closeCreditEditForm();
   }, [renderCredito], "Compra atualizada");
 }
@@ -7374,7 +7468,7 @@ window.onload = () => {
     raw = null;
     resolveWorkspace();
   });
-  document.getElementById("novoLancBtn").addEventListener("click", openNewForm);
+  document.getElementById("novoLancBtn").addEventListener("click", () => openNewForm());
   document.getElementById("importFaturaInput").addEventListener("change", (e) => {
     if(e.target.files[0]) handleImportFaturaCartao(e.target.files[0]);
     e.target.value = "";
