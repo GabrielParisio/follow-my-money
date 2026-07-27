@@ -4635,9 +4635,13 @@ function renderDividasTimeline(dividasAtivas){
   if(panel) panel.classList.remove("hidden");
   const hoje = new Date(); hoje.setHours(0,0,0,0);
   const dataMax = comData[comData.length - 1].dataQuitacaoPrevista;
-  const totalDias = Math.max(1, (dataMax - hoje) / 86400000);
+  // Escala fixa até 1º de janeiro do ano SEGUINTE ao da dívida mais distante — em vez de ancorar
+  // no próprio máximo (o que faz a barra mais longa sempre parecer "100% cheia/pronta", mesmo
+  // faltando anos — o oposto do que uma barra cheia costuma significar).
+  const fimDaEscala = new Date(dataMax.getFullYear() + 1, 0, 1);
+  const totalDias = Math.max(1, (fimDaEscala - hoje) / 86400000);
   const W = 600, rowH = 42, PAD_L = 10, PAD_R = 90;
-  const H = comData.length * rowH + 10;
+  const H = comData.length * rowH + 24;
   const barMaxW = W - PAD_L - PAD_R;
   const cores = ["var(--red)", "var(--yellow)", "var(--blue)", "var(--purple)", "var(--green)"];
   const linhas = comData.map((d, idx) => {
@@ -4651,7 +4655,8 @@ function renderDividasTimeline(dividasAtivas){
       <rect x="${PAD_L}" y="${y+14}" width="${larguraBarra}" height="10" rx="5" fill="${cor}"/>
       <text x="${PAD_L + larguraBarra + 8}" y="${y+22}" font-size="10" fill="var(--muted)">${fmtDate(d.dataQuitacaoPrevista)}/${String(d.dataQuitacaoPrevista.getFullYear()).slice(-2)}</text>`;
   }).join("");
-  el.innerHTML = `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;max-height:${H}px;">${linhas}</svg>`;
+  const rotuloEscala = `<text x="${PAD_L}" y="${H-6}" font-size="10" fill="var(--muted)">Régua: hoje → 01/${fimDaEscala.getFullYear()}</text>`;
+  el.innerHTML = `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;max-height:${H}px;">${linhas}${rotuloEscala}</svg>`;
 }
 
 function renderDividas(){
