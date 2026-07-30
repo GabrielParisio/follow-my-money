@@ -458,6 +458,7 @@
       <span data-view="lancamentos">🧾 <b>Débito</b></span>
       <span data-view="credito">💳 <b>Crédito</b></span>
       <span data-view="dividas">📋 <b>Dívidas</b></span>
+      <span data-view="planejamento">🧭 <b>Planejamento Financeiro</b></span>
     </div>
     <div class="sidebar-footer">
       <div id="lastUpdated" style="font-size:11px;color:var(--muted);margin-bottom:10px;"></div>
@@ -1029,6 +1030,24 @@
     </div>
   </div>
 
+  <div id="view-planejamento" class="view">
+    <div class="chart-panel" style="margin-bottom:16px;">
+      <h2>🧭 Independência Financeira</h2>
+      <p style="font-size:12px;color:var(--muted);margin-top:-6px;margin-bottom:16px;">
+        Quanto de patrimônio você precisa acumular pra viver só do rendimento, sem depender de trabalhar — usando a regra clássica de retirada segura (4% ao ano) e a taxa real de retorno que você configurou no Cadastro.
+      </p>
+      <div id="planejamentoIndependenciaCards" class="cards" style="margin-bottom:16px;"></div>
+      <div id="planejamentoIndependenciaDetalhe"></div>
+    </div>
+    <div class="chart-panel">
+      <h2>⚖️ Orçamento por Natureza</h2>
+      <p style="font-size:12px;color:var(--muted);margin-top:-6px;margin-bottom:16px;">
+        Separa o gasto do mês por natureza — Essencial (não corta sem dor), Discricionário (dá pra cortar numa emergência) e Investimento (já vira patrimônio). Depende de cada categoria ter a Natureza preenchida no Cadastro.
+      </p>
+      <div id="planejamentoNaturezaConteudo"></div>
+    </div>
+  </div>
+
   <div id="view-cadastro" class="view">
     <div class="chart-panel" id="roadmapDevPanel" style="border-color:var(--blue);">
       <details>
@@ -1075,6 +1094,17 @@
       <div class="edit-form" style="margin-bottom:0;">
         <div><label>Reserva já acumulada</label><input id="cadReservaInicial" type="number" step="0.01" placeholder="0.00"></div>
         <div class="actions"><button class="save-btn" onclick="saveCadastroReservaInicial()">Salvar</button></div>
+      </div>
+    </div>
+
+    <div class="chart-panel">
+      <h2>📈 Taxa real de retorno esperada</h2>
+      <p style="font-size:12.5px;color:var(--muted);margin-top:-6px;margin-bottom:14px;">
+        Usada na projeção de Independência Financeira (aba Planejamento Financeiro). É a taxa <b>acima da inflação</b> — ex: se sua carteira mira IPCA+4%, o número aqui é <b>4</b>, não a taxa nominal cheia. Padrão: 4% ao ano (regra clássica de retirada segura).
+      </p>
+      <div class="edit-form" style="margin-bottom:0;">
+        <div><label>Taxa real esperada (% a.a.)</label><input id="cadTaxaRealEsperada" type="number" step="0.1" placeholder="4"></div>
+        <div class="actions"><button class="save-btn" onclick="saveCadastroTaxaRealEsperada()">Salvar</button></div>
       </div>
     </div>
 
@@ -1401,7 +1431,7 @@ setInterval(updateLastUpdatedLabel, 30000);
 async function loadData(){
   setLoading(true);
   try{
-    const [cadastro, orcadoTotal, cartoes, compras, nomeUsuario, debito, dividas, salarioBruto, reservaInicial, patrimonio, contasDebito] = await fetchRanges([
+    const [cadastro, orcadoTotal, cartoes, compras, nomeUsuario, debito, dividas, salarioBruto, reservaInicial, patrimonio, contasDebito, taxaRealEsperada] = await fetchRanges([
       "Cadastro!B7:F60",
       "Cadastro!F4",
       "Cadastro!H7:K20",
@@ -1412,9 +1442,10 @@ async function loadData(){
       "Cadastro!T8",
       "Cadastro!T10",
       "Patrimonio!A2:H",
-      "Cadastro!M7:N20"
+      "Cadastro!M7:N20",
+      "Cadastro!T12"
     ]);
-    raw = { cadastro, orcadoTotal, cartoes, compras, nomeUsuario, debito, dividas, salarioBruto, reservaInicial, patrimonio, contasDebito };
+    raw = { cadastro, orcadoTotal, cartoes, compras, nomeUsuario, debito, dividas, salarioBruto, reservaInicial, patrimonio, contasDebito, taxaRealEsperada };
     await garantirSnapshotMensal();
     state.lastUpdated = Date.now();
     updateLastUpdatedLabel();
@@ -2825,6 +2856,7 @@ function setupTabs(){
       if(tab.dataset.view === "lancamentos") renderLancamentos();
       if(tab.dataset.view === "credito") renderCredito();
       if(tab.dataset.view === "dividas") renderDividas();
+      if(tab.dataset.view === "planejamento") renderPlanejamento();
       if(tab.dataset.view === "cadastro") renderCadastro();
       if(tab.dataset.view === "resumo") renderResumo();
     });
@@ -5230,6 +5262,8 @@ function renderCadastro(){
   const reservaInicial = getReservaInicial();
   const reservaInicialInput = document.getElementById("cadReservaInicial");
   if(reservaInicialInput && document.activeElement !== reservaInicialInput) reservaInicialInput.value = reservaInicial || "";
+  const taxaRealInput = document.getElementById("cadTaxaRealEsperada");
+  if(taxaRealInput && document.activeElement !== taxaRealInput) taxaRealInput.value = getTaxaRealEsperada();
   renderCadCategoriasTable();
   renderCadCartoesTable();
   renderCadContasDebitoTable();
@@ -5250,10 +5284,175 @@ async function saveCadastroReservaInicial(){
   const valor = parseFloat(document.getElementById("cadReservaInicial").value) || 0;
   await salvarEAtualizar(() => writeCell("Cadastro!T10", valor), [renderCadastro, renderCharts, render], "Reserva inicial atualizada");
 }
+async function saveCadastroTaxaRealEsperada(){
+  const valor = parseFloat(document.getElementById("cadTaxaRealEsperada").value);
+  const valorFinal = isNaN(valor) ? 4 : valor;
+  await salvarEAtualizar(() => writeCell("Cadastro!T12", valorFinal), [renderCadastro, renderPlanejamento], "Taxa real esperada atualizada");
+}
 
+// ===================== PLANEJAMENTO FINANCEIRO =====================
+
+// Despesa e saldo médios mensais REAIS, olhando pra trás a partir do mês vigente — pula meses sem
+// nenhum lançamento (receita e despesa ambos zerados), mesmo princípio já usado no Score e no
+// Índice de Poupança acumulado. maxMeses limita quantos meses pra trás olhar (12 = até 1 ano).
+function calcularMediasReaisRecentes(maxMeses){
+  const hoje = new Date();
+  const mi = state.monthIdx, ano = state.year;
+  let despesas = [], saldos = [];
+  for(let i = 0; i < maxMeses; i++){
+    const d = new Date(ano, mi - i, 1);
+    if(d > hoje) continue; // não conta mês futuro
+    const r = calcReal("Receita", d.getMonth(), d.getFullYear());
+    const de = calcReal("Despesa", d.getMonth(), d.getFullYear());
+    if(r === 0 && de === 0) continue;
+    despesas.push(de);
+    saldos.push(r - de);
+  }
+  if(despesas.length === 0) return { despesaMedia: 0, saldoMedio: 0, mesesComDado: 0 };
+  return {
+    despesaMedia: despesas.reduce((s,v)=>s+v,0) / despesas.length,
+    saldoMedio: saldos.reduce((s,v)=>s+v,0) / saldos.length,
+    mesesComDado: despesas.length
+  };
+}
+
+// Projeta, mês a mês (juros compostos + aporte mensal constante), quantos meses faltam pra atingir
+// o patrimônio-alvo. Trabalha inteiramente em termos REAIS (taxa já é acima da inflação, valores já
+// estão em reais de hoje) — não precisa prever inflação futura explicitamente.
+function projetarMesesAteIndependencia(patrimonioAtual, aporteMensal, taxaRealAnualPct, alvo){
+  if(patrimonioAtual >= alvo) return 0;
+  const taxaMensal = Math.pow(1 + taxaRealAnualPct/100, 1/12) - 1;
+  const LIMITE_MESES = 100 * 12; // não tenta prever além de 100 anos — sinal de que não vai atingir nesse ritmo
+  let patrimonio = patrimonioAtual;
+  for(let m = 1; m <= LIMITE_MESES; m++){
+    patrimonio = patrimonio * (1 + taxaMensal) + aporteMensal;
+    if(patrimonio >= alvo) return m;
+  }
+  return null; // não atinge em 100 anos nesse ritmo
+}
+
+function renderPlanejamento(){
+  if(!raw) return;
+
+  // ---- Independência Financeira ----
+  const { despesaMedia, saldoMedio, mesesComDado } = calcularMediasReaisRecentes(12);
+  const despesaAnual = despesaMedia * 12;
+  const patrimonioAlvo = despesaAnual / 0.04;
+
+  const reserva = calcSaldoInvestimento("Reserva de Emergência");
+  const rendaFixa = calcSaldoInvestimento("Renda Fixa");
+  const rendaVariavel = calcSaldoInvestimento("Renda Variável");
+  const totalAtivos = reserva + rendaFixa + rendaVariavel;
+  const totalDividas = getDividasParsed().filter(d => !isDividaQuitada(d)).reduce((s,d) => s + (d.saldoDevedor||0), 0);
+  const patrimonioAtual = totalAtivos - totalDividas;
+
+  const taxaReal = getTaxaRealEsperada();
+  const pctAlcancado = patrimonioAlvo > 0 ? Math.min(100, Math.max(0, patrimonioAtual / patrimonioAlvo * 100)) : 0;
+  const mesesRestantes = despesaAnual > 0 ? projetarMesesAteIndependencia(patrimonioAtual, saldoMedio, taxaReal, patrimonioAlvo) : null;
+
+  let previsaoTexto;
+  if(despesaAnual === 0){
+    previsaoTexto = "Sem dado de despesa suficiente ainda pra calcular — precisa de pelo menos 1 mês com lançamento real.";
+  } else if(mesesRestantes === 0){
+    previsaoTexto = "🎉 Você já atingiu o patrimônio-alvo!";
+  } else if(mesesRestantes === null){
+    previsaoTexto = "No ritmo de aporte atual, não converge em 100 anos — o aporte médio mensal está baixo (ou negativo) demais pra essa meta, mesmo com a taxa real configurada.";
+  } else {
+    const anos = Math.floor(mesesRestantes / 12), mesesResto = mesesRestantes % 12;
+    previsaoTexto = `No ritmo atual (aporte médio de ${fmtMoney(saldoMedio)}/mês, taxa real de ${taxaReal}% a.a.), faltam aproximadamente <b>${anos} ano${anos===1?"":"s"}${mesesResto>0?` e ${mesesResto} mês${mesesResto===1?"":"es"}`:""}</b>.`;
+  }
+
+  document.getElementById("planejamentoIndependenciaCards").innerHTML = `
+    <div class="card">
+      <div class="accent" style="background:var(--gold)"></div>
+      <div class="body">
+        <div class="label">Patrimônio-alvo</div>
+        <div class="value" style="font-size:20px;">${fmtMoney(patrimonioAlvo)}</div>
+        <div class="sub">Despesa anual ${fmtMoney(despesaAnual)} ÷ 4%</div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="accent" style="background:${patrimonioAtual>=0?"var(--green)":"var(--red)"}"></div>
+      <div class="body">
+        <div class="label">Patrimônio atual</div>
+        <div class="value" style="font-size:20px;color:${patrimonioAtual>=0?"var(--text)":"var(--red)"};">${fmtMoney(patrimonioAtual)}</div>
+        <div class="sub">${pctAlcancado.toFixed(1)}% do alvo</div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="accent" style="background:var(--blue)"></div>
+      <div class="body">
+        <div class="label">Aporte médio mensal</div>
+        <div class="value" style="font-size:20px;">${fmtMoney(saldoMedio)}</div>
+        <div class="sub">Média dos últimos ${mesesComDado} mês${mesesComDado===1?"":"es"} com dado</div>
+      </div>
+    </div>`;
+
+  document.getElementById("planejamentoIndependenciaDetalhe").innerHTML = `
+    <div style="height:8px;background:var(--border);border-radius:4px;overflow:hidden;margin-bottom:10px;">
+      <div style="height:100%;width:${pctAlcancado}%;background:var(--gold);"></div>
+    </div>
+    <p style="font-size:13px;color:var(--text);margin:0;">${previsaoTexto}</p>
+    <p style="font-size:11px;color:var(--muted);margin-top:10px;">
+      Taxa real configurada: <b>${taxaReal}% a.a.</b> acima da inflação — ajustável no Cadastro, seção "Taxa real de retorno esperada".
+    </p>`;
+
+  // ---- Orçamento por Natureza ----
+  const categorias = getCadastroCategoriasParsed();
+  const naturezaPorCategoria = {};
+  categorias.forEach(c => { naturezaPorCategoria[c.nome] = c.natureza || ""; });
+
+  const gastosMes = gastosPorCategoriaCombinado(state.monthIdx, state.monthIdx);
+  const somaPorNatureza = { "Essencial": 0, "Discricionário": 0, "Investimento": 0, "": 0 };
+  Object.entries(gastosMes).forEach(([cat, valor]) => {
+    const nat = naturezaPorCategoria[cat] || "";
+    somaPorNatureza[nat] = (somaPorNatureza[nat] || 0) + valor;
+  });
+  const totalGeral = Object.values(somaPorNatureza).reduce((s,v)=>s+v, 0);
+
+  const naturezaEl = document.getElementById("planejamentoNaturezaConteudo");
+  if(totalGeral === 0){
+    naturezaEl.innerHTML = '<p class="empty">Nenhum gasto neste mês ainda.</p>';
+    return;
+  }
+  const config = [
+    { chave: "Essencial", label: "🔒 Essencial", cor: "var(--blue)", desc: "Não corta sem dor — moradia, saúde, o básico." },
+    { chave: "Discricionário", label: "🎯 Discricionário", cor: "var(--yellow)", desc: "Dá pra cortar numa emergência." },
+    { chave: "Investimento", label: "📈 Investimento", cor: "var(--green)", desc: "Já vira patrimônio, não é gasto de verdade." },
+  ];
+  const linhasHtml = config.map(c => {
+    const valor = somaPorNatureza[c.chave] || 0;
+    const pct = totalGeral > 0 ? (valor / totalGeral * 100) : 0;
+    return `<div style="margin-bottom:14px;">
+      <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:4px;">
+        <span style="font-weight:600;font-size:13.5px;">${c.label}</span>
+        <span style="font-weight:700;">${fmtMoney(valor)} <span style="color:var(--muted);font-weight:400;font-size:12px;">(${pct.toFixed(0)}%)</span></span>
+      </div>
+      <div style="height:8px;background:var(--border);border-radius:4px;overflow:hidden;">
+        <div style="height:100%;width:${pct}%;background:${c.cor};"></div>
+      </div>
+      <div style="font-size:11px;color:var(--muted);margin-top:3px;">${c.desc}</div>
+    </div>`;
+  }).join("");
+
+  const naoClassificado = somaPorNatureza[""] || 0;
+  const avisoNaoClassificado = naoClassificado > 0
+    ? `<p style="font-size:12px;color:var(--yellow);margin-top:12px;">⚠️ ${fmtMoney(naoClassificado)} (${(naoClassificado/totalGeral*100).toFixed(0)}%) em categorias sem Natureza definida — classifique no Cadastro pra esse número não ficar de fora do gráfico.</p>`
+    : "";
+
+  naturezaEl.innerHTML = linhasHtml + avisoNaoClassificado;
+}
 // ---- Orçamento por categoria (Cadastro!B7:F60) ----
 function getCadastroCategoriasParsed(){
-  return (raw.cadastro || []).map((r,i) => ({ row: 7+i, nome: r[0]||"", orcado: r[4]||0 })).filter(c => c.nome);
+  return (raw.cadastro || []).map((r,i) => ({ row: 7+i, nome: r[0]||"", natureza: r[1]||"", orcado: r[4]||0 })).filter(c => c.nome);
+}
+// Taxa real de retorno esperada (% ao ano, JÁ acima da inflação — ex: IPCA+4% vira "4" aqui) usada
+// na projeção de independência financeira. Configurável porque o perfil de risco/carteira de cada
+// pessoa é diferente — não existe um número "certo" universal. Padrão de 4% segue a regra clássica
+// de retirada segura (Trinity Study/Bengen), mas em termos REAIS, não nominais.
+function getTaxaRealEsperada(){
+  const v = (raw.taxaRealEsperada && raw.taxaRealEsperada[0] && raw.taxaRealEsperada[0][0]);
+  return (v === undefined || v === null || v === "") ? 4 : (Number(v) || 4);
 }
 function renderCadCategoriasTable(){
   const categorias = getCadastroCategoriasParsed();
@@ -5274,7 +5473,7 @@ function renderCadCategoriasTable(){
     <div class="chart-panel" style="cursor:pointer;margin-bottom:10px;padding:14px 16px;" onclick="openCadCategoriaEditForm(${c.row})">
       <div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px;">
         <span style="font-weight:600;font-size:13.5px;">${c.nome}</span>
-        <span style="font-size:11.5px;color:var(--muted);">✏️ editar</span>
+        <span style="font-size:11.5px;color:var(--muted);">${c.natureza ? `<span style="background:var(--panel);border:1px solid var(--border);border-radius:6px;padding:2px 7px;margin-right:6px;">${c.natureza}</span>` : ""}✏️ editar</span>
       </div>
       <div style="display:flex;justify-content:space-between;align-items:baseline;margin-top:8px;gap:10px;">
         <div><span style="font-size:11px;color:var(--muted);">Custo total (${MONTHS_FULL[state.monthIdx]})</span><br><span style="font-size:16px;font-weight:700;">${fmtMoney(gasto)}</span></div>
@@ -5293,7 +5492,18 @@ function openCadCategoriaEditForm(row){
   document.getElementById("cadCategoriaEditModalBody").innerHTML = `
     <div class="edit-form" style="margin-bottom:0;">
       <div><label>Categoria</label><input id="cadCatFormNome" value="${c.nome}"></div>
+      <div><label>Natureza</label>
+        <select id="cadCatFormNatureza">
+          <option value="" ${!c.natureza?"selected":""}>— Não classificada —</option>
+          <option value="Essencial" ${c.natureza==="Essencial"?"selected":""}>🔒 Essencial</option>
+          <option value="Discricionário" ${c.natureza==="Discricionário"?"selected":""}>🎯 Discricionário</option>
+          <option value="Investimento" ${c.natureza==="Investimento"?"selected":""}>📈 Investimento</option>
+        </select>
+      </div>
       <div><label>Orçamento mensal</label><input id="cadCatFormOrcado" type="number" step="0.01" value="${c.orcado}"></div>
+      <div style="grid-column:1/-1;font-size:11px;color:var(--muted);margin-top:-6px;">
+        Natureza alimenta o painel "Planejamento Financeiro" — Essencial (não corta sem dor), Discricionário (dá pra cortar numa emergência), Investimento (já vira patrimônio).
+      </div>
       <div class="actions">
         <button class="save-btn" onclick='saveCadCategoriaEdit(${row}, ${JSON.stringify(c.nome)})'>Salvar alterações</button>
         <button class="cancel-btn" onclick="closeCadCategoriaEditModal()">Cancelar</button>
@@ -5322,16 +5532,18 @@ async function reconectarLancamentosDaCategoria(nomeAntigo, nomeNovo){
 }
 async function saveCadCategoriaEdit(row, nomeAntigo){
   const nome = document.getElementById("cadCatFormNome").value.trim();
+  const natureza = document.getElementById("cadCatFormNatureza").value;
   const orcado = parseFloat(document.getElementById("cadCatFormOrcado").value) || 0;
   let reconectados = 0;
   await salvarEAtualizar(async () => {
     await writeCell(`Cadastro!B${row}`, nome);
+    await writeCell(`Cadastro!C${row}`, natureza);
     await writeCell(`Cadastro!F${row}`, orcado);
     if(nomeAntigo && nome !== nomeAntigo){
       reconectados = await reconectarLancamentosDaCategoria(nomeAntigo, nome);
     }
     closeCadCategoriaEditModal();
-  }, [renderCadastro], reconectados ? `Categoria atualizada — ${reconectados} lançamento${reconectados===1?"":"s"} reconectado${reconectados===1?"":"s"}` : "Categoria atualizada");
+  }, [renderCadastro, renderPlanejamento], reconectados ? `Categoria atualizada — ${reconectados} lançamento${reconectados===1?"":"s"} reconectado${reconectados===1?"":"s"}` : "Categoria atualizada");
 }
 async function addCadastroCategoria(){
   const categorias = getCadastroCategoriasParsed();
