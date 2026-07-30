@@ -410,7 +410,7 @@
   <p>Conecte sua conta Google pra carregar seus dados financeiros.</p>
   <button id="connectBtn">Conectar com Google</button>
   <p id="gateError" style="color:var(--red);"></p>
-  <p style="font-size:11.5px;color:var(--muted);max-width:340px;margin-top:18px;line-height:1.5;">
+  <p style="font-size:11px;color:var(--muted);max-width:340px;margin-top:18px;line-height:1.5;">
     ℹ️ O Google pode mostrar um aviso de "app não verificado" — é esperado numa versão beta,
     não é um problema de segurança. Clique em <b>"Avançado"</b> e depois em <b>"Ir para Legacy (não seguro)"</b> pra continuar.
   </p>
@@ -513,7 +513,7 @@
         <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:6px;">
           <div>
             <h2 style="margin:0;">📄 Relatório da Carteira</h2>
-            <p id="relatorioDataGeracao" style="font-size:11.5px;color:var(--muted);margin:2px 0 0;"></p>
+            <p id="relatorioDataGeracao" style="font-size:11px;color:var(--muted);margin:2px 0 0;"></p>
           </div>
           <button class="connect-btn no-print" onclick="exportarRelatorioPDF()">⬇️ Exportar PDF</button>
         </div>
@@ -532,17 +532,6 @@
           <div class="legend">
             <span><i style="background:var(--green)"></i>Receita</span>
             <span><i style="background:var(--red)"></i>Despesa</span>
-          </div>
-        </div>
-        <div class="chart-panel">
-          <h2>Reserva: evolução, meta e projeção</h2>
-          <div id="cProjecaoSub" style="color:var(--muted);font-size:12.5px;margin-bottom:8px;"></div>
-          <div id="chartReservaCombo"></div>
-          <div class="legend">
-            <span><i style="background:var(--blue)"></i>Reserva real</span>
-            <span><i style="background:var(--muted)"></i>Projeção (média)</span>
-            <span><i style="background:#A78BFA"></i>Projeção (previsto lançado)</span>
-            <span><i style="background:var(--gold)"></i>Meta (benchmark)</span>
           </div>
         </div>
       </div>
@@ -567,7 +556,7 @@
 
   <div class="panels">
     <div class="panel panel-clickable" onclick="openCategoriaDonutModal()" title="Ver gráfico">
-      <h2>📊 Gastos por categoria</h2>
+      <h2>📊 Gastos por categoria (mês todo)</h2>
       <div id="catList">
         <div class="skeleton-row"><span class="skeleton" style="width:40%;"></span><span class="skeleton" style="width:20%;"></span></div>
         <div class="skeleton-row"><span class="skeleton" style="width:55%;"></span><span class="skeleton" style="width:15%;"></span></div>
@@ -703,7 +692,7 @@
         <h2 style="margin:0;">💡 Quitação antecipada</h2>
         <button class="icon-btn" style="font-size:20px;" onclick="closeSimuladorQuitacao()">✕</button>
       </div>
-      <p id="simuladorQuitacaoDivida" style="font-size:12.5px;color:var(--muted);margin:0 0 14px;"></p>
+      <p id="simuladorQuitacaoDivida" style="font-size:13px;color:var(--muted);margin:0 0 14px;"></p>
       <div id="simuladorQuitacaoBody"></div>
     </div>
   </div>
@@ -724,7 +713,7 @@
         <h2 style="margin:0;">Conferir antes de importar</h2>
         <button class="icon-btn" style="font-size:20px;" onclick="closePdfPreviewModal()">✕</button>
       </div>
-      <p style="font-size:12px;color:var(--muted);margin:0 0 14px;">
+      <p style="font-size:13px;color:var(--muted);margin:0 0 14px;">
         Confere se os valores e o cartão de cada compra estão certos antes de gravar. Desmarque o que estiver errado ou duplicado.
       </p>
       <div id="pdfPreviewBody" style="max-height:50vh;overflow-y:auto;"></div>
@@ -741,7 +730,7 @@
         <h2 style="margin:0;">🚀 Configuração Inicial</h2>
         <button class="icon-btn" style="font-size:20px;" onclick="closeConfigInicialModal()">✕</button>
       </div>
-      <p style="font-size:12px;color:var(--muted);margin:0 0 16px;">Preenche o que quiser aqui e clica em "Concluir configuração" no final — grava tudo de uma vez.</p>
+      <p style="font-size:13px;color:var(--muted);margin:0 0 16px;">Preenche o que quiser aqui e clica em "Concluir configuração" no final — grava tudo de uma vez.</p>
       <div id="configInicialBody"></div>
     </div>
   </div>
@@ -863,10 +852,10 @@
     <div class="chart-panel">
       <details>
         <summary style="cursor:pointer;font-weight:700;font-size:15px;">📥 Importar extrato de débito</summary>
-        <p style="font-size:12.5px;color:var(--muted);margin:10px 0 14px;">
+        <p style="font-size:13px;color:var(--muted);margin:10px 0 14px;">
           Roda tudo aqui no navegador — não depende de Apps Script. A coluna "Categoria" fica em branco de propósito; escolha depois no menu suspenso de cada linha.
         </p>
-        <div style="background:rgba(232,170,61,.08);border:1px solid rgba(232,170,61,.3);border-radius:10px;padding:12px 14px;margin-bottom:16px;font-size:12.5px;line-height:1.6;">
+        <div style="background:rgba(232,170,61,.08);border:1px solid rgba(232,170,61,.3);border-radius:10px;padding:12px 14px;margin-bottom:16px;font-size:13px;line-height:1.6;">
           ⚠️ <b>Fase beta:</b> a leitura automática hoje foi construída em cima do formato de arquivo do <b>Bradesco</b> especificamente. Com outro banco, é <b>provável que a importação não funcione</b>. Mesmo assim, <b>incentivamos você a testar</b> — se der erro, tira um print e me manda, ajuda a expandir o suporte.
         </div>
         <div class="edit-form" style="margin-bottom:0;">
@@ -876,7 +865,7 @@
             <input type="file" id="importDebitoInput" accept=".xls,.pdf">
           </div>
         </div>
-        <div id="importStatusDebito" style="margin-top:12px;font-size:12.5px;white-space:pre-wrap;"></div>
+        <div id="importStatusDebito" style="margin-top:12px;font-size:13px;white-space:pre-wrap;"></div>
       </details>
     </div>
   </div>
@@ -884,7 +873,7 @@
   <div id="view-credito" class="view">
     <div id="creditoEmptyState" class="chart-panel hidden" style="text-align:center;padding:32px 20px;">
       <p style="font-size:14px;margin:0 0 12px;">💳 Sem cartão de crédito cadastrado</p>
-      <p style="font-size:12.5px;color:var(--muted);margin:0 0 16px;">Cadastre um cartão pra acompanhar faturas, parcelas e gastos por categoria.</p>
+      <p style="font-size:13px;color:var(--muted);margin:0 0 16px;">Cadastre um cartão pra acompanhar faturas, parcelas e gastos por categoria.</p>
       <a href="javascript:void(0)" onclick="goToCadastro()" style="color:var(--gold);font-weight:600;text-decoration:underline;">Cadastrar cartão no Cadastro →</a>
     </div>
     <div id="creditoConteudo">
@@ -929,31 +918,31 @@
             <div class="label" id="ccFaturaLabel" style="color:var(--muted);font-size:11px;font-weight:700;text-transform:uppercase;">Fatura em aberto</div>
             <div style="display:flex;align-items:center;gap:8px;">
               <button class="icon-btn" onclick="navegarMesCredito(-1)" title="Mês anterior" style="font-size:15px;">◀</button>
-              <span id="ccFaturaMesLabel" style="font-size:11.5px;color:var(--muted);min-width:70px;text-align:center;"></span>
+              <span id="ccFaturaMesLabel" style="font-size:11px;color:var(--muted);min-width:70px;text-align:center;"></span>
               <button class="icon-btn" onclick="navegarMesCredito(1)" title="Próximo mês" style="font-size:15px;">▶</button>
             </div>
           </div>
           <div class="value" id="ccFatura" style="font-size:26px;font-weight:700;color:var(--purple);margin:6px 0;">—</div>
-          <div class="sub" id="ccFaturaSub" style="color:var(--muted);font-size:12px;"></div>
+          <div class="sub" id="ccFaturaSub" style="color:var(--muted);font-size:13px;"></div>
           <button class="connect-btn" id="ccLancarFaturaBtn" style="margin-top:10px;width:100%;" onclick="abrirLancarFaturaModal()">💳 Lançar pagamento desta fatura</button>
         </div>
         <div class="chart-panel" style="margin-top:16px;">
           <div class="label" style="color:var(--muted);font-size:11px;font-weight:700;text-transform:uppercase;">Parcelas em aberto</div>
           <div class="value" id="ccParcelasAberto" style="font-size:26px;font-weight:700;color:var(--yellow);margin:6px 0;">—</div>
-          <div class="sub" id="ccParcelasAbertoSub" style="color:var(--muted);font-size:12px;margin-bottom:10px;"></div>
+          <div class="sub" id="ccParcelasAbertoSub" style="color:var(--muted);font-size:13px;margin-bottom:10px;"></div>
           <div id="ccParcelasBreakdown"></div>
         </div>
       </div>
       <div>
         <div class="chart-panel">
-          <h2>Gastos por categoria</h2>
+          <h2>Gastos por categoria (neste cartão)</h2>
           <div id="creditCatChart"></div>
         </div>
         <div class="chart-panel">
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:8px;">
             <h2 style="margin:0;">Compras do mês</h2>
             <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
-              <select id="creditSortSelect" onchange="setCreditSortOrder(this.value)" style="background:var(--panel);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:7px 9px;font-size:12.5px;">
+              <select id="creditSortSelect" onchange="setCreditSortOrder(this.value)" style="background:var(--panel);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:7px 9px;font-size:13px;">
                 <option value="data-desc">Data (mais recente)</option>
                 <option value="data-asc">Data (mais antiga)</option>
                 <option value="valor-desc">Valor (maior)</option>
@@ -961,7 +950,7 @@
                 <option value="desc-az">Descrição (A-Z)</option>
                 <option value="desc-za">Descrição (Z-A)</option>
               </select>
-              <select id="creditFiltroCategoriaSelect" onchange="setCreditCategoryFilterFromSelect(this.value)" style="background:var(--panel);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:7px 9px;font-size:12.5px;"></select>
+              <select id="creditFiltroCategoriaSelect" onchange="setCreditCategoryFilterFromSelect(this.value)" style="background:var(--panel);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:7px 9px;font-size:13px;"></select>
               <button class="connect-btn" id="creditFiltroSemCategoriaBtn" onclick="toggleCreditFiltroSemCategoria()" style="white-space:nowrap;">🏷️ Sem categoria</button>
               <button class="connect-btn" onclick="abrirNovaCompraModal()">+ Nova compra</button>
               <button class="connect-btn" onclick="analisarCategoriasCredito()">🏷️ Categorizar automaticamente</button>
@@ -987,10 +976,10 @@
     <div class="chart-panel">
       <details>
         <summary style="cursor:pointer;font-weight:700;font-size:15px;">📥 Importar fatura de cartão</summary>
-        <p style="font-size:12.5px;color:var(--muted);margin:10px 0 14px;">
+        <p style="font-size:13px;color:var(--muted);margin:10px 0 14px;">
           Roda tudo aqui no navegador — não depende de Apps Script. A coluna "Categoria" fica em branco de propósito; escolha depois no menu suspenso de cada linha.
         </p>
-        <div style="background:rgba(232,170,61,.08);border:1px solid rgba(232,170,61,.3);border-radius:10px;padding:12px 14px;margin-bottom:16px;font-size:12.5px;line-height:1.6;">
+        <div style="background:rgba(232,170,61,.08);border:1px solid rgba(232,170,61,.3);border-radius:10px;padding:12px 14px;margin-bottom:16px;font-size:13px;line-height:1.6;">
           ⚠️ <b>Fase beta:</b> a leitura automática hoje foi construída em cima do formato de arquivo do <b>Bradesco</b> especificamente. Com outro banco, é <b>provável que a importação não funcione</b>.
           <br><br>
           📌 <b>Escolha só um formato por período:</b> o Bradesco escreve as descrições de forma diferente no CSV e no PDF. Como a detecção de duplicata compara a descrição, importar os dois do mesmo período <b>vai duplicar todos os lançamentos</b>.
@@ -1009,7 +998,7 @@
             <input type="file" id="importFaturaPdfInput" accept=".pdf">
           </div>
         </div>
-        <div id="importStatusCredito" style="margin-top:12px;font-size:12.5px;white-space:pre-wrap;"></div>
+        <div id="importStatusCredito" style="margin-top:12px;font-size:13px;white-space:pre-wrap;"></div>
       </details>
     </div>
   </div>
@@ -1018,7 +1007,7 @@
     <div id="dividasCards" class="cards" style="margin-bottom:16px;"></div>
     <div class="chart-panel" id="dividasTimelinePanel" style="margin-bottom:16px;">
       <h2>📆 Linha do tempo de quitação</h2>
-      <p style="font-size:12px;color:var(--muted);margin-top:-6px;margin-bottom:12px;">Só aparecem aqui as dívidas com "Dia de vencimento" preenchido — é o que permite calcular quando cada uma termina.</p>
+      <p style="font-size:13px;color:var(--muted);margin-top:-6px;margin-bottom:12px;">Só aparecem aqui as dívidas com "Dia de vencimento" preenchido — é o que permite calcular quando cada uma termina.</p>
       <div id="dividasTimeline"></div>
     </div>
     <div class="chart-panel">
@@ -1033,15 +1022,26 @@
   <div id="view-planejamento" class="view">
     <div class="chart-panel" style="margin-bottom:16px;">
       <h2>🧭 Independência Financeira</h2>
-      <p style="font-size:12px;color:var(--muted);margin-top:-6px;margin-bottom:16px;">
+      <p style="font-size:13px;color:var(--muted);margin-top:-6px;margin-bottom:16px;">
         Quanto de patrimônio você precisa acumular pra viver só do rendimento, sem depender de trabalhar — usando a regra clássica de retirada segura (4% ao ano) e a taxa real de retorno que você configurou no Cadastro.
       </p>
       <div id="planejamentoIndependenciaCards" class="cards" style="margin-bottom:16px;"></div>
       <div id="planejamentoIndependenciaDetalhe"></div>
     </div>
+    <div class="chart-panel" style="margin-bottom:16px;">
+      <h2>Reserva: evolução, meta e projeção</h2>
+      <div id="cProjecaoSub" style="color:var(--muted);font-size:13px;margin-bottom:8px;"></div>
+      <div id="chartReservaCombo"></div>
+      <div class="legend">
+        <span><i style="background:var(--blue)"></i>Reserva real</span>
+        <span><i style="background:var(--muted)"></i>Projeção (média)</span>
+        <span><i style="background:#A78BFA"></i>Projeção (previsto lançado)</span>
+        <span><i style="background:var(--gold)"></i>Meta (benchmark)</span>
+      </div>
+    </div>
     <div class="chart-panel">
       <h2>⚖️ Orçamento por Natureza</h2>
-      <p style="font-size:12px;color:var(--muted);margin-top:-6px;margin-bottom:16px;">
+      <p style="font-size:13px;color:var(--muted);margin-top:-6px;margin-bottom:16px;">
         Separa o gasto do mês por natureza — Essencial (não corta sem dor), Discricionário (dá pra cortar numa emergência) e Investimento (já vira patrimônio). Depende de cada categoria ter a Natureza preenchida no Cadastro.
       </p>
       <div id="planejamentoNaturezaConteudo"></div>
@@ -1052,19 +1052,21 @@
     <div class="chart-panel" id="roadmapDevPanel" style="border-color:var(--blue);">
       <details>
         <summary style="cursor:pointer;font-weight:700;font-size:15px;color:var(--blue);">🗺️ Roadmap (próximos passos)</summary>
-        <p style="font-size:11.5px;color:var(--muted);margin:10px 0 12px;">O que ainda está no radar, sem data definida — ordem não é prioridade.</p>
-        <ul style="font-size:12.5px;line-height:1.7;padding-left:18px;margin:0;color:var(--text);">
+        <p style="font-size:11px;color:var(--muted);margin:10px 0 12px;">O que ainda está no radar, sem data definida — ordem não é prioridade.</p>
+        <ul style="font-size:13px;line-height:1.7;padding-left:18px;margin:0;color:var(--text);">
           <li>Desenvolvimento mais completo da aba Investimentos — hoje é basicamente 3 cards e um gráfico de alocação; falta histórico de rentabilidade, comparação com benchmark, e detalhamento por ativo</li>
           <li>Desenvolvimento mais completo do Patrimônio Total — hoje o card do Resumo é o único lugar que mostra isso; falta uma visão dedicada com composição (ativos - dívidas), evolução histórica de verdade (usando o snapshot mensal) e projeção de longo prazo</li>
         </ul>
       </details>
     </div>
-    <div class="chart-panel" style="border-color:var(--gold);">
-      <h2>🚀 Primeira vez aqui?</h2>
-      <p style="font-size:12.5px;color:var(--muted);margin-top:-6px;margin-bottom:14px;">
-        Preenche tudo de uma vez num formulário só — nome, salário, orçamento, categorias e cartões. Sem precisar mexer em planilha nenhuma.
-      </p>
-      <button class="connect-btn" style="background:var(--gold);color:#1A1917;border:none;font-weight:700;" onclick="openConfigInicialModal()">Começar Configuração Inicial</button>
+    <div class="chart-panel" id="cadPrimeiraVezPanel" style="border-color:var(--gold);">
+      <details id="cadPrimeiraVezDetails">
+        <summary style="cursor:pointer;font-weight:700;font-size:15px;">🚀 Primeira vez aqui?</summary>
+        <p style="font-size:13px;color:var(--muted);margin:10px 0 14px;">
+          Preenche tudo de uma vez num formulário só — nome, salário, orçamento, categorias e cartões. Sem precisar mexer em planilha nenhuma.
+        </p>
+        <button class="connect-btn" style="background:var(--gold);color:#1A1917;border:none;font-weight:700;" onclick="openConfigInicialModal()">Começar Configuração Inicial</button>
+      </details>
     </div>
 
     <div class="chart-panel">
@@ -1077,7 +1079,7 @@
 
     <div class="chart-panel">
       <h2>💰 Renda e metas</h2>
-      <p style="font-size:12.5px;color:var(--muted);margin-top:-6px;margin-bottom:14px;">
+      <p style="font-size:13px;color:var(--muted);margin-top:-6px;margin-bottom:14px;">
         O salário bruto alimenta automaticamente a <b>Meta de reserva</b> (12x este valor) e o <b>limite de 15%</b> usado no gráfico de Comprometimento de renda.
       </p>
       <div class="edit-form" style="margin-bottom:0;">
@@ -1088,7 +1090,7 @@
 
     <div class="chart-panel">
       <h2>🚨 Reserva inicial</h2>
-      <p style="font-size:12.5px;color:var(--muted);margin-top:-6px;margin-bottom:14px;">
+      <p style="font-size:13px;color:var(--muted);margin-top:-6px;margin-bottom:14px;">
         O saldo de Reserva de Emergência que você já tinha guardado <b>antes</b> de começar a usar o app. Serve de ponto de partida — o cálculo de patrimônio soma os lançamentos de Investimento/Resgate a partir daqui, em vez de começar do zero.
       </p>
       <div class="edit-form" style="margin-bottom:0;">
@@ -1099,7 +1101,7 @@
 
     <div class="chart-panel">
       <h2>📈 Taxa real de retorno esperada</h2>
-      <p style="font-size:12.5px;color:var(--muted);margin-top:-6px;margin-bottom:14px;">
+      <p style="font-size:13px;color:var(--muted);margin-top:-6px;margin-bottom:14px;">
         Usada na projeção de Independência Financeira (aba Planejamento Financeiro). É a taxa <b>acima da inflação</b> — ex: se sua carteira mira IPCA+4%, o número aqui é <b>4</b>, não a taxa nominal cheia. Padrão: 4% ao ano (regra clássica de retirada segura).
       </p>
       <div class="edit-form" style="margin-bottom:0;">
@@ -1110,13 +1112,16 @@
 
     <div class="chart-panel">
       <h2>🔔 Notificações</h2>
-      <p style="font-size:12.5px;color:var(--muted);margin-top:-6px;margin-bottom:8px;">
-        Fase 1 (esta): quando você abre o app com notificações ativadas, ele avisa na hora sobre fatura atrasada, orçamento estourado, etc. — os mesmos alertas que já existem no sininho, só que também como notificação do sistema.
-      </p>
-      <p style="font-size:12.5px;color:var(--muted);margin-top:0;margin-bottom:14px;">
-        <b>Ainda não avisa com o app fechado.</b> Isso (notificação chegando mesmo sem abrir o app) precisa de um servidor próprio disparando o aviso — um passo de infraestrutura separado, ainda não construído.
-      </p>
-      <div id="notifStatus" style="font-size:12.5px;color:var(--muted);margin-bottom:10px;"></div>
+      <details style="margin-bottom:12px;">
+        <summary style="cursor:pointer;font-size:13px;color:var(--muted);">Como funciona</summary>
+        <p style="font-size:13px;color:var(--muted);margin:8px 0;">
+          Fase 1 (esta): quando você abre o app com notificações ativadas, ele avisa na hora sobre fatura atrasada, orçamento estourado, etc. — os mesmos alertas que já existem no sininho, só que também como notificação do sistema.
+        </p>
+        <p style="font-size:13px;color:var(--muted);margin:0;">
+          <b>Ainda não avisa com o app fechado.</b> Isso (notificação chegando mesmo sem abrir o app) precisa de um servidor próprio disparando o aviso — um passo de infraestrutura separado, ainda não construído.
+        </p>
+      </details>
+      <div id="notifStatus" style="font-size:13px;color:var(--muted);margin-bottom:10px;"></div>
       <button class="save-btn" id="notifToggleBtn" onclick="toggleNotificacoes()">Ativar notificações</button>
     </div>
 
@@ -1125,7 +1130,7 @@
         <h2 style="margin:0;">🏷️ Orçamento por categoria</h2>
         <button class="connect-btn" onclick="addCadastroCategoria()">+ Nova categoria</button>
       </div>
-      <p style="font-size:12px;color:var(--muted);margin-top:-8px;margin-bottom:14px;">Use um emoji no início do nome (ex: "🏠 Moradia") pra manter o padrão visual do resto do app. Toca num card pra editar.</p>
+      <p style="font-size:13px;color:var(--muted);margin-top:-8px;margin-bottom:14px;">Use um emoji no início do nome (ex: "🏠 Moradia") pra manter o padrão visual do resto do app. Toca num card pra editar.</p>
       <div id="cadCategoriasTable" style="overflow-x:auto;"></div>
     </div>
 
@@ -1134,7 +1139,7 @@
         <h2 style="margin:0;">🏦 Contas de débito</h2>
         <button class="connect-btn" onclick="addCadastroContaDebito()">+ Nova conta</button>
       </div>
-      <p style="font-size:12px;color:var(--muted);margin-top:-8px;margin-bottom:14px;">
+      <p style="font-size:13px;color:var(--muted);margin-top:-8px;margin-bottom:14px;">
         Diz ao app qual banco cada conta usa, pra escolher o leitor de extrato certo na hora de importar. Sem nenhuma conta cadastrada, o app assume Bradesco.
       </p>
       <div id="cadContaDebitoNovoForm" class="hidden" style="margin-bottom:14px;"></div>
@@ -1823,7 +1828,7 @@ function render(){
     document.getElementById("scoreBreakdown").innerHTML = itens.map(it => {
       const cor = it.nota >= 70 ? "var(--green)" : it.nota >= 40 ? "var(--yellow)" : "var(--red)";
       return `<div style="margin-bottom:6px;">
-        <div style="display:flex;justify-content:space-between;font-size:10.5px;color:var(--muted);margin-bottom:2px;">
+        <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin-bottom:2px;">
           <span>${it.label}</span><span>${it.nota}/100</span>
         </div>
         <div style="height:5px;background:var(--border);border-radius:3px;overflow:hidden;">
@@ -1875,6 +1880,14 @@ function renderResumo(){
   const totalParcelaMensalDividas = dividasAtivas.reduce((s,d) => s + d.valorParcela, 0);
 
   const faturaValor = (raw.cartoes || []).filter(r => r[0]).reduce((s, c) => s + calcularValorFaturaCartaoMes(c[0], mi, state.year), 0);
+
+  // % rumo à independência financeira — mesmo cálculo usado na aba Planejamento Financeiro, só que
+  // resumido num número só pro atalho.
+  const { despesaMedia: despesaMediaIndep } = calcularMediasReaisRecentes(12);
+  const patrimonioAlvoIndep = despesaMediaIndep * 12 / 0.04;
+  const totalAtivosIndep = calcSaldoInvestimento("Reserva de Emergência") + calcSaldoInvestimento("Renda Fixa") + calcSaldoInvestimento("Renda Variável");
+  const patrimonioAtualIndep = totalAtivosIndep - (getDividasParsed().filter(d => !isDividaQuitada(d)).reduce((s,d) => s + (d.saldoDevedor||0), 0));
+  const pctIndependencia = patrimonioAlvoIndep > 0 ? Math.min(999, Math.max(0, patrimonioAtualIndep / patrimonioAlvoIndep * 100)) : 0;
   const numCartoes = (raw.cartoes || []).filter(r => r[0]).length;
 
   // Cards de atalho pras outras abas — altura fixa (mesmo padrão do resto do app), só cresce na horizontal.
@@ -1913,6 +1926,15 @@ function renderResumo(){
         <div class="label">📋 Dívidas</div>
         <div class="value" style="font-size:17px;color:${dividasAtivas.length>0?"var(--red)":"var(--text)"}">${fmtMoney(totalDevedor)}</div>
         <div class="sub">${dividasAtivas.length} ativa${dividasAtivas.length===1?"":"s"} · ${fmtMoney(totalParcelaMensalDividas)}/mês</div>
+        <div class="sub" style="margin-top:4px;color:var(--gold);">ver mais →</div>
+      </div>
+    </div>
+    <div class="card panel-clickable" onclick="${irPara("planejamento")}">
+      <div class="accent" style="background:var(--border)"></div>
+      <div class="body">
+        <div class="label">🧭 Planejamento</div>
+        <div class="value" style="font-size:17px;color:var(--text)">${pctIndependencia.toFixed(0)}%</div>
+        <div class="sub">do patrimônio-alvo (independência)</div>
         <div class="sub" style="margin-top:4px;color:var(--gold);">ver mais →</div>
       </div>
     </div>
@@ -2410,7 +2432,7 @@ function renderOrcadoReal(mi){
     const barColor = pct >= 100 ? "var(--red)" : (pct >= 80 ? "var(--yellow)" : "var(--green)");
     const catColor = colorForCategory(o.nome);
     return `<div style="margin-bottom:12px;">
-      <div style="display:flex;justify-content:space-between;font-size:12.5px;margin-bottom:4px;">
+      <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:4px;">
         <span style="display:flex;align-items:center;gap:7px;"><i style="width:8px;height:8px;border-radius:50%;background:${catColor};display:inline-block;"></i>${o.nome}</span>
         <span style="color:var(--muted);">${fmtMoney(o.real)} / ${fmtMoney(o.orcado)} · <span style="color:${barColor};font-weight:600;">${pct.toFixed(0)}%</span></span>
       </div>
@@ -2523,7 +2545,7 @@ function renderRelatorio(mi){
       </div>
       ${pilares.map(p => `
         <div style="margin-bottom:6px;">
-          <div style="display:flex;justify-content:space-between;font-size:11.5px;color:var(--muted);margin-bottom:2px;">
+          <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin-bottom:2px;">
             <span>${p.label}</span><span>${p.nota}/100</span>
           </div>
           <div style="height:5px;background:var(--border);border-radius:3px;overflow:hidden;">
@@ -2533,10 +2555,10 @@ function renderRelatorio(mi){
     `) +
     secao("📊 Gastos por categoria", categorias.length > 0
       ? categorias.map(([cat, val]) => linha(cat, fmtMoney(val))).join("")
-      : `<p style="font-size:12.5px;color:var(--muted);">Sem despesa categorizada neste mês</p>`) +
+      : `<p style="font-size:13px;color:var(--muted);">Sem despesa categorizada neste mês</p>`) +
     secao("🔮 Projeção patrimonial", projecao12m !== null
       ? linha(`Em 12 meses (média de ${mesesConsiderados} meses)`, fmtMoney(projecao12m), "var(--purple)")
-      : `<p style="font-size:12.5px;color:var(--muted);">Sem histórico suficiente pra projetar ainda</p>`);
+      : `<p style="font-size:13px;color:var(--muted);">Sem histórico suficiente pra projetar ainda</p>`);
 }
 
 // window.print() não funciona de dentro do PWA instalado no Android (modo standalone não tem acesso
@@ -2562,7 +2584,7 @@ function exportarRelatorioPDF(){
         body{ font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; background:#fff; color:#111; padding:22px; max-width:680px; margin:0 auto; }
         h2{ font-size:20px; margin:0 0 4px; }
         h3{ font-size:15px; margin:22px 0 10px; border-bottom:1px solid #ddd; padding-bottom:6px; }
-        p{ color:#555; font-size:12.5px; }
+        p{ color:#555; font-size:13px; }
         .print-btn{ background:#1F7A44; color:#fff; border:none; padding:10px 18px; border-radius:8px; font-size:14px; cursor:pointer; margin:14px 0 20px; }
         @media print{ .print-btn{ display:none; } }
       </style>
@@ -2631,7 +2653,7 @@ function renderInsights(mi){
   }
 
   el.innerHTML = linhaComparacao +
-    (insightTexto ? `<div style="border-top:1px solid var(--border);margin-top:8px;padding-top:10px;font-size:12.5px;">${insightTexto}</div>` : "");
+    (insightTexto ? `<div style="border-top:1px solid var(--border);margin-top:8px;padding-top:10px;font-size:13px;">${insightTexto}</div>` : "");
 }
 
 function renderVencimentos(){
@@ -2817,7 +2839,7 @@ function renderCalendar(){
   const displayItems = calSelectedDay === null ? items : items.filter(it => it.date.getDate() === calSelectedDay);
   const listEl = document.getElementById("calList");
   const filterNote = calSelectedDay !== null
-    ? `<div style="margin-bottom:10px;font-size:12px;display:flex;justify-content:space-between;align-items:center;">
+    ? `<div style="margin-bottom:10px;font-size:13px;display:flex;justify-content:space-between;align-items:center;">
         <span style="color:var(--muted);">Mostrando só dia ${calSelectedDay}</span>
         <span class="pill" style="cursor:pointer;" onclick="calSelectedDay=null;renderCalendar();">✕ Ver mês todo</span>
       </div>`
@@ -2856,7 +2878,7 @@ function setupTabs(){
       if(tab.dataset.view === "lancamentos") renderLancamentos();
       if(tab.dataset.view === "credito") renderCredito();
       if(tab.dataset.view === "dividas") renderDividas();
-      if(tab.dataset.view === "planejamento") renderPlanejamento();
+      if(tab.dataset.view === "planejamento"){ renderPlanejamento(); renderCharts(); }
       if(tab.dataset.view === "cadastro") renderCadastro();
       if(tab.dataset.view === "resumo") renderResumo();
     });
@@ -3094,14 +3116,14 @@ function openConfigInicialModal(){
       <div><label>Reserva já acumulada</label><input id="ciReserva" type="number" step="0.01" value="${reserva || 0}"></div>
       <div><label>Orçado total (mensal)</label><input id="ciOrcadoTotal" type="number" step="0.01" value="${orcadoTotalAtual || 0}"></div>
     </div>
-    <h3 style="font-size:13.5px;margin:0 0 8px;">Categorias e orçamento mensal</h3>
-    <div style="display:flex;gap:8px;margin-bottom:6px;font-size:10.5px;color:var(--muted);font-weight:700;text-transform:uppercase;">
+    <h3 style="font-size:13px;margin:0 0 8px;">Categorias e orçamento mensal</h3>
+    <div style="display:flex;gap:8px;margin-bottom:6px;font-size:11px;color:var(--muted);font-weight:700;text-transform:uppercase;">
       <span style="flex:2;">Categoria</span><span style="flex:1;">Orçamento mensal</span>
     </div>
     <div id="ciCategorias" style="max-height:220px;overflow-y:auto;margin-bottom:16px;">${linhasCategoria}</div>
-    <button class="connect-btn" style="font-size:12px;margin-bottom:16px;" onclick="adicionarLinhaCategoriaConfigInicial()">+ Adicionar categoria</button>
-    <h3 style="font-size:13.5px;margin:0 0 8px;">Cartões de crédito (opcional, pode deixar em branco)</h3>
-    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px;font-size:10.5px;color:var(--muted);font-weight:700;text-transform:uppercase;">
+    <button class="connect-btn" style="font-size:13px;margin-bottom:16px;" onclick="adicionarLinhaCategoriaConfigInicial()">+ Adicionar categoria</button>
+    <h3 style="font-size:13px;margin:0 0 8px;">Cartões de crédito (opcional, pode deixar em branco)</h3>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px;font-size:11px;color:var(--muted);font-weight:700;text-transform:uppercase;">
       <span style="flex:2 1 120px;">Nome</span><span style="flex:2 1 120px;">Banco</span><span style="flex:1 1 60px;">Dia</span><span style="flex:1 1 90px;">Últ. 4 díg.</span>
     </div>
     <div id="ciCartoes" style="margin-bottom:16px;">${linhasCartao}</div>
@@ -3186,7 +3208,7 @@ function openScoreDetalheModal(){
   const nomesPilar = { fluxo: "Fluxo de Caixa", poupanca: "Poupança", endividamento: "Endividamento", liquidez: "Liquidez", patrimonio: "Patrimônio", comportamento: "Comportamento" };
   const mediaHtml = mediaAcumulada && mediaAcumulada.mesesConsiderados > 1 ? `
     <div style="display:flex;justify-content:space-between;align-items:center;background:var(--card);border:1px solid var(--border);border-radius:10px;padding:10px 14px;margin-bottom:12px;">
-      <span style="font-size:12.5px;color:var(--muted);">Média acumulada (Jan-${MONTHS[dados.mesIdx ?? new Date().getMonth()]}, ${mediaAcumulada.mesesConsiderados} meses)</span>
+      <span style="font-size:13px;color:var(--muted);">Média acumulada (Jan-${MONTHS[dados.mesIdx ?? new Date().getMonth()]}, ${mediaAcumulada.mesesConsiderados} meses)</span>
       <span style="font-size:15px;font-weight:700;color:${faixaScore(mediaAcumulada.media).cor};">${mediaAcumulada.media}</span>
     </div>` : "";
   const deltaHtml = delta ? `
@@ -3197,10 +3219,10 @@ function openScoreDetalheModal(){
       ${Object.entries(delta.deltaNotas).filter(([,d]) => d !== 0).map(([chave, d]) => {
         const sinal = d > 0 ? "✔" : "✖";
         const cor = d > 0 ? "var(--green)" : "var(--red)";
-        return `<div style="font-size:12px;color:${cor};margin-bottom:2px;">${sinal} ${nomesPilar[chave]} (${d > 0 ? "+" : ""}${d})</div>`;
-      }).join("") || `<div style="font-size:12px;color:var(--muted);">Nenhum pilar mudou de forma relevante</div>`}
+        return `<div style="font-size:13px;color:${cor};margin-bottom:2px;">${sinal} ${nomesPilar[chave]} (${d > 0 ? "+" : ""}${d})</div>`;
+      }).join("") || `<div style="font-size:13px;color:var(--muted);">Nenhum pilar mudou de forma relevante</div>`}
     </div>` : `
-    <p style="font-size:11.5px;color:var(--muted);text-align:center;margin-bottom:18px;">Ainda não há histórico de 30 dias pra comparar — volte depois de um tempo pra ver a variação aqui.</p>`;
+    <p style="font-size:11px;color:var(--muted);text-align:center;margin-bottom:18px;">Ainda não há histórico de 30 dias pra comparar — volte depois de um tempo pra ver a variação aqui.</p>`;
   document.getElementById("scoreDetalheBody").innerHTML = `
     <div style="display:flex;align-items:center;justify-content:center;gap:14px;margin-bottom:6px;">
       <button class="icon-btn" onclick="navegarMesScore(-1)" title="Mês anterior">◀</button>
@@ -3210,7 +3232,7 @@ function openScoreDetalheModal(){
     <div style="text-align:center;margin-bottom:14px;">
       <div style="font-size:36px;font-weight:700;color:${faixa.cor};">${score}</div>
       <div style="font-size:13px;color:${faixa.cor};font-weight:600;">${faixa.emoji} ${faixa.label}</div>
-      <div style="font-size:11.5px;color:var(--muted);margin-top:4px;">Escala de 0 a 1000, mesmo formato de um score de crédito</div>
+      <div style="font-size:11px;color:var(--muted);margin-top:4px;">Escala de 0 a 1000, mesmo formato de um score de crédito</div>
     </div>
     ${mediaHtml}
     ${deltaHtml}
@@ -3224,7 +3246,7 @@ function openScoreDetalheModal(){
         <div style="height:6px;background:var(--border);border-radius:3px;overflow:hidden;margin-bottom:4px;">
           <div style="width:${c.nota}%;height:100%;background:${cor};"></div>
         </div>
-        <div style="font-size:11.5px;color:var(--muted);">${c.desc}</div>
+        <div style="font-size:11px;color:var(--muted);">${c.desc}</div>
       </div>`;
     }).join("")}
   `;
@@ -3646,10 +3668,10 @@ function renderLancamentos(){
   const allSelected = items.length > 0 && items.every(it => lancSelectedRows.has(it.row));
   const filtroAtivo = !!(lancSearchQuery || lancFiltroSemCategoria || lancFiltroCategoria || lancFiltroStatus);
   const selecionarTodasHtml = `<div style="margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
-    <label style="display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--muted);cursor:pointer;width:fit-content;">
+    <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--muted);cursor:pointer;width:fit-content;">
       <input type="checkbox" ${allSelected?"checked":""} onchange="toggleLancSelectAll(this.checked)"> Selecionar todas
     </label>
-    ${filtroAtivo ? `<button class="connect-btn" style="color:var(--red);border-color:var(--red);font-size:12px;padding:6px 10px;" onclick="excluirTodosFiltradosLanc()">🗑️ Excluir os ${items.length} filtrado${items.length===1?"":"s"}</button>` : ""}
+    ${filtroAtivo ? `<button class="connect-btn" style="color:var(--red);border-color:var(--red);font-size:13px;padding:6px 10px;" onclick="excluirTodosFiltradosLanc()">🗑️ Excluir os ${items.length} filtrado${items.length===1?"":"s"}</button>` : ""}
   </div>`;
   const cards = items.map(it => lancRowHtml(it)).join("");
   el.innerHTML = selecionarTodasHtml + cards;
@@ -3673,12 +3695,12 @@ function lancRowHtml(it){
           <span class="val-col ${valClass}" style="flex-shrink:0;">${sign}${fmtMoney(Math.abs(it.valor))}</span>
         </div>
         <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-top:6px;">
-          <span style="color:var(--muted);font-size:12px;">${dateLabel}</span>
+          <span style="color:var(--muted);font-size:13px;">${dateLabel}</span>
           <button class="pill pill-btn ${isPago ? "" : "soon"}" onclick="event.stopPropagation(); toggleStatus(${it.row}, ${isPago})">${isPago ? "Pago" : "Pendente"}</button>
         </div>
         <div style="margin-top:6px;">
           <select onclick="event.stopPropagation()" onchange="saveLancCategoriaInline(${it.row}, this.value)"
-            style="background:transparent;border:none;color:${cleanCat?"var(--text)":"var(--muted)"};font-size:12.5px;width:100%;">${categoriaOptions(cleanCat)}</select>
+            style="background:transparent;border:none;color:${cleanCat?"var(--text)":"var(--muted)"};font-size:13px;width:100%;">${categoriaOptions(cleanCat)}</select>
         </div>
       </div>
     </div>
@@ -3940,7 +3962,7 @@ function openNewForm(){
       <div><label>Parcelas</label><input id="fParcelas" type="number" min="1" step="1" value="1" onchange="if(this.value>1) document.getElementById('fRecorrente').checked=false;"></div>
       <div style="grid-column:1/-1;display:flex;align-items:center;gap:8px;margin-top:4px;">
         <input type="checkbox" id="fRecorrente" onchange="if(this.checked) document.getElementById('fParcelas').value=1;">
-        <label style="margin:0;font-size:12.5px;color:var(--text);text-transform:none;font-weight:400;cursor:pointer;" for="fRecorrente">🔁 Lançamento recorrente — repete o mesmo valor todo mês até dezembro deste ano</label>
+        <label style="margin:0;font-size:13px;color:var(--text);text-transform:none;font-weight:400;cursor:pointer;" for="fRecorrente">🔁 Lançamento recorrente — repete o mesmo valor todo mês até dezembro deste ano</label>
       </div>
       <div class="actions">
         <button class="save-btn" onclick="saveNew()">Adicionar lançamento</button>
@@ -4642,7 +4664,7 @@ function openSimuladorQuitacao(row){
     </div>
     <div id="simuladorResultado"></div>
     <div style="margin-top:18px;padding-top:16px;border-top:1px solid var(--border);">
-      <h3 style="font-size:13.5px;margin:0 0 10px;">✅ Já quitei — registrar de verdade</h3>
+      <h3 style="font-size:13px;margin:0 0 10px;">✅ Já quitei — registrar de verdade</h3>
       <div class="edit-form" style="margin-bottom:0;">
         <div><label>Data da quitação</label><input id="quitacaoData" type="date" value="${new Date().toISOString().slice(0,10)}"></div>
         <div><label>Valor pago nesse ato</label><input id="quitacaoValor" type="number" step="0.01" value="${d.saldoDevedor.toFixed(2)}"></div>
@@ -4665,25 +4687,25 @@ function renderSimuladorQuitacao(){
   const aporteExtra = parseFloat(document.getElementById("simAporteExtra").value) || 0;
   const r = simularQuitacaoAntecipada(d, aporteExtra);
   if(!r){
-    el.innerHTML = `<p style="font-size:12.5px;color:var(--muted);">Não consegui simular — confira se a taxa de juros e a parcela estão preenchidas corretamente.</p>`;
+    el.innerHTML = `<p style="font-size:13px;color:var(--muted);">Não consegui simular — confira se a taxa de juros e a parcela estão preenchidas corretamente.</p>`;
     return;
   }
   if(r.mesesAntecipados <= 0){
-    el.innerHTML = `<p style="font-size:12.5px;color:var(--muted);">Com esse valor extra o resultado não muda de forma perceptível — tenta um valor maior.</p>`;
+    el.innerHTML = `<p style="font-size:13px;color:var(--muted);">Com esse valor extra o resultado não muda de forma perceptível — tenta um valor maior.</p>`;
     return;
   }
   el.innerHTML = `
     <div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:14px;">
       <div style="display:flex;justify-content:space-between;margin-bottom:10px;">
-        <span style="font-size:12.5px;color:var(--muted);">Nova parcela mensal</span>
+        <span style="font-size:13px;color:var(--muted);">Nova parcela mensal</span>
         <span style="font-weight:700;">${fmtMoney(d.valorParcela + aporteExtra)}</span>
       </div>
       <div style="display:flex;justify-content:space-between;margin-bottom:10px;">
-        <span style="font-size:12.5px;color:var(--muted);">Quita</span>
+        <span style="font-size:13px;color:var(--muted);">Quita</span>
         <span style="font-weight:700;color:var(--green);">${r.mesesAntecipados} ${r.mesesAntecipados===1?"mês":"meses"} mais cedo</span>
       </div>
       <div style="display:flex;justify-content:space-between;">
-        <span style="font-size:12.5px;color:var(--muted);">Economiza em juros</span>
+        <span style="font-size:13px;color:var(--muted);">Economiza em juros</span>
         <span style="font-weight:700;color:var(--green);">${fmtMoney(r.jurosEconomizados)}</span>
       </div>
       <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border);font-size:11px;color:var(--muted);">
@@ -4899,13 +4921,32 @@ function renderDividas(){
   const algumCalculado = ativas.some(d => d.saldoDevedorAutoCalculado);
   renderDividasTimeline(ativas);
 
+  // Comprometimento de renda (%) — mesma fórmula do card no Resumo: parcelas de dívida ativa +
+  // compras parceladas do cartão no mês vigente, divididas pela renda. Aqui inclui não só dívida
+  // "formal", pra dar o quadro completo de quanto da renda já está travado em parcela fixa.
+  const inicioMesDividas = new Date(state.year, state.monthIdx, 1);
+  const fimMesDividas = new Date(state.year, state.monthIdx+1, 1);
+  const creditoParcelasMesDividas = (raw.compras || [])
+    .filter(c => c[2] && c[7] && isCompraParcelada(c))
+    .filter(c => { const d = serialToDate(c[7]); return d >= inicioMesDividas && d < fimMesDividas; })
+    .reduce((s,c) => s + (c[5] || c[4] || 0), 0);
+  const totalParceladoDividas = totalParcelaMensal + creditoParcelasMesDividas;
+  const rendaBaseDividas = getSalarioBruto() > 0 ? getSalarioBruto() : calcReal("Receita", state.monthIdx, state.year);
+  const comprometimentoDividas = rendaBaseDividas > 0 ? (totalParceladoDividas / rendaBaseDividas * 100) : 0;
+  const corComprometimentoDividas = comprometimentoDividas > 15 ? "var(--red)" : "var(--green)";
+
   cardsEl.innerHTML = `
     <div class="card"><div class="accent" style="background:var(--red)"></div>
       <div class="body"><div class="label">Saldo devedor total</div>
         <div class="value" style="color:var(--red)">${algumCalculado ? "≈ " : ""}${fmtMoney(totalDevedor)}</div></div></div>
     <div class="card"><div class="accent" style="background:var(--yellow)"></div>
       <div class="body"><div class="label">Comprometido por mês</div>
-        <div class="value" style="color:var(--yellow)">${fmtMoney(totalParcelaMensal)}</div></div></div>
+        <div class="value" style="color:var(--yellow)">${fmtMoney(totalParcelaMensal)}</div>
+        <div class="sub">só dívidas — sem cartão parcelado</div></div></div>
+    <div class="card"><div class="accent" style="background:${corComprometimentoDividas}"></div>
+      <div class="body"><div class="label">Comprometimento de renda</div>
+        <div class="value" style="color:${corComprometimentoDividas}">${fmtPct(comprometimentoDividas/100)}</div>
+        <div class="sub">dívidas + cartão parcelado, sobre a renda</div></div></div>
     <div class="card"><div class="accent" style="background:var(--green)"></div>
       <div class="body"><div class="label">Já pago</div>
         <div class="value" style="color:var(--green)">${fmtMoney(totalPago)}</div>
@@ -4943,7 +4984,7 @@ function renderDividas(){
         <div style="height:6px;background:var(--border);border-radius:3px;overflow:hidden;">
           <div style="height:100%;width:${Math.min(pctPago,100)}%;background:${quitada?"var(--green)":"var(--blue)"};border-radius:3px;"></div>
         </div>
-        ${d.dataQuitacaoPrevista ? `<div style="font-size:10.5px;color:var(--muted);margin-top:3px;">quita em ${fmtDate(d.dataQuitacaoPrevista)} · faltam ${d.mesesRestantes} ${d.mesesRestantes===1?"mês":"meses"} (${d.diasRestantes}d)</div>` : ""}
+        ${d.dataQuitacaoPrevista ? `<div style="font-size:11px;color:var(--muted);margin-top:3px;">quita em ${fmtDate(d.dataQuitacaoPrevista)} · faltam ${d.mesesRestantes} ${d.mesesRestantes===1?"mês":"meses"} (${d.diasRestantes}d)</div>` : ""}
       </td>
       <td data-label="Status"><span class="pill">${d.status || "—"}</span></td>
       <td data-label="">
@@ -5179,11 +5220,11 @@ function abrirExcluirDividaModal(row){
       </div>`).join("");
 
   document.getElementById("excluirDividaModalBody").innerHTML = `
-    <p style="font-size:12.5px;color:var(--muted);margin:0 0 12px;">
+    <p style="font-size:13px;color:var(--muted);margin:0 0 12px;">
       Vai excluir a dívida <b>"${d.desc}"</b> da aba Dívidas e ${lancamentos.length} lançamento(s) relacionado(s) na aba Débito, listados abaixo — inclusive parcelas já pagas, se houver.
     </p>
     <div style="max-height:320px;overflow-y:auto;margin-bottom:14px;">${linhasHtml}</div>
-    <p style="font-size:11.5px;color:var(--red);margin:0 0 14px;">Essa ação não pode ser desfeita.</p>
+    <p style="font-size:11px;color:var(--red);margin:0 0 14px;">Essa ação não pode ser desfeita.</p>
     <div class="actions">
       <button class="save-btn" style="background:var(--red);border-color:var(--red);" onclick="confirmarExclusaoDivida()">Excluir dívida e ${lancamentos.length} lançamento(s)</button>
       <button class="cancel-btn" onclick="closeExcluirDividaModal()">Cancelar</button>
@@ -5264,6 +5305,11 @@ function renderCadastro(){
   if(reservaInicialInput && document.activeElement !== reservaInicialInput) reservaInicialInput.value = reservaInicial || "";
   const taxaRealInput = document.getElementById("cadTaxaRealEsperada");
   if(taxaRealInput && document.activeElement !== taxaRealInput) taxaRealInput.value = getTaxaRealEsperada();
+  const primeiraVezDetails = document.getElementById("cadPrimeiraVezDetails");
+  if(primeiraVezDetails && !primeiraVezDetails.dataset.autoSet){
+    primeiraVezDetails.dataset.autoSet = "1";
+    primeiraVezDetails.open = !(nome && salario > 0); // já configurado -> fica fechado por padrão
+  }
   renderCadCategoriasTable();
   renderCadCartoesTable();
   renderCadContasDebitoTable();
@@ -5394,7 +5440,7 @@ function renderPlanejamento(){
     </div>
     <p style="font-size:13px;color:var(--text);margin:0;">${previsaoTexto}</p>
     <p style="font-size:11px;color:var(--muted);margin-top:10px;">
-      Taxa real configurada: <b>${taxaReal}% a.a.</b> acima da inflação — ajustável no Cadastro, seção "Taxa real de retorno esperada".
+      Taxa real configurada: <b>${taxaReal}% a.a.</b> acima da inflação — <a href="#" onclick="event.preventDefault(); goToCadastro();" style="color:var(--gold);">editar no Cadastro →</a>
     </p>`;
 
   // ---- Orçamento por Natureza ----
@@ -5425,8 +5471,8 @@ function renderPlanejamento(){
     const pct = totalGeral > 0 ? (valor / totalGeral * 100) : 0;
     return `<div style="margin-bottom:14px;">
       <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:4px;">
-        <span style="font-weight:600;font-size:13.5px;">${c.label}</span>
-        <span style="font-weight:700;">${fmtMoney(valor)} <span style="color:var(--muted);font-weight:400;font-size:12px;">(${pct.toFixed(0)}%)</span></span>
+        <span style="font-weight:600;font-size:13px;">${c.label}</span>
+        <span style="font-weight:700;">${fmtMoney(valor)} <span style="color:var(--muted);font-weight:400;font-size:13px;">(${pct.toFixed(0)}%)</span></span>
       </div>
       <div style="height:8px;background:var(--border);border-radius:4px;overflow:hidden;">
         <div style="height:100%;width:${pct}%;background:${c.cor};"></div>
@@ -5437,7 +5483,7 @@ function renderPlanejamento(){
 
   const naoClassificado = somaPorNatureza[""] || 0;
   const avisoNaoClassificado = naoClassificado > 0
-    ? `<p style="font-size:12px;color:var(--yellow);margin-top:12px;">⚠️ ${fmtMoney(naoClassificado)} (${(naoClassificado/totalGeral*100).toFixed(0)}%) em categorias sem Natureza definida — classifique no Cadastro pra esse número não ficar de fora do gráfico.</p>`
+    ? `<p style="font-size:13px;color:var(--yellow);margin-top:12px;">⚠️ ${fmtMoney(naoClassificado)} (${(naoClassificado/totalGeral*100).toFixed(0)}%) em categorias sem Natureza definida — classifique no Cadastro pra esse número não ficar de fora do gráfico.</p>`
     : "";
 
   naturezaEl.innerHTML = linhasHtml + avisoNaoClassificado;
@@ -5472,8 +5518,8 @@ function renderCadCategoriasTable(){
     return `
     <div class="chart-panel" style="cursor:pointer;margin-bottom:10px;padding:14px 16px;" onclick="openCadCategoriaEditForm(${c.row})">
       <div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px;">
-        <span style="font-weight:600;font-size:13.5px;">${c.nome}</span>
-        <span style="font-size:11.5px;color:var(--muted);">${c.natureza ? `<span style="background:var(--panel);border:1px solid var(--border);border-radius:6px;padding:2px 7px;margin-right:6px;">${c.natureza}</span>` : ""}✏️ editar</span>
+        <span style="font-weight:600;font-size:13px;">${c.nome}</span>
+        <span style="font-size:11px;color:var(--muted);">${c.natureza ? `<span style="background:var(--panel);border:1px solid var(--border);border-radius:6px;padding:2px 7px;margin-right:6px;">${c.natureza}</span>` : ""}✏️ editar</span>
       </div>
       <div style="display:flex;justify-content:space-between;align-items:baseline;margin-top:8px;gap:10px;">
         <div><span style="font-size:11px;color:var(--muted);">Custo total (${MONTHS_FULL[state.monthIdx]})</span><br><span style="font-size:16px;font-weight:700;">${fmtMoney(gasto)}</span></div>
@@ -5619,7 +5665,7 @@ function renderCartoesOrfaosAviso(){
       <div>⚠️ Achamos compras lançadas com nomes de cartão que não existem mais: <b>${orfaos.join(", ")}</b>. Isso costuma acontecer depois de renomear um cartão. Quer reconectar?</div>
       ${orfaos.map(nomeAntigo => `
         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
-          <span style="font-size:12.5px;">"${nomeAntigo}" agora é:</span>
+          <span style="font-size:13px;">"${nomeAntigo}" agora é:</span>
           <select id="orfaoSelect-${normalizeCatName(nomeAntigo).replace(/\s/g,"_")}" style="flex:1;min-width:140px;">
             ${cartoesAtuais.map(c => `<option value="${c.nome}">${c.nome}</option>`).join("")}
           </select>
@@ -6117,7 +6163,7 @@ function renderCredito(){
       breakdownEl.innerHTML = "";
     } else {
       const linhas = mesesOrdenados.map(m => `
-        <div style="display:flex;justify-content:space-between;font-size:12.5px;padding:5px 0;border-top:1px solid var(--border);">
+        <div style="display:flex;justify-content:space-between;font-size:13px;padding:5px 0;border-top:1px solid var(--border);">
           <span style="color:var(--muted);">${MONTHS_FULL[m.date.getMonth()]} ${m.date.getFullYear()}</span>
           <span style="font-weight:600;">${fmtMoney(m.total)}</span>
         </div>`).join("");
@@ -6191,9 +6237,9 @@ function renderCredito(){
             <span class="val-col despesa" style="flex-shrink:0;">${fmtMoney(valorParcela || valorTotal)}</span>
           </div>
           <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-top:6px;">
-            <span style="color:var(--muted);font-size:12px;">${dateLabel}</span>
+            <span style="color:var(--muted);font-size:13px;">${dateLabel}</span>
             <select onclick="event.stopPropagation()" onchange="saveCreditCategoriaInline(${row}, this.value)"
-              style="background:transparent;border:none;color:${cleanCat?"var(--text)":"var(--muted)"};font-size:12.5px;text-align:right;max-width:60%;">${categoriaOptions(cleanCat)}</select>
+              style="background:transparent;border:none;color:${cleanCat?"var(--text)":"var(--muted)"};font-size:13px;text-align:right;max-width:60%;">${categoriaOptions(cleanCat)}</select>
           </div>
         </div>
       </div>
@@ -6202,10 +6248,10 @@ function renderCredito(){
   const filtroAtivoCredito = !!(state.creditSearchQuery || state.creditFiltroSemCategoria || state.creditCategoryFilter);
   const selecionarTodasHtml = window._creditPurchasesCache.length > 0
     ? `<div style="margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
-        <label style="display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--muted);cursor:pointer;width:fit-content;">
+        <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--muted);cursor:pointer;width:fit-content;">
           <input type="checkbox" ${allSelected?"checked":""} onchange="toggleCreditSelectAll(this.checked)"> Selecionar todas
         </label>
-        ${filtroAtivoCredito ? `<button class="connect-btn" style="color:var(--red);border-color:var(--red);font-size:12px;padding:6px 10px;" onclick="excluirTodosFiltradosCredito()">🗑️ Excluir os ${window._creditPurchasesCache.length} filtrado${window._creditPurchasesCache.length===1?"":"s"}</button>` : ""}
+        ${filtroAtivoCredito ? `<button class="connect-btn" style="color:var(--red);border-color:var(--red);font-size:13px;padding:6px 10px;" onclick="excluirTodosFiltradosCredito()">🗑️ Excluir os ${window._creditPurchasesCache.length} filtrado${window._creditPurchasesCache.length===1?"":"s"}</button>` : ""}
       </div>`
     : "";
   el.innerHTML = selecionarTodasHtml + cards;
@@ -6241,11 +6287,11 @@ function renderCreditoLadoLado(){
         <div class="mini-brand" style="display:flex;align-items:center;">${logoHtml}${nomeCartao}</div>
         <div class="mini-number">${miniNumero}</div>
       </div>
-      <div style="display:flex;justify-content:space-between;margin-bottom:14px;font-size:12px;color:var(--muted);">
+      <div style="display:flex;justify-content:space-between;margin-bottom:14px;font-size:13px;color:var(--muted);">
         <span>${userName} · Vence dia ${vencimentoDia || "—"}</span>
       </div>
       <div style="margin-bottom:14px;">
-        <div style="font-size:10px;color:var(--muted);font-weight:700;text-transform:uppercase;">Fatura em aberto</div>
+        <div style="font-size:11px;color:var(--muted);font-weight:700;text-transform:uppercase;">Fatura em aberto</div>
         <div style="font-size:22px;font-weight:700;color:var(--purple);">${fmtMoney(faturaValor)}</div>
         <div style="font-size:11px;color:var(--muted);">${compras.length} compra${compras.length===1?"":"s"} em ${MONTHS_FULL[state.monthIdx]}</div>
         <button class="connect-btn" style="width:100%;margin-top:10px;" onclick="abrirLancarFaturaModal(${JSON.stringify(nomeCartao)})">💳 Lançar pagamento desta fatura</button>
@@ -6313,7 +6359,7 @@ function buildDonutFromTotals(totals, targetId, interactive, totalLabel){
     const pct = (val / total * 100);
     const clickAttr = interactive ? ` onclick="toggleCreditCategoryFilter('${key}')" style="cursor:pointer;"` : "";
     return `<div ${clickAttr} style="padding:6px 0;opacity:${isActive ? 1 : 0.45};">
-      <div style="display:flex;justify-content:space-between;align-items:center;font-size:12px;margin-bottom:3px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;font-size:13px;margin-bottom:3px;">
         <span style="display:flex;align-items:center;gap:7px;min-width:0;"><i style="width:9px;height:9px;border-radius:3px;background:${color};display:inline-block;flex-shrink:0;"></i><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${label}</span></span>
         <span style="color:var(--muted);flex-shrink:0;margin-left:8px;">${pct.toFixed(1)}%</span>
       </div>
@@ -6324,7 +6370,7 @@ function buildDonutFromTotals(totals, targetId, interactive, totalLabel){
     </div>`;
   }).join("");
   const filterNote = (interactive && state.creditCategoryFilter)
-    ? `<div style="margin-bottom:10px;font-size:12px;"><span class="pill" style="cursor:pointer;" onclick="toggleCreditCategoryFilter(null)">✕ Limpar filtro</span></div>`
+    ? `<div style="margin-bottom:10px;font-size:13px;"><span class="pill" style="cursor:pointer;" onclick="toggleCreditCategoryFilter(null)">✕ Limpar filtro</span></div>`
     : "";
   return filterNote + `<div style="display:flex;gap:20px;align-items:center;flex-wrap:wrap;">
     ${donutSvg}
@@ -6456,13 +6502,13 @@ function mostrarModalDuplicatas(grupos, tipo){
     return `<div class="row" style="align-items:flex-start;padding:8px 0;border-bottom:1px solid var(--border);">
       <div>
         <div style="font-weight:600;">${g[0].desc}</div>
-        <div style="font-size:11.5px;color:var(--muted);">${g[0].dataBR} · ${fmtMoney(g[0].valor)} · ${g.length} cópias encontradas</div>
+        <div style="font-size:11px;color:var(--muted);">${g[0].dataBR} · ${fmtMoney(g[0].valor)} · ${g.length} cópias encontradas</div>
       </div>
       <div style="text-align:right;font-size:11px;color:var(--green);white-space:nowrap;">mantém 1${g[idxComCategoria] ? " (com categoria)" : ""}</div>
     </div>`;
   }).join("");
   document.getElementById("duplicatasModalBody").innerHTML = `
-    <p style="font-size:12.5px;color:var(--muted);margin:0 0 12px;">
+    <p style="font-size:13px;color:var(--muted);margin:0 0 12px;">
       ${grupos.length} grupo(s) duplicado(s), ${totalRemover} linha(s) a remover no total. Em cada grupo, mantenho a cópia com categoria preenchida (ou a primeira, se nenhuma tiver).
     </p>
     <div style="max-height:340px;overflow-y:auto;margin-bottom:14px;">${linhasHtml}</div>
@@ -6831,7 +6877,7 @@ function renderDetalheAnual(){
   sparkSvg += `<line x1="0" y1="${sparkH/2}" x2="${sparkW}" y2="${sparkH/2}" stroke="var(--border)" stroke-width="1"/>`;
 
   const html = `
-    <div style="font-size:12px;color:var(--muted);margin-bottom:12px;">Acumulado de Jan a ${MONTHS_FULL[mi]} de ${state.year}</div>
+    <div style="font-size:13px;color:var(--muted);margin-bottom:12px;">Acumulado de Jan a ${MONTHS_FULL[mi]} de ${state.year}</div>
     <div class="resumo-grid">
       <div class="resumo-item"><div class="lbl">Receita acumulada</div><div class="val" style="color:var(--green);">${fmtMoney(receitaYTD)}</div></div>
       <div class="resumo-item"><div class="lbl">Despesa acumulada</div><div class="val" style="color:var(--red);">${fmtMoney(despesaYTD)}</div></div>
@@ -6839,7 +6885,7 @@ function renderDetalheAnual(){
       <div class="resumo-item"><div class="lbl">Reserva atual</div><div class="val" style="color:var(--blue);">${fmtMoney(reservaAtual)}</div></div>
     </div>
     <div style="margin-top:14px;">
-      <div style="display:flex;justify-content:space-between;font-size:12.5px;margin-bottom:4px;">
+      <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:4px;">
         <span>% da Meta de Reserva</span><span style="font-weight:600;">${fmtMoney(reservaAtual)} / ${fmtMoney(metaAtual)} · ${pctMeta.toFixed(0)}%</span>
       </div>
       <div style="height:8px;background:var(--border);border-radius:4px;overflow:hidden;">
@@ -7547,15 +7593,15 @@ function abrirPreviaImportacaoPdf(transacoes, vencimento){
   const cartoesCadastrados = getCadastroCartoesParsed();
   const mesHtml = `
     <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding-bottom:12px;margin-bottom:12px;border-bottom:1px solid var(--border);">
-      <span style="font-size:12px;color:var(--muted);">Mês de vencimento dessas compras:</span>
+      <span style="font-size:13px;color:var(--muted);">Mês de vencimento dessas compras:</span>
       <input type="month" id="pdfPreviaMesInput" value="${mesInputPadrao(vencimento)}"
-        style="background:var(--panel);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:5px 8px;font-size:12.5px;">
+        style="background:var(--panel);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:5px 8px;font-size:13px;">
     </div>
-    ${!vencimento ? '<p style="font-size:11.5px;color:var(--yellow);margin:-4px 0 12px;">⚠️ Não consegui ler a data do extrato — confirme o mês acima antes de importar.</p>' : ''}`;
+    ${!vencimento ? '<p style="font-size:11px;color:var(--yellow);margin:-4px 0 12px;">⚠️ Não consegui ler a data do extrato — confirme o mês acima antes de importar.</p>' : ''}`;
   const bulkHtml = cartoesCadastrados.length > 0 ? `
     <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding-bottom:12px;margin-bottom:8px;border-bottom:1px solid var(--border);">
-      <span style="font-size:12px;color:var(--muted);">Aplicar cartão a todas:</span>
-      <select id="pdfPreviaCartaoBulk" style="background:var(--panel);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:5px 8px;font-size:12.5px;">${cartaoOptionsPreview(null)}</select>
+      <span style="font-size:13px;color:var(--muted);">Aplicar cartão a todas:</span>
+      <select id="pdfPreviaCartaoBulk" style="background:var(--panel);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:5px 8px;font-size:13px;">${cartaoOptionsPreview(null)}</select>
       <button class="connect-btn" onclick="aplicarCartaoATodasPrevia()">Aplicar</button>
     </div>` : "";
   const linhasHtml = transacoes.map((t, i) => {
@@ -7570,7 +7616,7 @@ function abrirPreviaImportacaoPdf(transacoes, vencimento){
         </div>
         <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-top:4px;">
           <span style="font-size:11px;color:var(--muted);">${fmtDataBR(t.data)}</span>
-          <select data-idx="${i}" class="pdf-previa-cartao" style="background:transparent;border:none;color:${nomeCartao==="Cartão ?"?"var(--red)":"var(--text)"};font-size:12px;text-align:right;max-width:60%;">${cartaoOptionsPreview(nomeCartao)}</select>
+          <select data-idx="${i}" class="pdf-previa-cartao" style="background:transparent;border:none;color:${nomeCartao==="Cartão ?"?"var(--red)":"var(--text)"};font-size:13px;text-align:right;max-width:60%;">${cartaoOptionsPreview(nomeCartao)}</select>
         </div>
       </span>
     </div>`;
