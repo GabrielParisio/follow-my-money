@@ -829,6 +829,14 @@
       </div>
       <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;">
         <input id="lancSearchInput" type="text" placeholder="🔎 Buscar por descrição..." style="flex:1;min-width:160px;background:var(--panel);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:9px 12px;font-size:13px;">
+        <select id="lancSortSelect" onchange="setLancSortOrder(this.value)" style="background:var(--panel);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:9px 12px;font-size:13px;flex-shrink:0;">
+          <option value="data-desc">Data (mais recente)</option>
+          <option value="data-asc">Data (mais antiga)</option>
+          <option value="valor-desc">Valor (maior)</option>
+          <option value="valor-asc">Valor (menor)</option>
+          <option value="status-pago">Status (pago primeiro)</option>
+          <option value="status-pendente">Status (pendente primeiro)</option>
+        </select>
         <select id="lancFiltroCategoriaSelect" onchange="setLancFiltroCategoria(this.value)" style="background:var(--panel);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:9px 12px;font-size:13px;flex-shrink:0;"></select>
         <select id="lancFiltroStatusSelect" onchange="setLancFiltroStatus(this.value)" style="background:var(--panel);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:9px 12px;font-size:13px;flex-shrink:0;">
           <option value="">Todos os status</option>
@@ -3584,6 +3592,12 @@ let lancSelectedRows = new Set();
 let lancSearchQuery = "";
 let lancFiltroSemCategoria = false;
 let lancFiltroCategoria = "";
+let lancSortOrder = "data-desc";
+
+function setLancSortOrder(valor){
+  lancSortOrder = valor;
+  renderLancamentos();
+}
 let lancFiltroStatus = "";
 
 function setLancFiltroStatus(valor){
@@ -3626,8 +3640,7 @@ function renderLancamentos(){
   popularSeletoresBancoImportacao();
   const mi = state.monthIdx;
   let items = debitoRows()
-    .filter(it => it.dataVenc && serialToDate(it.dataVenc).getMonth() === mi && serialToDate(it.dataVenc).getFullYear() === state.year)
-    .sort((a,b) => (a.dataVenc||0) - (b.dataVenc||0));
+    .filter(it => it.dataVenc && serialToDate(it.dataVenc).getMonth() === mi && serialToDate(it.dataVenc).getFullYear() === state.year);
 
   if(lancSearchQuery){
     items = items.filter(it => String(it.desc || "").toLowerCase().includes(lancSearchQuery));
@@ -3643,6 +3656,20 @@ function renderLancamentos(){
   } else if(lancFiltroStatus === "pendente"){
     items = items.filter(it => it.status !== "✅ Pago");
   }
+
+  const comparadoresLanc = {
+    "data-desc": (a,b) => (b.dataVenc||0) - (a.dataVenc||0),
+    "data-asc": (a,b) => (a.dataVenc||0) - (b.dataVenc||0),
+    "valor-desc": (a,b) => (b.valor||0) - (a.valor||0),
+    "valor-asc": (a,b) => (a.valor||0) - (b.valor||0),
+    // Pago = 1, Pendente = 0 — "pago primeiro" ordena decrescente por esse peso, "pendente primeiro" o oposto
+    "status-pago": (a,b) => (b.status==="✅ Pago"?1:0) - (a.status==="✅ Pago"?1:0) || (b.dataVenc||0) - (a.dataVenc||0),
+    "status-pendente": (a,b) => (a.status==="✅ Pago"?1:0) - (b.status==="✅ Pago"?1:0) || (b.dataVenc||0) - (a.dataVenc||0),
+  };
+  const ordemLanc = lancSortOrder || "data-desc";
+  items = [...items].sort(comparadoresLanc[ordemLanc] || comparadoresLanc["data-desc"]);
+  const sortSelectLancEl = document.getElementById("lancSortSelect");
+  if(sortSelectLancEl) sortSelectLancEl.value = ordemLanc;
 
   const filtroBtn = document.getElementById("lancFiltroSemCategoriaBtn");
   if(filtroBtn){
