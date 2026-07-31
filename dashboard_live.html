@@ -1039,6 +1039,7 @@
     <div class="chart-panel" style="margin-bottom:16px;">
       <h2>Reserva: evolução, meta e projeção</h2>
       <div id="cProjecaoSub" style="color:var(--muted);font-size:13px;margin-bottom:8px;"></div>
+      <div id="reservaMesCards" class="cards" style="margin-bottom:12px;"></div>
       <div id="chartReservaCombo"></div>
       <div class="legend">
         <span><i style="background:var(--blue)"></i>Reserva real</span>
@@ -6160,6 +6161,29 @@ function renderReservaCombo(saldo, saldoPrevisto, reserva, meta, mi){
     `Por média dos últimos ${mesesComDadoReserva} mês${mesesComDadoReserva===1?"":"es"} (${fmtMoney(mediaSaldoMensal)}/mês) · <span style="color:${pctColor};font-weight:700;">${pctAlcancado.toFixed(0)}% da meta até ${labelFinalMeta}</span>` +
     `<br>Pelo previsto já lançado · <span style="color:${pctColorPrevisto};font-weight:700;">${pctAlcancadoPrevisto.toFixed(0)}% da meta até ${labelAtualMeta}</span>` +
     `<br>Hoje: ${pctAtualMeta.toFixed(0)}% da meta · <span style="color:${corRitmoAno};">esperado nessa altura do ano: ${ritmoEsperadoAno.toFixed(0)}%</span>`;
+
+  // Cards de receita/despesa PREVISTA (calcPrevisto — inclui Pago e Pendente) especificamente do mês
+  // navegado (idxHoje). Ficam ao lado do gráfico pra responder rápido "quanto eu espero entrar/sair
+  // nesse mês", sem precisar abrir Débito/Crédito e somar na mão.
+  const receitaMesAtual = calcPrevisto("Receita", mesAtualMeta.mesIdx, mesAtualMeta.ano);
+  const despesaMesAtual = calcPrevisto("Despesa", mesAtualMeta.mesIdx, mesAtualMeta.ano);
+  document.getElementById("reservaMesCards").innerHTML = `
+    <div class="card">
+      <div class="accent" style="background:var(--green)"></div>
+      <div class="body">
+        <div class="label">Receita estimada · ${labelAtualMeta}</div>
+        <div class="value" style="font-size:20px;">${fmtMoney(receitaMesAtual)}</div>
+        <div class="sub">Pago + Pendente, pelo vencimento</div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="accent" style="background:var(--red)"></div>
+      <div class="body">
+        <div class="label">Despesa estimada · ${labelAtualMeta}</div>
+        <div class="value" style="font-size:20px;">${fmtMoney(despesaMesAtual)}</div>
+        <div class="sub">Pago + Pendente, inclui provisão de fatura</div>
+      </div>
+    </div>`;
 }
 
 function renderCredito(){
