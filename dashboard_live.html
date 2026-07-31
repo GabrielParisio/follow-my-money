@@ -1622,6 +1622,7 @@ function buildMonthRuler(){
       if(raw) renderCharts();
       if(raw) renderLancamentos();
       if(raw) renderCredito();
+      if(raw) renderPlanejamento();
     });
     ruler.appendChild(tick);
   });
@@ -4514,6 +4515,7 @@ function navegarMesCredito(delta){
   if(raw) renderCharts();
   if(raw) renderLancamentos();
   if(raw) renderCredito();
+  if(raw) renderPlanejamento();
 }
 
 // Mesmo padrão do navegarMesCredito — troca o mês global e redesenha o modal do Score no lugar,
@@ -5962,14 +5964,17 @@ function renderReservaCombo(saldo, saldoPrevisto, reserva, meta, mi){
   const el = document.getElementById("chartReservaCombo");
   if(!el) return;
 
-  // Janela ROLANTE em vez de fixa Jan-Dez do ano corrente: até 6 meses de histórico antes do mês
-  // vigente, e SEMPRE 12 meses de projeção pra frente a partir dele — mesmo cruzando pro ano
-  // seguinte. Antes, a projeção travava em dezembro do ano corrente: se o mês vigente fosse
-  // setembro, por exemplo, sobravam só 3 meses de projeção, não 12 de verdade.
-  const mesesHistorico = Math.min(6, mi + 1);
-  const kInicio = -(mesesHistorico - 1), kFim = 12;
-  const totalPontos = kFim - kInicio + 1;
-  const idxHoje = mesesHistorico - 1; // posição do mês vigente dentro do array de pontos
+  // Janela FIXA de calendário — Jan do ano corrente até Dez do ano seguinte (24 pontos) — em vez
+  // de uma janela ROLANTE relativa ao mês selecionado. Antes, navegar de Jul pra Set reconstruía o
+  // array inteiro com um mês inicial diferente (Fev→Abr) e um mês final diferente (Jul/27→Set/27),
+  // fazendo o gráfico inteiro "pular" em vez de crescer — os mesmos meses passados aparecendo em
+  // posições X diferentes a cada navegação. Agora cada mês sempre ocupa a MESMA posição no eixo X
+  // não importa em qual mês do topo você está; só o divisor real/projetado (idxHoje) avança junto
+  // com a navegação, e o restante do array (pontos futuros como projeção) se recalcula a partir
+  // dali — exatamente como um progresso contínuo, sem re-plotar o que já passou.
+  const kInicio = -mi, kFim = 23 - mi;
+  const totalPontos = kFim - kInicio + 1; // sempre 24 (12 meses do ano corrente + 12 de projeção)
+  const idxHoje = mi; // posição do mês vigente dentro do array — Jan do ano corrente = índice 0
 
   // Cache de reserva histórica por ano (evita reler a aba Patrimonio várias vezes)
   const reservaPorAno = {};
