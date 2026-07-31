@@ -6102,8 +6102,13 @@ function renderReservaCombo(saldo, saldoPrevisto, reserva, meta, mi){
   svg += `<line x1="${pts[idxHoje].x}" y1="${PAD*0.3}" x2="${pts[idxHoje].x}" y2="${H-PAD}" stroke="#60A5FA" stroke-width="1.5" stroke-dasharray="4"/>`;
 
   const realPts = pts.slice(0, idxHoje+1);
-  const projPts = pts.slice(idxHoje);
-  const projPrevistoPts = ptsPrevisto.slice(idxHoje);
+  // As duas linhas de projeção agora desenham o array INTEIRO (não só a partir do mês vigente).
+  // Nos meses passados, projetado/projetadoPrevisto são idênticos ao real (é a mesma reserva —
+  // não existe "previsão" nem "média" diferente pra um mês que já aconteceu), então a linha
+  // tracejada simplesmente sobrepõe a linha real sólida ali, dando sensação de continuidade em vez
+  // de aparecer "brotando do nada" bem no mês vigente.
+  const projPts = pts;
+  const projPrevistoPts = ptsPrevisto;
   svg += svgLine(realPts, "#60A5FA", W, H, true);
   svg += svgLine(projPts, "#9C968A", W, H, false).replace('stroke-width="2.5"','stroke-width="1.5" stroke-dasharray="5,4"');
   svg += svgLine(projPrevistoPts, "#A78BFA", W, H, false).replace('stroke-width="2.5"','stroke-width="1.5" stroke-dasharray="2,3"');
