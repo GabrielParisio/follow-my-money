@@ -5410,6 +5410,41 @@ function projetarMesesAteIndependencia(patrimonioAtual, aporteMensal, taxaRealAn
   return null; // não atinge em 100 anos nesse ritmo
 }
 
+// Mesma ideia acima, mas usando o valor ESPECÍFICO de cada mês (via calcPrevisto) enquanto houver
+// lançamento futuro de verdade na planilha, em vez de aplicar uma média fixa por décadas inteiras —
+// mesmo princípio da linha "Projeção (previsto lançado)" no gráfico de Reserva logo abaixo, incluindo
+// o mesmo ajuste pro mês vigente (que pode ter algo previsto e ainda não realizado, tipo uma receita
+// grande dada como Pendente — sem esse ajuste, ela nunca entraria na conta: não é "real" ainda, e o
+// laço abaixo só olha os meses SEGUINTES ao vigente). Depois que os lançamentos específicos acabam
+// (normalmente poucos meses/anos à frente, dependendo do quanto a pessoa cadastrou de antemão), cai
+// pro ritmo médio histórico (aporteFallback) pro resto da projeção — não tem lançamento nenhum lá na
+// frente pra usar de outro jeito, e usar a média dos próprios meses previstos (que já inclui esse
+// evento pontual) inflaria o ritmo assumido pra sempre, contando o mesmo bônus repetidas vezes.
+function projetarMesesAtePrevistoDetalhado(patrimonioAtual, taxaRealAnualPct, alvo, mi, ano, aporteFallback){
+  const gapMesVigente =
+    (calcPrevisto("Receita", mi, ano) - calcPrevisto("Despesa", mi, ano)) -
+    (calcReal("Receita", mi, ano) - calcReal("Despesa", mi, ano));
+  let patrimonio = patrimonioAtual + gapMesVigente;
+  if(patrimonio >= alvo) return 0;
+  const taxaMensal = Math.pow(1 + taxaRealAnualPct/100, 1/12) - 1;
+  const LIMITE_MESES = 100 * 12;
+  const HORIZONTE_DETALHADO = 24; // meses à frente com lançamento específico já cadastrado
+  for(let m = 1; m <= LIMITE_MESES; m++){
+    let aporte;
+    if(m <= HORIZONTE_DETALHADO){
+      const mesAbs = mi + m;
+      const anoP = ano + Math.floor(mesAbs / 12);
+      const mesIdxP = ((mesAbs % 12) + 12) % 12;
+      aporte = calcPrevisto("Receita", mesIdxP, anoP) - calcPrevisto("Despesa", mesIdxP, anoP);
+    } else {
+      aporte = aporteFallback;
+    }
+    patrimonio = patrimonio * (1 + taxaMensal) + aporte;
+    if(patrimonio >= alvo) return m;
+  }
+  return null;
+}
+
 // Saldo PREVISTO médio dos próximos meses — mesmo princípio da "Projeção (previsto lançado)" do
 // gráfico de reserva (usa calcPrevisto, que já inclui a provisão de fatura de cartão), só que aqui
 // resumido numa média só, pra alimentar a projeção de anos até a independência financeira.
@@ -5431,34 +5466,6 @@ function calcularMediaPrevistaProximosMeses(qtdMeses){
 
 function renderPlanejamento(){
   if(!raw) return;
-
-  // === DIAGNÓSTICO TEMPORÁRIO — remover depois de investigar o bug do calcPrevisto ===
-  // Mostra na tela (via alert, sem precisar de DevTools) exatamente o que o app está lendo da
-  // planilha de verdade pras linhas de Receita: os campos crus (dataLanc/dataVenc como vêm da
-  // API, tipo, categoria, status) e o resultado de calcPrevisto pro mês selecionado. Isso separa
-  // se o problema é no DADO (planilha) ou na LÓGICA (calcPrevisto) sem precisar adivinhar.
-  window.debugPrevistoTemp = function(){
-    const mi = state.monthIdx, ano = state.year;
-    const receitaPrevista = calcPrevisto("Receita", mi, ano);
-    const despesaPrevista = calcPrevisto("Despesa", mi, ano);
-    // Filtra só as linhas com VENCIMENTO dentro do mês selecionado -- é exatamente o critério que
-    // calcPrevisto usa, então essa lista mostra literalmente tudo que ele está somando (ou devendo
-    // somar) pra esse mês. Uma linha compacta por lançamento, pra não estourar o limite do alert().
-    const linhasDoMes = debitoRows().filter(r => {
-      if(!r.dataVenc) return false;
-      const d = serialToDate(r.dataVenc);
-      return d.getMonth() === mi && d.getFullYear() === ano;
-    });
-    let msg = `${MONTHS_FULL[mi]}/${ano} (mi=${mi})\n`;
-    msg += `Receita prevista: ${receitaPrevista} | Despesa prevista: ${despesaPrevista}\n\n`;
-    msg += `Lançamentos com vencimento neste mês (${linhasDoMes.length}):\n`;
-    linhasDoMes.forEach(l => {
-      msg += `\n"${l.desc}" | tipo=${JSON.stringify(l.tipo)} | R$${l.valor} | cat=${JSON.stringify(l.categoria)} | status=${JSON.stringify(l.status)}`;
-    });
-    if(linhasDoMes.length === 0) msg += "\n(nenhum lançamento com vencimento neste mês)";
-    alert(msg);
-  };
-  // === FIM DO DIAGNÓSTICO TEMPORÁRIO ===
 
   // ---- Independência Financeira ----
   const { despesaMedia, saldoMedio, mesesComDado } = calcularMediasReaisRecentes(12);
@@ -5482,7 +5489,7 @@ function renderPlanejamento(){
   // usam a mesma fonte de dado, então não vão mais contradizer um ao outro.
   const { saldoMedioPrevisto, mesesComDado: mesesComDadoPrevisto } = calcularMediaPrevistaProximosMeses(12);
   const mesesRestantesPrevisto = despesaAnual > 0 && mesesComDadoPrevisto > 0
-    ? projetarMesesAteIndependencia(patrimonioAtual, saldoMedioPrevisto, taxaReal, patrimonioAlvo)
+    ? projetarMesesAtePrevistoDetalhado(patrimonioAtual, taxaReal, patrimonioAlvo, state.monthIdx, state.year, saldoMedio)
     : null;
 
   function textoCenario(meses, aporte, rotulo){
@@ -5490,7 +5497,14 @@ function renderPlanejamento(){
     if(meses === 0) return `🎉 ${rotulo === "média" ? "Pelo ritmo médio" : "Pelo previsto já lançado"}, você já atingiu o patrimônio-alvo!`;
     if(meses === null) return `${rotulo === "média" ? "Pelo ritmo médio" : "Pelo previsto já lançado"}, não converge em 100 anos — o aporte (${fmtMoney(aporte)}/mês) está baixo (ou negativo) demais pra essa meta, mesmo com a taxa real configurada.`;
     const anos = Math.floor(meses / 12), mesesResto = meses % 12;
-    return `${rotulo === "média" ? "Pelo ritmo médio" : "Pelo previsto já lançado"} (${fmtMoney(aporte)}/mês), faltam aproximadamente <b>${anos} ano${anos===1?"":"s"}${mesesResto>0?` e ${mesesResto} mês${mesesResto===1?"":"es"}`:""}</b>.`;
+    const tempoTexto = `<b>${anos} ano${anos===1?"":"s"}${mesesResto>0?` e ${mesesResto} mês${mesesResto===1?"":"es"}`:""}</b>`;
+    if(rotulo === "previsto"){
+      // Não é mais um ritmo fixo -- usa o valor específico de cada mês enquanto houver lançamento
+      // (por isso não citamos um "R$X/mês" único aqui, seria enganoso). O ritmo médio só entra como
+      // suposição pros meses distantes, sem nada ainda cadastrado.
+      return `Pelo previsto já lançado (usa o valor específico de cada mês, e o ritmo médio de ${fmtMoney(aporte)}/mês pros meses mais distantes sem lançamento ainda), faltam aproximadamente ${tempoTexto}.`;
+    }
+    return `Pelo ritmo médio (${fmtMoney(aporte)}/mês), faltam aproximadamente ${tempoTexto}.`;
   }
 
   let previsaoTexto;
@@ -5498,7 +5512,7 @@ function renderPlanejamento(){
     previsaoTexto = "Sem dado de despesa suficiente ainda pra calcular — precisa de pelo menos 1 mês com lançamento real.";
   } else {
     const linhaMedia = textoCenario(mesesRestantes, saldoMedio, "média");
-    const linhaPrevisto = textoCenario(mesesRestantesPrevisto, saldoMedioPrevisto, "previsto");
+    const linhaPrevisto = textoCenario(mesesRestantesPrevisto, saldoMedio, "previsto");
     previsaoTexto = linhaMedia + (linhaPrevisto ? `<br>${linhaPrevisto}` : "");
   }
 
@@ -5535,9 +5549,6 @@ function renderPlanejamento(){
     <p style="font-size:13px;color:var(--text);margin:0;">${previsaoTexto}</p>
     <p style="font-size:11px;color:var(--muted);margin-top:10px;">
       Taxa real configurada: <b>${taxaReal}% a.a.</b> acima da inflação — <a href="#" onclick="event.preventDefault(); goToCadastro();" style="color:var(--gold);">editar no Cadastro →</a>
-    </p>
-    <p style="font-size:10px;color:var(--muted);margin-top:14px;opacity:0.6;">
-      <a href="#" onclick="event.preventDefault(); debugPrevistoTemp();" style="color:var(--muted);">🔍 Diagnóstico temporário (toque aqui)</a>
     </p>`;
 
   // ---- Orçamento por Natureza ----
@@ -6146,7 +6157,7 @@ function renderReservaCombo(saldo, saldoPrevisto, reserva, meta, mi){
         `<br>Reserva real: ${fmtMoney(projetado[i])} <span style='color:#9C968A;'>(${pctMeta.toFixed(0)}% da meta)</span>` +
         `<br>Saldo do mês: <span style='color:${corSaldo};'>${fmtMoney(saldoJanela[i])}</span>`;
     }
-    svg += `<rect x="${p.x - groupW/2}" y="0" width="${groupW}" height="${H}" fill="transparent" style="cursor:pointer;" onmousemove="showChartTooltip(event, '${tipHtml}')" onmouseleave="hideChartTooltip()" onclick="event.stopPropagation(); showChartTooltip(event, '${tipHtml}')"/>`;
+    svg += `<rect x="${p.x - groupW/2}" y="0" width="${groupW}" height="${H}" fill="transparent" style="cursor:pointer;pointer-events:all;" onmousemove="showChartTooltip(event, '${tipHtml}')" onmouseleave="hideChartTooltip()" onclick="event.stopPropagation(); showChartTooltip(event, '${tipHtml}')"/>`;
   });
   el.innerHTML = `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;max-height:340px;">${svg}</svg>`;
 
@@ -6884,7 +6895,7 @@ function renderCharts(){
     const labelColor = i === mi ? "#F2EEE4" : "#9C968A";
     bars += `<text x="${x0+barW}" y="${H-10}" font-size="10" font-weight="${i===mi?'700':'400'}" fill="${labelColor}" text-anchor="middle">${MONTHS[i]}</text>`;
     const tipHtml = `<b>${MONTHS_FULL[i]}</b><br>Receita: ${fmtMoney(receita[i])}<br>Despesa: ${fmtMoney(despesa[i])}`.replace(/'/g,"&#39;");
-    bars += `<rect x="${gx}" y="0" width="${groupW}" height="${H}" fill="transparent" style="cursor:pointer;" onmousemove="showChartTooltip(event, '${tipHtml}')" onmouseleave="hideChartTooltip()" onclick="event.stopPropagation(); showChartTooltip(event, '${tipHtml}')"/>`;
+    bars += `<rect x="${gx}" y="0" width="${groupW}" height="${H}" fill="transparent" style="cursor:pointer;pointer-events:all;" onmousemove="showChartTooltip(event, '${tipHtml}')" onmouseleave="hideChartTooltip()" onclick="event.stopPropagation(); showChartTooltip(event, '${tipHtml}')"/>`;
   }
   document.getElementById("chartBarras").innerHTML =
     `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;max-height:340px;">${bars}</svg>`;
@@ -8037,7 +8048,21 @@ function setupModalOutsideClickClose(){
 window.onload = () => {
   aplicarTema(localStorage.getItem("ftm_tema") || "dark");
   if("serviceWorker" in navigator){
-    navigator.serviceWorker.register("service-worker.js").catch(() => {}); // se falhar, o app continua funcionando normal, só sem instalação
+    // updateViaCache:"none" -- sem isso, o PRÓPRIO service-worker.js podia vir do cache HTTP do
+    // navegador ao checar por atualização, fazendo o navegador achar que "nada mudou" mesmo depois
+    // de eu subir uma versão nova. Isso, junto com o reload automático abaixo quando uma versão nova
+    // assume o controle, é o que resolve de vez o problema de ficar preso em versão antiga.
+    navigator.serviceWorker.register("service-worker.js", { updateViaCache: "none" })
+      .then((reg) => {
+        reg.update().catch(() => {}); // força checar por versão nova assim que a página abre
+        let jaRecarregou = false;
+        navigator.serviceWorker.addEventListener("controllerchange", () => {
+          if(jaRecarregou) return; // evita loop de reload se algo disparar o evento mais de uma vez
+          jaRecarregou = true;
+          location.reload();
+        });
+      })
+      .catch(() => {}); // se falhar, o app continua funcionando normal, só sem instalação
   }
   document.querySelectorAll(".brand-logo").forEach(img => img.src = LOGO_DATA_URI);
   renderBalancoCardsShell();
