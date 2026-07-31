@@ -6006,17 +6006,20 @@ function renderReservaCombo(saldo, saldoPrevisto, reserva, meta, mi){
   const el = document.getElementById("chartReservaCombo");
   if(!el) return;
 
-  // Janela FIXA de calendário — Jan do ano corrente até Dez do ano seguinte (24 pontos) — em vez
-  // de uma janela ROLANTE relativa ao mês selecionado. Antes, navegar de Jul pra Set reconstruía o
-  // array inteiro com um mês inicial diferente (Fev→Abr) e um mês final diferente (Jul/27→Set/27),
-  // fazendo o gráfico inteiro "pular" em vez de crescer — os mesmos meses passados aparecendo em
-  // posições X diferentes a cada navegação. Agora cada mês sempre ocupa a MESMA posição no eixo X
-  // não importa em qual mês do topo você está; só o divisor real/projetado (idxHoje) avança junto
-  // com a navegação, e o restante do array (pontos futuros como projeção) se recalcula a partir
-  // dali — exatamente como um progresso contínuo, sem re-plotar o que já passou.
-  const kInicio = -mi, kFim = 23 - mi;
-  const totalPontos = kFim - kInicio + 1; // sempre 24 (12 meses do ano corrente + 12 de projeção)
-  const idxHoje = mi; // posição do mês vigente dentro do array — Jan do ano corrente = índice 0
+  // Janela FECHADA de calendário — sempre Jan a Dez do ano da planilha (state.year), 12 pontos,
+  // sem se estender pro ano seguinte. E o divisor real/projetado (idxHoje) agora é a DATA REAL DE
+  // HOJE, não o mês que a pessoa está navegando (mi) no resto do app. Antes, idxHoje = mi fazia esse
+  // divisor "andar junto" com a navegação — resultado: um lançamento pendente datado em Setembro
+  // (ex: uma PLR ainda não paga) só aparecia ajustado na projeção enquanto Setembro fosse o mês
+  // selecionado; ao navegar pra Outubro, o ajuste "pulava" pra Outubro e o salto de Setembro sumia,
+  // mesmo a PLR continuando datada em Setembro o tempo todo. Prender o divisor na data real resolve
+  // isso na raiz: o gráfico fica idêntico não importa qual mês você esteja olhando em outra parte do
+  // app — só muda de verdade quando o tempo passa de fato ou quando a planilha muda.
+  const hoje = new Date();
+  const totalPontos = 12;
+  const idxHojeBruto = state.year === hoje.getFullYear() ? hoje.getMonth()
+    : (state.year < hoje.getFullYear() ? 11 : -1);
+  const idxHoje = Math.max(0, Math.min(totalPontos - 1, idxHojeBruto)); // trava dentro do ano exibido
 
   // Cache de reserva histórica por ano (evita reler a aba Patrimonio várias vezes)
   const reservaPorAno = {};
@@ -6029,13 +6032,10 @@ function renderReservaCombo(saldo, saldoPrevisto, reserva, meta, mi){
   const getSaldo = (ano, mesIdx) => ano === state.year ? (saldo[mesIdx] || 0) : (calcReal("Receita", mesIdx, ano) - calcReal("Despesa", mesIdx, ano));
   const getSaldoPrevisto = (ano, mesIdx) => ano === state.year ? (saldoPrevisto[mesIdx] || 0) : (calcPrevisto("Receita", mesIdx, ano) - calcPrevisto("Despesa", mesIdx, ano));
 
-  // Monta a lista de meses absolutos da janela (ano + mesIdx pra cada ponto do gráfico)
+  // Monta a lista de meses do ano exibido (Jan a Dez, sempre os mesmos 12, em ordem)
   const pontosMeses = [];
-  for(let k = kInicio; k <= kFim; k++){
-    const mesAbs = mi + k;
-    const ano = state.year + Math.floor(mesAbs / 12);
-    const mesIdx = ((mesAbs % 12) + 12) % 12;
-    pontosMeses.push({ ano, mesIdx, k });
+  for(let mesIdx = 0; mesIdx < totalPontos; mesIdx++){
+    pontosMeses.push({ ano: state.year, mesIdx, k: mesIdx });
   }
 
   const reservaJanela = pontosMeses.map(p => getReserva(p.ano, p.mesIdx));
@@ -6072,32 +6072,19 @@ function renderReservaCombo(saldo, saldoPrevisto, reserva, meta, mi){
     projetadoPrevisto.push(projetadoPrevisto[i-1] + saldoPrevistoJanela[i]);
   }
   const salarioBruto = getSalarioBruto();
-  const metaAno = salarioBruto > 0 ? salarioBruto * 12 : (meta[mi] || meta[0] || 0);
+  const metaAno = salarioBruto > 0 ? salarioBruto * 12 : (meta[idxHoje] || meta[0] || 0);
   const pctAlcancado = metaAno > 0 ? (projetado[totalPontos-1] / metaAno * 100) : 0;
   const pctAlcancadoPrevisto = metaAno > 0 ? (projetadoPrevisto[totalPontos-1] / metaAno * 100) : 0;
 
   const W = Math.max(500, totalPontos * 42), H = 260, PAD = 34, PADL = 52;
 
-  // --- Domínio ESTÁVEL do eixo Y ---
-  // Antes o maxV/minV eram calculados só em cima da janela rolante do mês vigente (reservaJanela/
-  // projetado/projetadoPrevisto), que muda de tamanho e de "mês inicial" conforme o usuário navega
-  // entre meses no topo do app — por isso o eixo pulava de escala a cada troca de mês. Agora o
-  // domínio é calculado sobre um range FIXO (o ano inteiro + 12 meses de projeção contados a partir
-  // de dezembro), sempre o mesmo pra um dado ano, independente de qual mês (mi) está selecionado.
-  // Isso faz o eixo Y ficar parado e a linha real ir se desenhando dentro dele, como um progresso
-  // contínuo, em vez de reescalar a cada navegação.
-  const domReserva = [];
-  for(let dm = 0; dm <= 11; dm++) domReserva.push(getReserva(state.year, dm));
-  const domProjMedia = [domReserva[11]], domProjPrevisto = [domReserva[11]];
-  for(let k = 1; k <= 12; k++){
-    const mesAbs = 11 + k;
-    const anoP = state.year + Math.floor(mesAbs / 12);
-    const mesIdxP = mesAbs % 12;
-    domProjMedia.push(domProjMedia[k-1] + mediaSaldoMensal);
-    domProjPrevisto.push(domProjPrevisto[k-1] + getSaldoPrevisto(anoP, mesIdxP));
-  }
-  const maxV = Math.max(...domReserva, ...domProjMedia, ...domProjPrevisto, metaAno, 1) * 1.15;
-  const minV = Math.min(0, ...domReserva, ...domProjMedia, ...domProjPrevisto);
+  // --- Domínio do eixo Y ---
+  // Como a janela agora é FECHADA (sempre os mesmos 12 meses do ano, Jan a Dez, sem depender de
+  // navegação), dá pra calcular o domínio direto em cima dos próprios arrays que vão ser desenhados
+  // (reservaJanela/projetado/projetadoPrevisto) — eles já são estáveis por construção, não precisa
+  // mais de um cálculo à parte só pra garantir que o eixo não pule entre navegações.
+  const maxV = Math.max(...reservaJanela, ...projetado, ...projetadoPrevisto, metaAno, 1) * 1.15;
+  const minV = Math.min(0, ...reservaJanela, ...projetado, ...projetadoPrevisto);
   const converter = (v) => H - PAD - ((v - minV)/(maxV - minV)) * (H-PAD*2);
   const passo = (W-PADL-PAD)/(totalPontos-1);
   const pts = projetado.map((v,i) => ({ x: PADL + i * passo, y: converter(v) }));
@@ -6166,7 +6153,7 @@ function renderReservaCombo(saldo, saldoPrevisto, reserva, meta, mi){
   const pctColor = pctAlcancado >= 100 ? "var(--green)" : (pctAlcancado >= 70 ? "var(--yellow)" : "var(--red)");
   const pctColorPrevisto = pctAlcancadoPrevisto >= 100 ? "var(--green)" : (pctAlcancadoPrevisto >= 70 ? "var(--yellow)" : "var(--red)");
   const pctAtualMeta = metaAno > 0 ? (reservaJanela[idxHoje] / metaAno * 100) : 0;
-  const ritmoEsperadoAno = ((mi+1) / 12) * 100;
+  const ritmoEsperadoAno = ((idxHoje+1) / 12) * 100;
   const corRitmoAno = pctAtualMeta >= ritmoEsperadoAno ? "var(--green)" : "var(--red)";
   document.getElementById("cProjecaoSub").innerHTML =
     `Por média dos últimos ${mesesComDadoReserva} mês${mesesComDadoReserva===1?"":"es"} (${fmtMoney(mediaSaldoMensal)}/mês) · <span style="color:${pctColor};font-weight:700;">${pctAlcancado.toFixed(0)}% da meta até ${labelFinalMeta}</span>` +
