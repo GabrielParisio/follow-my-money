@@ -6006,20 +6006,14 @@ function renderReservaCombo(saldo, saldoPrevisto, reserva, meta, mi){
   const el = document.getElementById("chartReservaCombo");
   if(!el) return;
 
-  // Janela FECHADA de calendário — sempre Jan a Dez do ano da planilha (state.year), 12 pontos,
-  // sem se estender pro ano seguinte. E o divisor real/projetado (idxHoje) agora é a DATA REAL DE
-  // HOJE, não o mês que a pessoa está navegando (mi) no resto do app. Antes, idxHoje = mi fazia esse
-  // divisor "andar junto" com a navegação — resultado: um lançamento pendente datado em Setembro
-  // (ex: uma PLR ainda não paga) só aparecia ajustado na projeção enquanto Setembro fosse o mês
-  // selecionado; ao navegar pra Outubro, o ajuste "pulava" pra Outubro e o salto de Setembro sumia,
-  // mesmo a PLR continuando datada em Setembro o tempo todo. Prender o divisor na data real resolve
-  // isso na raiz: o gráfico fica idêntico não importa qual mês você esteja olhando em outra parte do
-  // app — só muda de verdade quando o tempo passa de fato ou quando a planilha muda.
-  const hoje = new Date();
+  // Janela FECHADA de calendário — sempre Jan a Dez do ano da planilha (state.year), 12 pontos, sem
+  // se estender pro ano seguinte. O divisor real/projetado (idxHoje) volta a acompanhar o mês que
+  // você está navegando (mi) — é assim que o resto do app funciona, e é isso que faz o painel
+  // responder de verdade quando você troca de mês. O bug da PLR que "sumia" ao navegar não era esse
+  // acompanhamento em si — era a linha "previsto" só ficar ajustada bem NO mês selecionado. O
+  // conserto de verdade está mais abaixo, na forma como projetadoPrevisto é montada.
   const totalPontos = 12;
-  const idxHojeBruto = state.year === hoje.getFullYear() ? hoje.getMonth()
-    : (state.year < hoje.getFullYear() ? 11 : -1);
-  const idxHoje = Math.max(0, Math.min(totalPontos - 1, idxHojeBruto)); // trava dentro do ano exibido
+  const idxHoje = mi;
 
   // Cache de reserva histórica por ano (evita reler a aba Patrimonio várias vezes)
   const reservaPorAno = {};
@@ -6059,22 +6053,27 @@ function renderReservaCombo(saldo, saldoPrevisto, reserva, meta, mi){
   for(let i = idxHoje + 1; i < totalPontos; i++){
     projetado.push(projetado[i-1] + mediaSaldoMensal);
   }
-  // Projeção pelo previsto lançado: parte do mesmo real até o mês vigente, MAS soma também a
-  // parte do PRÓPRIO mês vigente que já está prevista/lançada e ainda não virou "real" (ex: uma
-  // receita grande dada como Pendente, com vencimento neste mês, ainda não paga). Sem esse ajuste,
-  // esse valor nunca entrava em lugar nenhum: não é "real" (ainda não foi pago) e o laço de
-  // projeção só somava saldo previsto dos meses SEGUINTES ao vigente — o mês vigente em si ficava
-  // de fora dos dois lados. Esse gap (previsto - real do mês vigente) plugra esse buraco.
-  const gapPrevistoNaoRealizadoMesVigente = saldoPrevistoJanela[idxHoje] - saldoJanela[idxHoje];
-  const projetadoPrevisto = reservaJanela.slice(0, idxHoje + 1); // projeção pelo previsto lançado
-  projetadoPrevisto[idxHoje] += gapPrevistoNaoRealizadoMesVigente;
-  for(let i = idxHoje + 1; i < totalPontos; i++){
-    projetadoPrevisto.push(projetadoPrevisto[i-1] + saldoPrevistoJanela[i]);
+  // Projeção pelo previsto lançado: soma acumulada ÚNICA de Jan a Dez, direto do saldo previsto de
+  // CADA mês (não mais separada em "real até o mês vigente" + "previsto depois dele"). Isso é o que
+  // garante que um lançamento pendente datado num mês específico (ex: uma PLR em Setembro, ainda
+  // "Pendente") nunca suma da linha, não importa se você está navegando por Set, Out, Nov ou Dez: o
+  // efeito dele já está dentro da soma acumulada de QUALQUER ponto a partir de Setembro em diante,
+  // permanentemente. Antes, esse ajuste só existia bem NO mês selecionado (idxHoje) — ao navegar pra
+  // frente, ele "andava junto" com a seleção e sumia do lugar onde de fato pertencia.
+  const reservaInicioAno = getReserva(state.year - 1, 11); // saldo real no fim de dezembro do ano anterior
+  const projetadoPrevisto = [];
+  for(let i = 0; i < totalPontos; i++){
+    const anterior = i === 0 ? reservaInicioAno : projetadoPrevisto[i-1];
+    projetadoPrevisto.push(anterior + saldoPrevistoJanela[i]);
   }
   const salarioBruto = getSalarioBruto();
   const metaAno = salarioBruto > 0 ? salarioBruto * 12 : (meta[idxHoje] || meta[0] || 0);
   const pctAlcancado = metaAno > 0 ? (projetado[totalPontos-1] / metaAno * 100) : 0;
-  const pctAlcancadoPrevisto = metaAno > 0 ? (projetadoPrevisto[totalPontos-1] / metaAno * 100) : 0;
+  // Lê o ponto do mês NAVEGADO (idxHoje), não sempre dezembro -- é isso que faz esse número mudar de
+  // verdade conforme você troca de mês (diferente da linha "média", que responde "onde eu chego até
+  // dezembro nesse ritmo" — pergunta que já muda sozinha com a navegação por causa de como o real vs
+  // continuação-pela-média é dividido acima).
+  const pctAlcancadoPrevisto = metaAno > 0 ? (projetadoPrevisto[idxHoje] / metaAno * 100) : 0;
 
   const W = Math.max(500, totalPontos * 42), H = 260, PAD = 34, PADL = 52;
 
@@ -6150,6 +6149,8 @@ function renderReservaCombo(saldo, saldoPrevisto, reserva, meta, mi){
 
   const mesFinalMeta = pontosMeses[totalPontos-1];
   const labelFinalMeta = `${MONTHS[mesFinalMeta.mesIdx]}/${String(mesFinalMeta.ano).slice(-2)}`;
+  const mesAtualMeta = pontosMeses[idxHoje];
+  const labelAtualMeta = `${MONTHS[mesAtualMeta.mesIdx]}/${String(mesAtualMeta.ano).slice(-2)}`;
   const pctColor = pctAlcancado >= 100 ? "var(--green)" : (pctAlcancado >= 70 ? "var(--yellow)" : "var(--red)");
   const pctColorPrevisto = pctAlcancadoPrevisto >= 100 ? "var(--green)" : (pctAlcancadoPrevisto >= 70 ? "var(--yellow)" : "var(--red)");
   const pctAtualMeta = metaAno > 0 ? (reservaJanela[idxHoje] / metaAno * 100) : 0;
@@ -6157,7 +6158,7 @@ function renderReservaCombo(saldo, saldoPrevisto, reserva, meta, mi){
   const corRitmoAno = pctAtualMeta >= ritmoEsperadoAno ? "var(--green)" : "var(--red)";
   document.getElementById("cProjecaoSub").innerHTML =
     `Por média dos últimos ${mesesComDadoReserva} mês${mesesComDadoReserva===1?"":"es"} (${fmtMoney(mediaSaldoMensal)}/mês) · <span style="color:${pctColor};font-weight:700;">${pctAlcancado.toFixed(0)}% da meta até ${labelFinalMeta}</span>` +
-    `<br>Pelo previsto já lançado (próximos 12 meses) · <span style="color:${pctColorPrevisto};font-weight:700;">${pctAlcancadoPrevisto.toFixed(0)}% da meta até ${labelFinalMeta}</span>` +
+    `<br>Pelo previsto já lançado · <span style="color:${pctColorPrevisto};font-weight:700;">${pctAlcancadoPrevisto.toFixed(0)}% da meta até ${labelAtualMeta}</span>` +
     `<br>Hoje: ${pctAtualMeta.toFixed(0)}% da meta · <span style="color:${corRitmoAno};">esperado nessa altura do ano: ${ritmoEsperadoAno.toFixed(0)}%</span>`;
 }
 
