@@ -5404,6 +5404,25 @@ function projetarMesesAteIndependencia(patrimonioAtual, aporteMensal, taxaRealAn
   return null; // não atinge em 100 anos nesse ritmo
 }
 
+// Saldo PREVISTO médio dos próximos meses — mesmo princípio da "Projeção (previsto lançado)" do
+// gráfico de reserva (usa calcPrevisto, que já inclui a provisão de fatura de cartão), só que aqui
+// resumido numa média só, pra alimentar a projeção de anos até a independência financeira.
+function calcularMediaPrevistaProximosMeses(qtdMeses){
+  const mi = state.monthIdx, ano = state.year;
+  let saldos = [];
+  for(let i = 0; i < qtdMeses; i++){
+    const mesAbs = mi + i;
+    const anoAlvo = ano + Math.floor(mesAbs / 12);
+    const mesIdx = ((mesAbs % 12) + 12) % 12;
+    const r = calcPrevisto("Receita", mesIdx, anoAlvo);
+    const de = calcPrevisto("Despesa", mesIdx, anoAlvo);
+    if(r === 0 && de === 0) continue;
+    saldos.push(r - de);
+  }
+  if(saldos.length === 0) return { saldoMedioPrevisto: 0, mesesComDado: 0 };
+  return { saldoMedioPrevisto: saldos.reduce((s,v)=>s+v,0) / saldos.length, mesesComDado: saldos.length };
+}
+
 function renderPlanejamento(){
   if(!raw) return;
 
@@ -5423,16 +5442,30 @@ function renderPlanejamento(){
   const pctAlcancado = patrimonioAlvo > 0 ? Math.min(100, Math.max(0, patrimonioAtual / patrimonioAlvo * 100)) : 0;
   const mesesRestantes = despesaAnual > 0 ? projetarMesesAteIndependencia(patrimonioAtual, saldoMedio, taxaReal, patrimonioAlvo) : null;
 
+  // Segundo cenário: leva em conta o valor PREVISTO (não só a média histórica realizada) — usa
+  // calcPrevisto dos próximos meses, que já inclui a provisão de fatura de cartão ainda não paga.
+  // Mesmo princípio da linha "Projeção (previsto lançado)" no gráfico logo abaixo — os dois agora
+  // usam a mesma fonte de dado, então não vão mais contradizer um ao outro.
+  const { saldoMedioPrevisto, mesesComDado: mesesComDadoPrevisto } = calcularMediaPrevistaProximosMeses(12);
+  const mesesRestantesPrevisto = despesaAnual > 0 && mesesComDadoPrevisto > 0
+    ? projetarMesesAteIndependencia(patrimonioAtual, saldoMedioPrevisto, taxaReal, patrimonioAlvo)
+    : null;
+
+  function textoCenario(meses, aporte, rotulo){
+    if(mesesComDadoPrevisto === 0 && rotulo === "previsto") return null;
+    if(meses === 0) return `🎉 ${rotulo === "média" ? "Pelo ritmo médio" : "Pelo previsto já lançado"}, você já atingiu o patrimônio-alvo!`;
+    if(meses === null) return `${rotulo === "média" ? "Pelo ritmo médio" : "Pelo previsto já lançado"}, não converge em 100 anos — o aporte (${fmtMoney(aporte)}/mês) está baixo (ou negativo) demais pra essa meta, mesmo com a taxa real configurada.`;
+    const anos = Math.floor(meses / 12), mesesResto = meses % 12;
+    return `${rotulo === "média" ? "Pelo ritmo médio" : "Pelo previsto já lançado"} (${fmtMoney(aporte)}/mês), faltam aproximadamente <b>${anos} ano${anos===1?"":"s"}${mesesResto>0?` e ${mesesResto} mês${mesesResto===1?"":"es"}`:""}</b>.`;
+  }
+
   let previsaoTexto;
   if(despesaAnual === 0){
     previsaoTexto = "Sem dado de despesa suficiente ainda pra calcular — precisa de pelo menos 1 mês com lançamento real.";
-  } else if(mesesRestantes === 0){
-    previsaoTexto = "🎉 Você já atingiu o patrimônio-alvo!";
-  } else if(mesesRestantes === null){
-    previsaoTexto = "No ritmo de aporte atual, não converge em 100 anos — o aporte médio mensal está baixo (ou negativo) demais pra essa meta, mesmo com a taxa real configurada.";
   } else {
-    const anos = Math.floor(mesesRestantes / 12), mesesResto = mesesRestantes % 12;
-    previsaoTexto = `No ritmo atual (aporte médio de ${fmtMoney(saldoMedio)}/mês, taxa real de ${taxaReal}% a.a.), faltam aproximadamente <b>${anos} ano${anos===1?"":"s"}${mesesResto>0?` e ${mesesResto} mês${mesesResto===1?"":"es"}`:""}</b>.`;
+    const linhaMedia = textoCenario(mesesRestantes, saldoMedio, "média");
+    const linhaPrevisto = textoCenario(mesesRestantesPrevisto, saldoMedioPrevisto, "previsto");
+    previsaoTexto = linhaMedia + (linhaPrevisto ? `<br>${linhaPrevisto}` : "");
   }
 
   document.getElementById("planejamentoIndependenciaCards").innerHTML = `
@@ -5964,8 +5997,12 @@ function renderReservaCombo(saldo, saldoPrevisto, reserva, meta, mi){
   // 2) pelo Saldo PREVISTO de cada mês futuro (o que já está de fato lançado/agendado na planilha
   //    pra cada mês, pago ou não) — fica mais próxima da realidade conforme a pessoa for
   //    cadastrando lançamentos recorrentes/futuros; até lá, tende a ficar achatada perto de zero.
-  const saldoAcumulado = saldoJanela.slice(0, idxHoje + 1).reduce((s,v) => s + (v||0), 0);
-  const mediaSaldoMensal = mesesHistorico > 0 ? saldoAcumulado / mesesHistorico : 0;
+  // IMPORTANTE: usa a MESMA função (calcularMediasReaisRecentes) que a aba Independência Financeira
+  // usa — antes, esse gráfico calculava sua própria média com uma janela diferente (6 meses, sem
+  // pular mês vazio), o que fazia os dois painéis mostrarem números diferentes (às vezes até com
+  // sinal oposto) pra "a mesma" média mensal. Mantém a janela VISUAL do gráfico em até 6 meses (senão
+  // fica apertado), mas a conta da média em si agora é sempre a mesma, em qualquer lugar do app.
+  const { saldoMedio: mediaSaldoMensal, mesesComDado: mesesComDadoReserva } = calcularMediasReaisRecentes(12);
 
   const projetado = reservaJanela.slice(0, idxHoje + 1); // projeção por média
   for(let i = idxHoje + 1; i < totalPontos; i++){
@@ -6016,8 +6053,27 @@ function renderReservaCombo(saldo, saldoPrevisto, reserva, meta, mi){
     const { ano, mesIdx } = pontosMeses[i];
     const labelMes = ano !== state.year ? `${MONTHS[mesIdx]}/${String(ano).slice(-2)}` : MONTHS[mesIdx];
     svg += `<text x="${p.x}" y="${H-10}" font-size="10" font-weight="${i===idxHoje?'700':'400'}" fill="${labelColor}" text-anchor="middle">${labelMes}</text>`;
-    const linhaPrevisto = isProjected ? `<br>Reserva (previsto lançado): ${fmtMoney(projetadoPrevisto[i])}` : "";
-    const tipHtml = `<b>${MONTHS_FULL[mesIdx]}/${ano}</b><br>Reserva (${isProjected?"projeção por média":"real"}): ${fmtMoney(projetado[i])}${linhaPrevisto}<br>Saldo do mês: ${fmtMoney(saldoJanela[i])}<br>Meta: ${fmtMoney(metaAno)}`;
+    // Tooltip reformulado: pra ponto REAL mostra reserva+saldo real de verdade; pra ponto PROJETADO
+    // mostra as duas projeções (média e previsto) com o % da meta de cada uma — antes, todo ponto
+    // projetado mostrava "Saldo do mês" calculado a partir de dado REAL, que pra mês futuro sempre
+    // dá R$0,00 (sem nenhum lançamento ainda), sem relação nenhuma com a projeção exibida acima.
+    // Usa aspas simples nos estilos inline aqui dentro — a string toda vai embutida num atributo
+    // HTML com aspas duplas (onmousemove="..."), aspas duplas aqui quebrariam o HTML.
+    let tipHtml;
+    if(isProjected){
+      const pctMetaMedia = metaAno > 0 ? (projetado[i] / metaAno * 100) : 0;
+      const pctMetaPrevisto = metaAno > 0 ? (projetadoPrevisto[i] / metaAno * 100) : 0;
+      tipHtml = `<b>${MONTHS_FULL[mesIdx]}/${ano}</b>` +
+        `<br>Por média: ${fmtMoney(projetado[i])} <span style='color:#9C968A;'>(${pctMetaMedia.toFixed(0)}% da meta)</span>` +
+        `<br>Pelo previsto: ${fmtMoney(projetadoPrevisto[i])} <span style='color:#A78BFA;'>(${pctMetaPrevisto.toFixed(0)}% da meta)</span>` +
+        `<br><span style='color:#9C968A;font-size:11px;'>Saldo previsto desse mês: ${fmtMoney(saldoPrevistoJanela[i])}</span>`;
+    } else {
+      const pctMeta = metaAno > 0 ? (projetado[i] / metaAno * 100) : 0;
+      const corSaldo = saldoJanela[i] >= 0 ? "#2F9E5B" : "#E0655F";
+      tipHtml = `<b>${MONTHS_FULL[mesIdx]}/${ano}</b>` +
+        `<br>Reserva real: ${fmtMoney(projetado[i])} <span style='color:#9C968A;'>(${pctMeta.toFixed(0)}% da meta)</span>` +
+        `<br>Saldo do mês: <span style='color:${corSaldo};'>${fmtMoney(saldoJanela[i])}</span>`;
+    }
     svg += `<rect x="${p.x - groupW/2}" y="0" width="${groupW}" height="${H}" fill="transparent" style="cursor:pointer;" onmousemove="showChartTooltip(event, '${tipHtml}')" onmouseleave="hideChartTooltip()"/>`;
   });
   el.innerHTML = `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;max-height:340px;">${svg}</svg>`;
@@ -6030,7 +6086,7 @@ function renderReservaCombo(saldo, saldoPrevisto, reserva, meta, mi){
   const ritmoEsperadoAno = ((mi+1) / 12) * 100;
   const corRitmoAno = pctAtualMeta >= ritmoEsperadoAno ? "var(--green)" : "var(--red)";
   document.getElementById("cProjecaoSub").innerHTML =
-    `Por média dos últimos ${mesesHistorico} mês${mesesHistorico===1?"":"es"} (${fmtMoney(mediaSaldoMensal)}/mês) · <span style="color:${pctColor};font-weight:700;">${pctAlcancado.toFixed(0)}% da meta até ${labelFinalMeta}</span>` +
+    `Por média dos últimos ${mesesComDadoReserva} mês${mesesComDadoReserva===1?"":"es"} (${fmtMoney(mediaSaldoMensal)}/mês) · <span style="color:${pctColor};font-weight:700;">${pctAlcancado.toFixed(0)}% da meta até ${labelFinalMeta}</span>` +
     `<br>Pelo previsto já lançado (próximos 12 meses) · <span style="color:${pctColorPrevisto};font-weight:700;">${pctAlcancadoPrevisto.toFixed(0)}% da meta até ${labelFinalMeta}</span>` +
     `<br>Hoje: ${pctAtualMeta.toFixed(0)}% da meta · <span style="color:${corRitmoAno};">esperado nessa altura do ano: ${ritmoEsperadoAno.toFixed(0)}%</span>`;
 }
