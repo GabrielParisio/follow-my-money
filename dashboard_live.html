@@ -6048,7 +6048,15 @@ function renderReservaCombo(saldo, saldoPrevisto, reserva, meta, mi){
   for(let i = idxHoje + 1; i < totalPontos; i++){
     projetado.push(projetado[i-1] + mediaSaldoMensal);
   }
+  // Projeção pelo previsto lançado: parte do mesmo real até o mês vigente, MAS soma também a
+  // parte do PRÓPRIO mês vigente que já está prevista/lançada e ainda não virou "real" (ex: uma
+  // receita grande dada como Pendente, com vencimento neste mês, ainda não paga). Sem esse ajuste,
+  // esse valor nunca entrava em lugar nenhum: não é "real" (ainda não foi pago) e o laço de
+  // projeção só somava saldo previsto dos meses SEGUINTES ao vigente — o mês vigente em si ficava
+  // de fora dos dois lados. Esse gap (previsto - real do mês vigente) plugra esse buraco.
+  const gapPrevistoNaoRealizadoMesVigente = saldoPrevistoJanela[idxHoje] - saldoJanela[idxHoje];
   const projetadoPrevisto = reservaJanela.slice(0, idxHoje + 1); // projeção pelo previsto lançado
+  projetadoPrevisto[idxHoje] += gapPrevistoNaoRealizadoMesVigente;
   for(let i = idxHoje + 1; i < totalPontos; i++){
     projetadoPrevisto.push(projetadoPrevisto[i-1] + saldoPrevistoJanela[i]);
   }
