@@ -5432,6 +5432,36 @@ function calcularMediaPrevistaProximosMeses(qtdMeses){
 function renderPlanejamento(){
   if(!raw) return;
 
+  // === DIAGNÓSTICO TEMPORÁRIO — remover depois de investigar o bug do calcPrevisto ===
+  // Mostra na tela (via alert, sem precisar de DevTools) exatamente o que o app está lendo da
+  // planilha de verdade pras linhas de Receita: os campos crus (dataLanc/dataVenc como vêm da
+  // API, tipo, categoria, status) e o resultado de calcPrevisto pro mês selecionado. Isso separa
+  // se o problema é no DADO (planilha) ou na LÓGICA (calcPrevisto) sem precisar adivinhar.
+  window.debugPrevistoTemp = function(){
+    const mi = state.monthIdx, ano = state.year;
+    const receitaPrevista = calcPrevisto("Receita", mi, ano);
+    const despesaPrevista = calcPrevisto("Despesa", mi, ano);
+    const linhas = debitoRows().filter(r => /PLR|Sal[aá]rio|Bonus|Bônus/i.test(r.desc || ""));
+    let msg = `Mês selecionado: ${MONTHS_FULL[mi]}/${ano} (mesIdx=${mi})\n\n`;
+    msg += `calcPrevisto("Receita", ${mi}, ${ano}) = ${receitaPrevista}\n`;
+    msg += `calcPrevisto("Despesa", ${mi}, ${ano}) = ${despesaPrevista}\n\n`;
+    msg += `Linhas encontradas com "PLR/Salário/Bônus" (${linhas.length}):\n`;
+    linhas.forEach(l => {
+      const dVenc = l.dataVenc ? serialToDate(l.dataVenc) : null;
+      msg += `\n— "${l.desc}" (linha ${l.row})\n`;
+      msg += `  dataLanc (cru): ${JSON.stringify(l.dataLanc)}\n`;
+      msg += `  dataVenc (cru): ${JSON.stringify(l.dataVenc)}\n`;
+      msg += `  dataVenc convertida: ${dVenc ? dVenc.toLocaleDateString("pt-BR") : "(vazio/inválido)"}\n`;
+      msg += `  tipo: ${JSON.stringify(l.tipo)}\n`;
+      msg += `  categoria: ${JSON.stringify(l.categoria)}\n`;
+      msg += `  status: ${JSON.stringify(l.status)}\n`;
+      msg += `  valor: ${JSON.stringify(l.valor)}\n`;
+    });
+    if(linhas.length === 0) msg += "\n(nenhuma linha encontrada com esses termos na descrição — confere a grafia?)";
+    alert(msg);
+  };
+  // === FIM DO DIAGNÓSTICO TEMPORÁRIO ===
+
   // ---- Independência Financeira ----
   const { despesaMedia, saldoMedio, mesesComDado } = calcularMediasReaisRecentes(12);
   const despesaAnual = despesaMedia * 12;
@@ -5507,6 +5537,9 @@ function renderPlanejamento(){
     <p style="font-size:13px;color:var(--text);margin:0;">${previsaoTexto}</p>
     <p style="font-size:11px;color:var(--muted);margin-top:10px;">
       Taxa real configurada: <b>${taxaReal}% a.a.</b> acima da inflação — <a href="#" onclick="event.preventDefault(); goToCadastro();" style="color:var(--gold);">editar no Cadastro →</a>
+    </p>
+    <p style="font-size:10px;color:var(--muted);margin-top:14px;opacity:0.6;">
+      <a href="#" onclick="event.preventDefault(); debugPrevistoTemp();" style="color:var(--muted);">🔍 Diagnóstico temporário (toque aqui)</a>
     </p>`;
 
   // ---- Orçamento por Natureza ----
