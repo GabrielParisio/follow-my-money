@@ -3897,6 +3897,11 @@ async function sincronizarParcelasPagasDivida(descBase){
   if(!divida) return; // não achou dívida com esse nome -- lançamento avulso com "(parcela X/Y)" no texto, não gerado por uma dívida cadastrada
   const colMap = window._dividasColMap;
   if(!colMap || colMap.parcelasPagas < 0) return; // planilha sem a coluna "Parcelas pagas" -- não dá pra sincronizar, segue manual como antes
+  // TRAVA DE SEGURANÇA: sem a coluna do offset, ele viraria 0 silenciosamente (por causa do "|| 0" na
+  // leitura em getDividasParsed) — e a sincronização escreveria "0 + o que tem em Débito" por cima do
+  // que já estava na planilha, apagando parcelas pagas antes do app sem avisar ninguém. Melhor não
+  // sincronizar nada até a coluna existir de verdade do que arriscar zerar um valor real.
+  if(colMap.parcelasPagasOffset < 0) return;
   const pagasNoApp = debitoRows().filter(r => {
     const p = parseDescParcela(r.desc);
     return p && p.descBase === descBase && r.status === "✅ Pago";
@@ -3905,7 +3910,7 @@ async function sincronizarParcelasPagasDivida(descBase){
   // dívida) + quantas foram marcadas como pago aqui dentro. Sem esse offset, uma dívida que começou
   // com 9 parcelas já pagas (e por isso só tem lançamento em Débito a partir da 10ª) teria seu total
   // resetado pra só o que o app enxerga, perdendo as 9 anteriores toda vez que sincroniza.
-  const total = (divida.parcelasPagasOffset || 0) + pagasNoApp;
+  const total = divida.parcelasPagasOffset + pagasNoApp;
   if(total === divida.parcelasPagas) return; // já está sincronizado, evita escrita desnecessária
   await writeCell(`Dívidas!${dividaColLetter(colMap.parcelasPagas)}${divida.row}`, total);
 }
@@ -5390,7 +5395,11 @@ async function saveDividaEdit(row){
     await sincronizarParcelasPagasDivida(descAtual); // recalcula "Parcelas pagas" (offset + marcadas no app) na hora, sem esperar o próximo clique em Débito
     closeDividaEditForm();
     renderDividas();
-    showToast("Dívida atualizada", "success");
+    if(col.parcelasPagasOffset === undefined || col.parcelasPagasOffset < 0){
+      showToast("Dívida atualizada — mas não achei a coluna \"Parcelas pagas antes do app\" na planilha, então esse campo não foi salvo. Adicione essa coluna na aba Dívidas pra usar a sincronização automática.", "error");
+    } else {
+      showToast("Dívida atualizada", "success");
+    }
   }catch(err){
     showToast("Não foi possível salvar: " + err.message, "error");
   }
