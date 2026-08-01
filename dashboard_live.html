@@ -3879,10 +3879,27 @@ async function bulkCategorizarLancamentos(){
 // cadastrada (ver gerarLancamentosParcelasDivida). Não existe ID formal ligando um lançamento à sua
 // dívida — o vínculo é por essa string, então essa função é o único lugar que deveria "entender" esse
 // padrão.
-function parseDescParcela(desc){
-  const m = (desc || "").match(/^(.+?)\s*\(parcela\s+(\d+)\/(\d+)\)\s*$/i);
-  if(!m) return null;
-  return { descBase: m[1].trim(), numeroParcela: parseInt(m[2], 10), totalParcelas: parseInt(m[3], 10) };
+function ehCategoriaDivida(categoria){
+  return normalizeCatName(categoria || "").includes("divida");
+}
+
+// Identifica se um lançamento de Débito é o pagamento de uma parcela de UMA dívida específica, por
+// (1) categoria de Dívida e (2) valor lançado batendo com o valor da parcela (tolerância de 1
+// centavo). Sem exigir que a descrição comece com o nome da dívida -- por decisão explícita, já que
+// lançamentos importados de extrato podem ter descrição bem diferente do nome cadastrado.
+// Risco assumido: se duas dívidas tiverem o MESMO valor de parcela, esse critério sozinho não
+// consegue diferenciar uma da outra -- o lançamento vai grudar na primeira dívida que bater.
+function lancamentoPertenceADivida(it, divida){
+  if(!it || !divida) return false;
+  if(!ehCategoriaDivida(it.categoria)) return false;
+  if(Math.abs((it.valor || 0) - (divida.valorParcela || 0)) > 0.01) return false;
+  return true;
+}
+// Acha a qual dívida (entre as cadastradas) um lançamento pertence, usando o mesmo critério acima --
+// usado só pra saber QUAL dívida ressincronizar depois que um lançamento muda de status; a contagem
+// de verdade acontece em sincronizarParcelasPagasDivida.
+function acharDividaDoLancamento(it, dividas){
+  return (dividas || getDividasParsed()).find(d => lancamentoPertenceADivida(it, d)) || null;
 }
 
 // Recalcula "Parcelas pagas" na aba Dívidas pra uma dívida específica, contando de novo (não
@@ -3894,7 +3911,7 @@ function parseDescParcela(desc){
 async function sincronizarParcelasPagasDivida(descBase){
   if(!descBase) return;
   const divida = getDividasParsed().find(d => d.desc === descBase);
-  if(!divida) return; // não achou dívida com esse nome -- lançamento avulso com "(parcela X/Y)" no texto, não gerado por uma dívida cadastrada
+  if(!divida) return; // não achou dívida com esse nome
   const colMap = window._dividasColMap;
   if(!colMap || colMap.parcelasPagas < 0) return; // planilha sem a coluna "Parcelas pagas" -- não dá pra sincronizar, segue manual como antes
   // TRAVA DE SEGURANÇA: sem a coluna do offset, ele viraria 0 silenciosamente (por causa do "|| 0" na
@@ -3902,10 +3919,7 @@ async function sincronizarParcelasPagasDivida(descBase){
   // que já estava na planilha, apagando parcelas pagas antes do app sem avisar ninguém. Melhor não
   // sincronizar nada até a coluna existir de verdade do que arriscar zerar um valor real.
   if(colMap.parcelasPagasOffset < 0) return;
-  const pagasNoApp = debitoRows().filter(r => {
-    const p = parseDescParcela(r.desc);
-    return p && p.descBase === descBase && r.status === "✅ Pago";
-  }).length;
+  const pagasNoApp = debitoRows().filter(r => r.status === "✅ Pago" && lancamentoPertenceADivida(r, divida)).length;
   // Total = parcelas que já estavam pagas ANTES de rastrear no app (offset, editável no formulário da
   // dívida) + quantas foram marcadas como pago aqui dentro. Sem esse offset, uma dívida que começou
   // com 9 parcelas já pagas (e por isso só tem lançamento em Débito a partir da 10ª) teria seu total
@@ -3924,11 +3938,12 @@ async function bulkMarkLancamentos(marcarPago){
     lancSelectedRows.clear();
     await loadData();
     // Recalcula "Parcelas pagas" de toda dívida afetada pela marcação em lote (pode ser mais de uma)
+    const dividas = getDividasParsed();
     const descsAfetadas = new Set();
     rows.forEach(row => {
       const it = debitoRows().find(x => x.row === row);
-      const p = it ? parseDescParcela(it.desc) : null;
-      if(p) descsAfetadas.add(p.descBase);
+      const d = it ? acharDividaDoLancamento(it, dividas) : null;
+      if(d) descsAfetadas.add(d.desc);
     });
     for(const descBase of descsAfetadas) await sincronizarParcelasPagasDivida(descBase);
     renderLancamentos();
@@ -3968,8 +3983,8 @@ async function toggleStatus(row, isPago){
     const tr = document.getElementById("lanc-row-" + row);
     if(tr && it){ tr.outerHTML = lancRowHtml(it); }
     await loadData();
-    const parcelaInfo = it ? parseDescParcela(it.desc) : null;
-    if(parcelaInfo) await sincronizarParcelasPagasDivida(parcelaInfo.descBase);
+    const divida = it ? acharDividaDoLancamento(it) : null;
+    if(divida) await sincronizarParcelasPagasDivida(divida.desc);
     renderLancamentos();
     renderCredito();
     renderDividas();
@@ -3985,8 +4000,8 @@ async function toggleStatusFromCalendar(row, isPago){
     await writeCell(`Débito!K${row}`, isPago ? "" : "✅ Pago");
     await loadData();
     const it = debitoRows().find(x => x.row === row);
-    const parcelaInfo = it ? parseDescParcela(it.desc) : null;
-    if(parcelaInfo) await sincronizarParcelasPagasDivida(parcelaInfo.descBase);
+    const divida = it ? acharDividaDoLancamento(it) : null;
+    if(divida) await sincronizarParcelasPagasDivida(divida.desc);
     renderCalendar();
     renderCredito();
     renderDividas();
@@ -5000,10 +5015,10 @@ function renderDividasTimeline(dividasAtivas){
       <text x="${PAD_L}" y="${y+9}" font-size="11" fill="var(--text)">${(d.desc||"").slice(0,28)}</text>
       <rect x="${PAD_L}" y="${y+14}" width="${barMaxW}" height="10" rx="5" fill="var(--border)"/>
       <rect x="${PAD_L}" y="${y+14}" width="${larguraBarra}" height="10" rx="5" fill="${cor}"/>
-      <text x="${PAD_L + larguraBarra + 8}" y="${y+22}" font-size="10" fill="var(--muted)">${fmtDate(d.dataQuitacaoPrevista)}/${String(d.dataQuitacaoPrevista.getFullYear()).slice(-2)}</text>`;
+      <text x="${PAD_L + 6}" y="${y+22}" font-size="9" font-weight="700" fill="#fff" text-anchor="start">${d.parcelasPagas}/${d.numParcelas}</text>
+      <text x="${PAD_L + barMaxW + 8}" y="${y+22}" font-size="10" fill="var(--muted)">${fmtDate(d.dataQuitacaoPrevista)}/${String(d.dataQuitacaoPrevista.getFullYear()).slice(-2)}</text>`;
   }).join("");
-  const rotuloEscala = `<text x="${PAD_L}" y="${H-6}" font-size="10" fill="var(--muted)">Régua: hoje → 01/${fimDaEscala.getFullYear()}</text>`;
-  el.innerHTML = `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;max-height:${H}px;">${linhas}${rotuloEscala}</svg>`;
+  el.innerHTML = `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;max-height:${H}px;">${linhas}</svg>`;
 }
 
 function renderDividas(){
