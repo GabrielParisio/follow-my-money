@@ -1013,11 +1013,6 @@
 
   <div id="view-dividas" class="view">
     <div id="dividasCards" class="cards" style="margin-bottom:16px;"></div>
-    <div class="chart-panel" id="dividasTimelinePanel" style="margin-bottom:16px;">
-      <h2>📆 Linha do tempo de quitação</h2>
-      <p style="font-size:13px;color:var(--muted);margin-top:-6px;margin-bottom:12px;">Só aparecem aqui as dívidas com "Dia de vencimento" preenchido — é o que permite calcular quando cada uma termina.</p>
-      <div id="dividasTimeline"></div>
-    </div>
     <div class="chart-panel">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
         <h2 style="margin:0;">Dívidas</h2>
@@ -4983,44 +4978,6 @@ function isDividaQuitada(d){
   return false;
 }
 
-// Linha do tempo horizontal: uma barra por dívida ativa, de hoje até a data prevista de quitação.
-// Só entra aqui quem tem "Dia de vencimento" preenchido — sem isso não dá pra calcular quando termina.
-function renderDividasTimeline(dividasAtivas){
-  const el = document.getElementById("dividasTimeline");
-  const panel = document.getElementById("dividasTimelinePanel");
-  if(!el) return;
-  const comData = dividasAtivas.filter(d => d.dataQuitacaoPrevista).sort((a,b) => a.dataQuitacaoPrevista - b.dataQuitacaoPrevista);
-  if(comData.length === 0){
-    if(panel) panel.classList.add("hidden");
-    return;
-  }
-  if(panel) panel.classList.remove("hidden");
-  const hoje = new Date(); hoje.setHours(0,0,0,0);
-  const dataMax = comData[comData.length - 1].dataQuitacaoPrevista;
-  // Escala fixa até 1º de janeiro do ano SEGUINTE ao da dívida mais distante — em vez de ancorar
-  // no próprio máximo (o que faz a barra mais longa sempre parecer "100% cheia/pronta", mesmo
-  // faltando anos — o oposto do que uma barra cheia costuma significar).
-  const fimDaEscala = new Date(dataMax.getFullYear() + 1, 0, 1);
-  const totalDias = Math.max(1, (fimDaEscala - hoje) / 86400000);
-  const W = 600, rowH = 42, PAD_L = 10, PAD_R = 90;
-  const H = comData.length * rowH + 24;
-  const barMaxW = W - PAD_L - PAD_R;
-  const cores = ["var(--red)", "var(--yellow)", "var(--blue)", "var(--purple)", "var(--green)"];
-  const linhas = comData.map((d, idx) => {
-    const dias = Math.max(0, (d.dataQuitacaoPrevista - hoje) / 86400000);
-    const larguraBarra = Math.max(4, (dias / totalDias) * barMaxW);
-    const y = idx * rowH + 6;
-    const cor = cores[idx % cores.length];
-    return `
-      <text x="${PAD_L}" y="${y+9}" font-size="11" fill="var(--text)">${(d.desc||"").slice(0,28)}</text>
-      <rect x="${PAD_L}" y="${y+14}" width="${barMaxW}" height="10" rx="5" fill="var(--border)"/>
-      <rect x="${PAD_L}" y="${y+14}" width="${larguraBarra}" height="10" rx="5" fill="${cor}"/>
-      <text x="${PAD_L + 6}" y="${y+22}" font-size="9" font-weight="700" fill="#fff" text-anchor="start">${d.parcelasPagas}/${d.numParcelas}</text>
-      <text x="${PAD_L + barMaxW + 8}" y="${y+22}" font-size="10" fill="var(--muted)">${fmtDate(d.dataQuitacaoPrevista)}/${String(d.dataQuitacaoPrevista.getFullYear()).slice(-2)}</text>`;
-  }).join("");
-  el.innerHTML = `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;max-height:${H}px;">${linhas}</svg>`;
-}
-
 function renderDividas(){
   const todasDividas = getDividasParsed();
   const cardsEl = document.getElementById("dividasCards");
@@ -5040,7 +4997,6 @@ function renderDividas(){
   const totalPago = ativas.reduce((s,d) => s + d.valorPago, 0);
   const totalOriginal = ativas.reduce((s,d) => s + d.valorInicial, 0);
   const algumCalculado = ativas.some(d => d.saldoDevedorAutoCalculado);
-  renderDividasTimeline(ativas);
 
   // Comprometimento de renda (%) — mesma fórmula do card no Resumo: parcelas de dívida ativa +
   // compras parceladas do cartão no mês vigente, divididas pela renda. Aqui inclui não só dívida
