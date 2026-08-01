@@ -3874,6 +3874,37 @@ async function bulkCategorizarLancamentos(){
     lancSelectedRows.clear();
   }, [renderLancamentos], `${rows.length} lançamento${rows.length===1?"":"s"} categorizado${rows.length===1?"":"s"}`, "Não foi possível categorizar em lote");
 }
+// Extrai a descrição-base e o número da parcela de um lançamento de Débito gerado a partir de uma
+// dívida -- o padrão é sempre "${descrição da dívida} (parcela X/Y)", criado quando a dívida é
+// cadastrada (ver gerarLancamentosParcelasDivida). Não existe ID formal ligando um lançamento à sua
+// dívida — o vínculo é por essa string, então essa função é o único lugar que deveria "entender" esse
+// padrão.
+function parseDescParcela(desc){
+  const m = (desc || "").match(/^(.+?)\s*\(parcela\s+(\d+)\/(\d+)\)\s*$/i);
+  if(!m) return null;
+  return { descBase: m[1].trim(), numeroParcela: parseInt(m[2], 10), totalParcelas: parseInt(m[3], 10) };
+}
+
+// Recalcula "Parcelas pagas" na aba Dívidas pra uma dívida específica, contando de novo (não
+// incrementando/decrementando) quantos lançamentos de parcela dela estão "✅ Pago" em Débito agora.
+// Recontar do zero em vez de somar +1/-1 a cada clique é o que torna isso autocorretivo: não importa
+// a ordem em que as parcelas são marcadas/desmarcadas, ou se algo ficou dessincronizado antes -- o
+// valor final é sempre a contagem real. Precisa ser chamada DEPOIS de loadData(), pra contar em cima
+// do status já atualizado.
+async function sincronizarParcelasPagasDivida(descBase){
+  if(!descBase) return;
+  const divida = getDividasParsed().find(d => d.desc === descBase);
+  if(!divida) return; // não achou dívida com esse nome -- lançamento avulso com "(parcela X/Y)" no texto, não gerado por uma dívida cadastrada
+  const colMap = window._dividasColMap;
+  if(!colMap || colMap.parcelasPagas < 0) return; // planilha sem a coluna "Parcelas pagas" -- não dá pra sincronizar, segue manual como antes
+  const pagas = debitoRows().filter(r => {
+    const p = parseDescParcela(r.desc);
+    return p && p.descBase === descBase && r.status === "✅ Pago";
+  }).length;
+  if(pagas === divida.parcelasPagas) return; // já está sincronizado, evita escrita desnecessária
+  await writeCell(`Dívidas!${dividaColLetter(colMap.parcelasPagas)}${divida.row}`, pagas);
+}
+
 async function bulkMarkLancamentos(marcarPago){
   const rows = Array.from(lancSelectedRows);
   if(rows.length === 0) return;
@@ -3882,7 +3913,16 @@ async function bulkMarkLancamentos(marcarPago){
     const n = rows.length;
     lancSelectedRows.clear();
     await loadData();
+    // Recalcula "Parcelas pagas" de toda dívida afetada pela marcação em lote (pode ser mais de uma)
+    const descsAfetadas = new Set();
+    rows.forEach(row => {
+      const it = debitoRows().find(x => x.row === row);
+      const p = it ? parseDescParcela(it.desc) : null;
+      if(p) descsAfetadas.add(p.descBase);
+    });
+    for(const descBase of descsAfetadas) await sincronizarParcelasPagasDivida(descBase);
     renderLancamentos();
+    renderDividas();
     refreshCalendarIfOpen();
     showToast(`${n} lançamento${n===1?"":"s"} atualizado${n===1?"":"s"}`, "success");
   }catch(err){
@@ -3918,8 +3958,11 @@ async function toggleStatus(row, isPago){
     const tr = document.getElementById("lanc-row-" + row);
     if(tr && it){ tr.outerHTML = lancRowHtml(it); }
     await loadData();
+    const parcelaInfo = it ? parseDescParcela(it.desc) : null;
+    if(parcelaInfo) await sincronizarParcelasPagasDivida(parcelaInfo.descBase);
     renderLancamentos();
     renderCredito();
+    renderDividas();
     refreshCalendarIfOpen();
   }catch(err){
     showToast("Não foi possível salvar: " + err.message, "error");
@@ -3931,8 +3974,12 @@ async function toggleStatusFromCalendar(row, isPago){
   try{
     await writeCell(`Débito!K${row}`, isPago ? "" : "✅ Pago");
     await loadData();
+    const it = debitoRows().find(x => x.row === row);
+    const parcelaInfo = it ? parseDescParcela(it.desc) : null;
+    if(parcelaInfo) await sincronizarParcelasPagasDivida(parcelaInfo.descBase);
     renderCalendar();
     renderCredito();
+    renderDividas();
     showToast(isPago ? "Marcado como pendente" : "Marcado como pago", "success");
   }catch(err){
     showToast("Não foi possível salvar: " + err.message, "error");
