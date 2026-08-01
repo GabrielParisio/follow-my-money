@@ -1089,12 +1089,22 @@
     <div class="chart-panel">
       <h2>💰 Renda e metas</h2>
       <p style="font-size:13px;color:var(--muted);margin-top:-6px;margin-bottom:14px;">
-        O salário bruto alimenta automaticamente a <b>Meta de reserva</b> (12x este valor) e o <b>limite de 15%</b> usado no gráfico de Comprometimento de renda.
+        O salário <b>líquido</b> (calculado abaixo, com INSS e IRRF descontados) alimenta a <b>Meta de reserva</b> (12x este valor) e o <b>limite de 15%</b> usado no gráfico de Comprometimento de renda. O bruto fica só de referência.
       </p>
       <div class="edit-form" style="margin-bottom:0;">
         <div><label>Salário bruto mensal</label><input id="cadSalarioBruto" type="number" step="0.01" placeholder="0.00"></div>
+        <div>
+          <label>Regime de trabalho</label>
+          <select id="cadRegimeTrabalho">
+            <option value="CLT">CLT (calcula INSS + IRRF automático)</option>
+            <option value="PJ_Autonomo">PJ / Autônomo (só INSS simplificado)</option>
+            <option value="MEI">MEI</option>
+          </select>
+        </div>
+        <div><label>Outros descontos mensais (plano de saúde, pensão, previdência...)</label><input id="cadOutrosDescontos" type="number" step="0.01" placeholder="0.00"></div>
         <div class="actions"><button class="save-btn" onclick="saveCadastroSalario()">Salvar</button></div>
       </div>
+      <div id="cadSalarioLiquidoBreakdown" style="margin-top:14px;"></div>
     </div>
 
     <div class="chart-panel">
@@ -1449,7 +1459,7 @@ setInterval(updateLastUpdatedLabel, 30000);
 async function loadData(){
   setLoading(true);
   try{
-    const [cadastro, orcadoTotal, cartoes, compras, nomeUsuario, debito, dividas, salarioBruto, reservaInicial, patrimonio, contasDebito, taxaRealEsperada] = await fetchRanges([
+    const [cadastro, orcadoTotal, cartoes, compras, nomeUsuario, debito, dividas, salarioBruto, reservaInicial, patrimonio, contasDebito, taxaRealEsperada, regimeTrabalho, outrosDescontos] = await fetchRanges([
       "Cadastro!B7:F60",
       "Cadastro!F4",
       "Cadastro!H7:K20",
@@ -1461,9 +1471,11 @@ async function loadData(){
       "Cadastro!T10",
       "Patrimonio!A2:H",
       "Cadastro!M7:N20",
-      "Cadastro!T12"
+      "Cadastro!T12",
+      "Cadastro!T14",
+      "Cadastro!T16"
     ]);
-    raw = { cadastro, orcadoTotal, cartoes, compras, nomeUsuario, debito, dividas, salarioBruto, reservaInicial, patrimonio, contasDebito, taxaRealEsperada };
+    raw = { cadastro, orcadoTotal, cartoes, compras, nomeUsuario, debito, dividas, salarioBruto, reservaInicial, patrimonio, contasDebito, taxaRealEsperada, regimeTrabalho, outrosDescontos };
     await garantirSnapshotMensal();
     state.lastUpdated = Date.now();
     updateLastUpdatedLabel();
@@ -5320,6 +5332,103 @@ async function saveDividaEdit(row){
 function getSalarioBruto(){
   return (raw.salarioBruto && raw.salarioBruto[0] && raw.salarioBruto[0][0]) || 0;
 }
+function getRegimeTrabalho(){
+  // "CLT" (padrão), "PJ_Autonomo", ou "MEI" -- decide qual tabela de INSS usar em calcINSS()
+  return (raw.regimeTrabalho && raw.regimeTrabalho[0] && raw.regimeTrabalho[0][0]) || "CLT";
+}
+function getOutrosDescontosMensais(){
+  // Plano de saúde, pensão, previdência privada, etc. -- editado manualmente, não calculado
+  return (raw.outrosDescontos && raw.outrosDescontos[0] && raw.outrosDescontos[0][0]) || 0;
+}
+
+// =====================================================================================
+// TABELAS FISCAIS -- bloco isolado de propósito. Toda vez que o Gabriel mandar atualizar (nova
+// Portaria do INSS, nova tabela do IR), é SÓ aqui que precisa mexer. Nada fora deste bloco deveria
+// depender dos valores numéricos diretamente -- sempre pelas funções calcINSS()/calcIRRF() abaixo.
+//
+// INSS 2026 (empregado CLT/doméstico/avulso) -- CONFIRMADO pelo Gabriel em 01/08/2026 com tabela
+// oficial (salário mínimo R$1.621,00, teto R$8.475,55, contribuição máxima no teto R$988,09).
+const SALARIO_MINIMO_2026 = 1621.00;
+const TETO_INSS_2026 = 8475.55;
+const TABELA_INSS_CLT_2026 = [
+  { ate: 1621.00, aliquota: 0.075, deduzir: 0.00 },
+  { ate: 2902.84, aliquota: 0.09,  deduzir: 24.32 },
+  { ate: 4354.27, aliquota: 0.12,  deduzir: 111.40 },
+  { ate: 8475.55, aliquota: 0.14,  deduzir: 198.49 },
+];
+// INSS 2026 pra quem não é CLT -- Contribuinte Individual (autônomo/PJ) e MEI. Confirmado junto com
+// a tabela CLT acima na mesma fonte.
+const INSS_PJ_AUTONOMO_SIMPLIFICADO_2026 = 0.11; // sobre 1 salário mínimo (plano simplificado)
+const INSS_PJ_AUTONOMO_NORMAL_2026 = 0.20;        // sobre a base informada, até o teto
+const INSS_MEI_2026 = 0.05;                        // sobre 1 salário mínimo
+
+// IRRF 2026 -- ⚠️ PENDENTE DE CONFIRMAÇÃO por fonte oficial (diferente do INSS acima, que já foi
+// confirmado). Os valores abaixo vêm de reconstrução a partir de exemplos de cálculo encontrados
+// em várias fontes (bateram entre si nos exemplos numéricos: R$394,16 e R$908,73 de dedução), mas
+// os LIMITES exatos de cada faixa não foram vistos numa tabela oficial única -- só a faixa de
+// isenção (R$2.428,80) e o mecanismo do redutor mensal (Lei 15.270/2025) estão bem confirmados.
+// Se puder confirmar com uma tabela oficial como fez com o INSS, eu travo isso com mais confiança.
+const TABELA_IRRF_2026 = [
+  { ate: 2428.80,  aliquota: 0,     deduzir: 0.00 },    // isento (tabela tradicional, antes do redutor)
+  { ate: 2826.65,  aliquota: 0.075, deduzir: 182.16 },
+  { ate: 3751.05,  aliquota: 0.15,  deduzir: 394.16 },
+  { ate: 4664.68,  aliquota: 0.225, deduzir: 675.49 },
+  { ate: Infinity, aliquota: 0.275, deduzir: 908.73 },
+];
+// Redutor mensal (Lei 15.270/2025, novo em 2026): rendimento tributável até R$5.000 fica isento na
+// prática; entre R$5.000,01 e R$7.350,00 tem redução parcial; acima disso, cálculo tradicional puro.
+const IRRF_REDUTOR_LIMITE_ISENCAO_2026 = 5000.00;
+const IRRF_REDUTOR_LIMITE_REDUCAO_PARCIAL_2026 = 7350.00;
+const IRRF_DEDUCAO_POR_DEPENDENTE_2026 = 189.59;
+
+function calcTabelaProgressiva(base, tabela){
+  if(base <= 0) return 0;
+  for(const faixa of tabela){
+    if(base <= faixa.ate){
+      const valor = base * faixa.aliquota - faixa.deduzir;
+      return Math.max(0, valor);
+    }
+  }
+  return 0;
+}
+
+function calcINSS(bruto, regime){
+  if(bruto <= 0) return 0;
+  if(regime === "MEI") return SALARIO_MINIMO_2026 * INSS_MEI_2026;
+  if(regime === "PJ_Autonomo") return SALARIO_MINIMO_2026 * INSS_PJ_AUTONOMO_SIMPLIFICADO_2026; // plano simplificado como padrão
+  // CLT: progressivo, respeitando o teto
+  const baseContribuicao = Math.min(bruto, TETO_INSS_2026);
+  return calcTabelaProgressiva(baseContribuicao, TABELA_INSS_CLT_2026);
+}
+
+function calcIRRF(baseCalculo){
+  // Base de cálculo = bruto MENOS o INSS (o INSS é dedutível da base do IR)
+  if(baseCalculo <= 0) return 0;
+  const irTradicional = calcTabelaProgressiva(baseCalculo, TABELA_IRRF_2026);
+  if(baseCalculo <= IRRF_REDUTOR_LIMITE_ISENCAO_2026) return 0; // redutor zera o imposto
+  if(baseCalculo <= IRRF_REDUTOR_LIMITE_REDUCAO_PARCIAL_2026){
+    // Redução parcial linear entre os dois limites -- simplificação enquanto a fórmula oficial
+    // exata da Lei 15.270/2025 não é confirmada; o valor tradicional vai sendo restaurado aos
+    // poucos conforme a renda se aproxima do limite superior.
+    const proporcao = (baseCalculo - IRRF_REDUTOR_LIMITE_ISENCAO_2026) / (IRRF_REDUTOR_LIMITE_REDUCAO_PARCIAL_2026 - IRRF_REDUTOR_LIMITE_ISENCAO_2026);
+    return irTradicional * proporcao;
+  }
+  return irTradicional; // acima de R$7.350, cálculo tradicional integral
+}
+
+// Só CLT tem INSS+IRRF automáticos (retenção na folha). PJ/Autônomo/MEI pagam DAS/carnê-leão por
+// conta própria -- fora do escopo automático por enquanto, mas o campo "outros descontos" cobre
+// quem quiser lançar manualmente o que já sabe que paga.
+function calcSalarioLiquido(bruto, regime, outrosDescontos){
+  const inss = calcINSS(bruto, regime);
+  const irrf = regime === "CLT" ? calcIRRF(bruto - inss) : 0;
+  const liquido = bruto - inss - irrf - (outrosDescontos || 0);
+  return { bruto, inss, irrf, outrosDescontos: outrosDescontos || 0, liquido: Math.max(0, liquido) };
+}
+function getSalarioLiquido(){
+  return calcSalarioLiquido(getSalarioBruto(), getRegimeTrabalho(), getOutrosDescontosMensais());
+}
+
 // Saldo de Reserva de Emergência que você já tinha ANTES de começar a usar o app — serve de ponto de
 // partida pro cálculo (calcSaldoInvestimento), pra não começar do zero e ignorar reserva pré-existente.
 function getReservaInicial(){
@@ -5334,6 +5443,11 @@ function renderCadastro(){
   const salario = getSalarioBruto();
   const salarioInput = document.getElementById("cadSalarioBruto");
   if(salarioInput && document.activeElement !== salarioInput) salarioInput.value = salario || "";
+  const regimeSelect = document.getElementById("cadRegimeTrabalho");
+  if(regimeSelect && document.activeElement !== regimeSelect) regimeSelect.value = getRegimeTrabalho();
+  const outrosDescontosInput = document.getElementById("cadOutrosDescontos");
+  if(outrosDescontosInput && document.activeElement !== outrosDescontosInput) outrosDescontosInput.value = getOutrosDescontosMensais() || "";
+  renderSalarioLiquidoBreakdown();
   const reservaInicial = getReservaInicial();
   const reservaInicialInput = document.getElementById("cadReservaInicial");
   if(reservaInicialInput && document.activeElement !== reservaInicialInput) reservaInicialInput.value = reservaInicial || "";
@@ -5356,9 +5470,32 @@ async function saveCadastroPerfil(){
   const nome = document.getElementById("cadNome").value.trim();
   await salvarEAtualizar(() => writeCell("Cadastro!T6", nome), [renderCadastro], "Perfil atualizado");
 }
+function renderSalarioLiquidoBreakdown(){
+  const el = document.getElementById("cadSalarioLiquidoBreakdown");
+  if(!el) return;
+  const { bruto, inss, irrf, outrosDescontos, liquido } = getSalarioLiquido();
+  if(bruto <= 0){ el.innerHTML = ""; return; }
+  const linha = (label, valor, cor) => `<div style="display:flex;justify-content:space-between;padding:4px 0;font-size:13px;"><span style="color:var(--muted);">${label}</span><span style="color:${cor || "var(--text)"};">${valor}</span></div>`;
+  el.innerHTML = `
+    <div style="background:var(--bg-soft, rgba(255,255,255,.03));border-radius:10px;padding:12px 14px;">
+      ${linha("Salário bruto", fmtMoney(bruto))}
+      ${linha("(–) INSS", "− " + fmtMoney(inss), "var(--red)")}
+      ${getRegimeTrabalho() === "CLT" ? linha("(–) IRRF", "− " + fmtMoney(irrf), "var(--red)") : ""}
+      ${outrosDescontos > 0 ? linha("(–) Outros descontos", "− " + fmtMoney(outrosDescontos), "var(--red)") : ""}
+      <div style="border-top:1px solid var(--border);margin-top:6px;padding-top:6px;display:flex;justify-content:space-between;font-weight:700;">
+        <span>Salário líquido</span><span style="color:var(--green);">${fmtMoney(liquido)}</span>
+      </div>
+    </div>`;
+}
 async function saveCadastroSalario(){
   const valor = parseFloat(document.getElementById("cadSalarioBruto").value) || 0;
-  await salvarEAtualizar(() => writeCell("Cadastro!T8", valor), [renderCadastro, renderCharts, render], "Salário bruto atualizado");
+  const regime = document.getElementById("cadRegimeTrabalho").value;
+  const outrosDescontos = parseFloat(document.getElementById("cadOutrosDescontos").value) || 0;
+  await salvarEAtualizar(() => Promise.all([
+    writeCell("Cadastro!T8", valor),
+    writeCell("Cadastro!T14", regime),
+    writeCell("Cadastro!T16", outrosDescontos),
+  ]), [renderCadastro, renderCharts, render, renderPlanejamento], "Salário e descontos atualizados");
 }
 async function saveCadastroReservaInicial(){
   const valor = parseFloat(document.getElementById("cadReservaInicial").value) || 0;
@@ -6067,8 +6204,8 @@ function renderReservaCombo(saldo, saldoPrevisto, reserva, meta, mi){
     const anterior = i === 0 ? reservaInicioAno : projetadoPrevisto[i-1];
     projetadoPrevisto.push(anterior + saldoPrevistoJanela[i]);
   }
-  const salarioBruto = getSalarioBruto();
-  const metaAno = salarioBruto > 0 ? salarioBruto * 12 : (meta[idxHoje] || meta[0] || 0);
+  const salarioLiquidoMensal = getSalarioLiquido().liquido;
+  const metaAno = salarioLiquidoMensal > 0 ? salarioLiquidoMensal * 12 : (meta[idxHoje] || meta[0] || 0);
   const pctAlcancado = metaAno > 0 ? (projetado[totalPontos-1] / metaAno * 100) : 0;
   // Lê o ponto do mês NAVEGADO (idxHoje), não sempre dezembro -- é isso que faz esse número mudar de
   // verdade conforme você troca de mês (diferente da linha "média", que responde "onde eu chego até
