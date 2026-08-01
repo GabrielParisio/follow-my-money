@@ -546,6 +546,7 @@
           <div class="legend">
             <span><i style="background:var(--green)"></i>Receita</span>
             <span><i style="background:var(--red)"></i>Despesa</span>
+            <span><i style="background:#6B7280"></i>Previsto (Pago + Pendente)</span>
           </div>
         </div>
       </div>
@@ -1100,17 +1101,7 @@
         <div class="actions"><button class="save-btn" onclick="saveCadastroSalario()">Salvar</button></div>
       </div>
       <div id="cadSalarioLiquidoBreakdown" style="margin-top:14px;"></div>
-    </div>
-
-    <div class="chart-panel">
-      <h2>🚨 Reserva inicial</h2>
-      <p style="font-size:13px;color:var(--muted);margin-top:-6px;margin-bottom:14px;">
-        O saldo de Reserva de Emergência que você já tinha guardado <b>antes</b> de começar a usar o app. Serve de ponto de partida — o cálculo de patrimônio soma os lançamentos de Investimento/Resgate a partir daqui, em vez de começar do zero.
-      </p>
-      <div class="edit-form" style="margin-bottom:0;">
-        <div><label>Reserva já acumulada</label><input id="cadReservaInicial" type="number" step="0.01" placeholder="0.00"></div>
-        <div class="actions"><button class="save-btn" onclick="saveCadastroReservaInicial()">Salvar</button></div>
-      </div>
+      <button class="connect-btn" id="btnLancarSalarioLiquido" style="margin-top:12px;" onclick="lancarSalarioLiquidoAnoRestante()">💵 Lançar salário líquido em Débito</button>
     </div>
 
     <div class="chart-panel">
@@ -1631,6 +1622,7 @@ function buildMonthRuler(){
       if(raw) renderLancamentos();
       if(raw) renderCredito();
       if(raw) renderPlanejamento();
+      if(raw) renderCadCategoriasTable();
     });
     ruler.appendChild(tick);
   });
@@ -4608,6 +4600,7 @@ function navegarMesCredito(delta){
   if(raw) renderLancamentos();
   if(raw) renderCredito();
   if(raw) renderPlanejamento();
+  if(raw) renderCadCategoriasTable();
 }
 
 // Mesmo padrão do navegarMesCredito — troca o mês global e redesenha o modal do Score no lugar,
@@ -5508,9 +5501,6 @@ function renderCadastro(){
   const outrosDescontosInput = document.getElementById("cadOutrosDescontos");
   if(outrosDescontosInput && document.activeElement !== outrosDescontosInput) outrosDescontosInput.value = getOutrosDescontosMensais() || "";
   renderSalarioLiquidoBreakdown();
-  const reservaInicial = getReservaInicial();
-  const reservaInicialInput = document.getElementById("cadReservaInicial");
-  if(reservaInicialInput && document.activeElement !== reservaInicialInput) reservaInicialInput.value = reservaInicial || "";
   const taxaRealInput = document.getElementById("cadTaxaRealEsperada");
   if(taxaRealInput && document.activeElement !== taxaRealInput) taxaRealInput.value = getTaxaRealEsperada();
   const primeiraVezDetails = document.getElementById("cadPrimeiraVezDetails");
@@ -5532,9 +5522,14 @@ async function saveCadastroPerfil(){
 }
 function renderSalarioLiquidoBreakdown(){
   const el = document.getElementById("cadSalarioLiquidoBreakdown");
+  const btn = document.getElementById("btnLancarSalarioLiquido");
   if(!el) return;
   const { bruto, inss, irrf, outrosDescontos, liquido } = getSalarioLiquido();
-  if(bruto <= 0){ el.innerHTML = ""; return; }
+  if(bruto <= 0){
+    el.innerHTML = "";
+    if(btn){ btn.disabled = true; btn.textContent = "💵 Lançar salário líquido em Débito"; }
+    return;
+  }
   const linha = (label, valor, cor) => `<div style="display:flex;justify-content:space-between;padding:4px 0;font-size:13px;"><span style="color:var(--muted);">${label}</span><span style="color:${cor || "var(--text)"};">${valor}</span></div>`;
   el.innerHTML = `
     <div style="background:var(--bg-soft, rgba(255,255,255,.03));border-radius:10px;padding:12px 14px;">
@@ -5546,6 +5541,70 @@ function renderSalarioLiquidoBreakdown(){
         <span>Salário líquido</span><span style="color:var(--green);">${fmtMoney(liquido)}</span>
       </div>
     </div>`;
+  if(btn && raw){
+    const mi = state.monthIdx;
+    btn.disabled = false;
+    btn.textContent = `💵 Lançar salário líquido em Débito (${MONTHS_FULL[mi]} a Dez/${state.year})`;
+  }
+}
+// Lança o salário líquido como receita mensal em Débito, do mês selecionado até dezembro do ano da
+// planilha -- poupa a pessoa de criar manualmente um lançamento por mês. Evita duplicar: pula
+// qualquer mês que já tenha uma receita "Salário" com o mesmo valor lançada.
+async function lancarSalarioLiquidoAnoRestante(){
+  if(!raw){ showToast("Dados ainda não carregados.", "error"); return; }
+  const { liquido } = getSalarioLiquido();
+  if(liquido <= 0){
+    showToast("Salário líquido está zerado — confere o salário bruto e os descontos antes de lançar.", "error");
+    return;
+  }
+  const mi = state.monthIdx, ano = state.year;
+  const totalMeses = 11 - mi + 1; // do mês selecionado até dezembro (índice 11), inclusive
+  if(totalMeses <= 0){
+    showToast("O mês selecionado já é depois de dezembro — nada a lançar nesse ano.", "error");
+    return;
+  }
+  const diaInput = prompt(`Em que dia do mês você recebe o salário? (1 a 28, pra funcionar em todo mês)`, "5");
+  if(diaInput === null) return; // cancelou
+  const dia = Math.min(28, Math.max(1, parseInt(diaInput, 10) || 5));
+
+  const categoriaReceita = (raw.cadastro || []).map(r => r[0]).find(c => normalizeCatName(c).includes("receita")) || "";
+
+  // Não duplica: pula mês que já tem uma receita "Salário" com esse valor lançada
+  const jaLancados = new Set(
+    debitoRows()
+      .filter(r => r.tipo === "Receita" && normalizeCatName(r.desc).includes("salario") && Math.abs((r.valor||0) - liquido) < 0.01 && r.dataVenc)
+      .map(r => { const d = serialToDate(r.dataVenc); return `${d.getFullYear()}-${d.getMonth()}`; })
+  );
+
+  const linhas = [];
+  for(let m = mi; m <= 11; m++){
+    if(jaLancados.has(`${ano}-${m}`)) continue;
+    const dataParcela = new Date(ano, m, dia);
+    const dataBR = fmtDataBR(dataParcela);
+    const status = dataParcela <= new Date() ? "✅ Pago" : "";
+    linhas.push([dataBR, dataBR, "Salário", "", "", "", categoriaReceita, "Receita", liquido, status]);
+  }
+
+  if(linhas.length === 0){
+    showToast("Todos os meses desse período já têm o salário líquido lançado.", "success");
+    return;
+  }
+
+  const puladas = totalMeses - linhas.length;
+  if(!confirm(`Lançar ${fmtMoney(liquido)} de salário líquido em ${linhas.length} mês${linhas.length===1?"":"es"} (${MONTHS_FULL[mi]} a Dez/${ano}), todo dia ${dia}?` + (puladas > 0 ? `\n\n${puladas} mês${puladas===1?"":"es"} já tinha${puladas===1?"":"m"} lançamento e foi${puladas===1?"":"ram"} pulado${puladas===1?"":"s"}.` : ""))) return;
+
+  try{
+    for(const linha of linhas) await appendRow("Débito", linha);
+    await loadData();
+    renderCadastro();
+    renderLancamentos();
+    renderCharts();
+    renderPlanejamento();
+    render();
+    showToast(`${linhas.length} lançamento${linhas.length===1?"":"s"} de salário criado${linhas.length===1?"":"s"}`, "success");
+  }catch(err){
+    showToast("Não foi possível lançar o salário: " + err.message, "error");
+  }
 }
 async function saveCadastroSalario(){
   const valor = parseFloat(document.getElementById("cadSalarioBruto").value) || 0;
@@ -5556,10 +5615,6 @@ async function saveCadastroSalario(){
     writeCell("Cadastro!T14", regime),
     writeCell("Cadastro!T16", outrosDescontos),
   ]), [renderCadastro, renderCharts, render, renderPlanejamento], "Salário e descontos atualizados");
-}
-async function saveCadastroReservaInicial(){
-  const valor = parseFloat(document.getElementById("cadReservaInicial").value) || 0;
-  await salvarEAtualizar(() => writeCell("Cadastro!T10", valor), [renderCadastro, renderCharts, render], "Reserva inicial atualizada");
 }
 async function saveCadastroTaxaRealEsperada(){
   const valor = parseFloat(document.getElementById("cadTaxaRealEsperada").value);
@@ -7075,6 +7130,12 @@ function renderCharts(){
   const despesa = row(49).map(v => v||0);
   const saldo = row(50).map(v => v||0);
   const saldoPrevisto = [...Array(12)].map((_,i) => calcPrevisto("Receita", i, state.year) - calcPrevisto("Despesa", i, state.year));
+  // Previsto (Pago + Pendente) por mês, separado em receita/despesa -- usado pras barras cinzas de
+  // "expectativa" atrás das barras reais. Como calcPrevisto já inclui o que está pago, o previsto
+  // nunca é menor que o real -- por isso a barra real sempre cabe "dentro" da cinza, dando a sensação
+  // de ir enchendo conforme mais coisa é paga, em vez de sobrar pra fora ou desalinhar.
+  const receitaPrevistoMes = [...Array(12)].map((_,i) => calcPrevisto("Receita", i, state.year));
+  const despesaPrevistoMes = [...Array(12)].map((_,i) => calcPrevisto("Despesa", i, state.year));
   const reserva = reservaHistoricaAno(state.year);
   // Meta unificada: sempre 12x o Salário Bruto cadastrado (mesma fonte usada no resto do app) — não
   // lê mais da planilha, que podia ter um valor diferente/desatualizado guardado ali.
@@ -7086,7 +7147,7 @@ function renderCharts(){
   const W = 500, H = 260, PAD = 34, PADL = 46;
 
   // ---- Bar chart: Receita x Despesa ----
-  const maxBar = Math.max(...receita, ...despesa, 1) * 1.15;
+  const maxBar = Math.max(...receita, ...despesa, ...receitaPrevistoMes, ...despesaPrevistoMes, 1) * 1.15;
   const groupW = (W - PADL - PAD) / 12;
   const barW = groupW * 0.32;
   let bars = yAxis(0, maxBar, W, H, PAD, PAD, PADL);
@@ -7098,7 +7159,14 @@ function renderCharts(){
     const x0 = gx + groupW*0.12;
     const hR = (receita[i]/maxBar) * (H-PAD*2);
     const hD = (despesa[i]/maxBar) * (H-PAD*2);
+    const hRPrev = (receitaPrevistoMes[i]/maxBar) * (H-PAD*2);
+    const hDPrev = (despesaPrevistoMes[i]/maxBar) * (H-PAD*2);
     const op = i === mi ? "1" : "0.55";
+    // Cinza (previsto) desenhada PRIMEIRO -- fica atrás. Mesma posição/largura da barra real, então
+    // ela só aparece visível na parte que ainda falta "encher" -- onde o real já alcançou o previsto,
+    // fica inteiramente coberta pela barra colorida em cima.
+    bars += `<rect x="${x0}" y="${H-PAD-hRPrev}" width="${barW}" height="${hRPrev}" rx="3" fill="#6B7280" fill-opacity="0.35"/>`;
+    bars += `<rect x="${x0+barW+4}" y="${H-PAD-hDPrev}" width="${barW}" height="${hDPrev}" rx="3" fill="#6B7280" fill-opacity="0.35"/>`;
     bars += `<rect x="${x0}" y="${H-PAD-hR}" width="${barW}" height="${hR}" rx="3" fill="var(--green)" fill-opacity="${op}"/>`;
     bars += `<rect x="${x0+barW+4}" y="${H-PAD-hD}" width="${barW}" height="${hD}" rx="3" fill="var(--red)" fill-opacity="${op}"/>`;
     const labelColor = i === mi ? "#F2EEE4" : "#9C968A";
