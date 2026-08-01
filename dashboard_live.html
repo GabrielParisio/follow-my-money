@@ -453,7 +453,6 @@
     </div>
     <div class="tabs">
       <span class="active" data-view="resumo">📈 <b>Resumo</b></span>
-      <span data-view="mensal">🏠 <b>Visão Mensal</b></span>
       <span data-view="investimentos">💰 <b>Investimentos</b></span>
       <span data-view="lancamentos">🧾 <b>Débito</b></span>
       <span data-view="credito">💳 <b>Crédito</b></span>
@@ -497,14 +496,23 @@
       <div class="seg-toggle" id="resumoModoToggle">
         <button class="seg-btn active" data-modo="resumido">Resumido</button>
         <button class="seg-btn" data-modo="detalhado">Detalhado</button>
+        <button class="seg-btn" data-modo="gastos">Gastos</button>
         <button class="seg-btn" data-modo="relatorio">Relatório</button>
       </div>
     </div>
 
-    <!-- Sempre visível, nos dois modos -->
+    <!-- Sempre visível, em todos os modos exceto Relatório -->
     <div class="cards" id="balancoCards"></div>
     <div id="resumoExtra">
       <div class="skeleton-row"><span class="skeleton" style="width:100%;"></span></div>
+    </div>
+    <div class="panel panel-clickable" id="resumoVencimentosPanel" style="margin-top:16px;" onclick="openCalendarModal()" title="Ver calendário completo">
+      <h2>📅 Próximos vencimentos</h2>
+      <div id="vencList">
+        <div class="skeleton-row"><span class="skeleton" style="width:40%;"></span><span class="skeleton" style="width:20%;"></span></div>
+        <div class="skeleton-row"><span class="skeleton" style="width:55%;"></span><span class="skeleton" style="width:15%;"></span></div>
+      </div>
+      <div style="font-size:11px;color:var(--muted);margin-top:10px;">Toque para ver o calendário completo →</div>
     </div>
 
     <!-- Modo Relatório: visão completa da carteira, pronta pra exportar em PDF -->
@@ -525,6 +533,12 @@
 
     <!-- Só no modo Detalhado: o que antes era a aba Balanço -->
     <div id="resumoDetalhado" class="hidden">
+      <div class="panel" style="margin-bottom:16px;">
+        <h2>💡 Como este mês está indo</h2>
+        <div id="insightsPanel">
+          <div class="skeleton-row"><span class="skeleton" style="width:100%;"></span></div>
+        </div>
+      </div>
       <div class="charts-row" style="margin-top:16px;">
         <div class="chart-panel">
           <h2>Receita x Despesa por mês</h2>
@@ -550,42 +564,28 @@
         </div>
       </div>
     </div>
-  </div>
 
-  <div id="view-mensal" class="view">
-
-  <div class="panels">
-    <div class="panel panel-clickable" onclick="openCategoriaDonutModal()" title="Ver gráfico">
-      <h2>📊 Gastos por categoria (mês todo)</h2>
-      <div id="catList">
-        <div class="skeleton-row"><span class="skeleton" style="width:40%;"></span><span class="skeleton" style="width:20%;"></span></div>
-        <div class="skeleton-row"><span class="skeleton" style="width:55%;"></span><span class="skeleton" style="width:15%;"></span></div>
-        <div class="skeleton-row"><span class="skeleton" style="width:35%;"></span><span class="skeleton" style="width:25%;"></span></div>
+    <!-- Só no modo Gastos: panorama de gastos do mês (era a aba Visão Mensal) -->
+    <div id="resumoGastos" class="hidden">
+      <div class="panels">
+        <div class="panel panel-clickable" onclick="openCategoriaDonutModal()" title="Ver gráfico">
+          <h2>📊 Gastos por categoria (mês todo)</h2>
+          <div id="catList">
+            <div class="skeleton-row"><span class="skeleton" style="width:40%;"></span><span class="skeleton" style="width:20%;"></span></div>
+            <div class="skeleton-row"><span class="skeleton" style="width:55%;"></span><span class="skeleton" style="width:15%;"></span></div>
+            <div class="skeleton-row"><span class="skeleton" style="width:35%;"></span><span class="skeleton" style="width:25%;"></span></div>
+          </div>
+        </div>
+      </div>
+      <div class="chart-panel" style="margin-top:16px;">
+        <h2>Orçado x Real por categoria</h2>
+        <div id="orcadoRealList">
+          <div class="skeleton-row"><span class="skeleton" style="width:100%;"></span></div>
+          <div class="skeleton-row"><span class="skeleton" style="width:100%;"></span></div>
+          <div class="skeleton-row"><span class="skeleton" style="width:100%;"></span></div>
+        </div>
       </div>
     </div>
-    <div class="panel">
-      <h2>💡 Como este mês está indo</h2>
-      <div id="insightsPanel">
-        <div class="skeleton-row"><span class="skeleton" style="width:100%;"></span></div>
-      </div>
-    </div>
-    <div class="panel panel-clickable" onclick="openCalendarModal()" title="Ver calendário completo">
-      <h2>📅 Próximos vencimentos</h2>
-      <div id="vencList">
-        <div class="skeleton-row"><span class="skeleton" style="width:40%;"></span><span class="skeleton" style="width:20%;"></span></div>
-        <div class="skeleton-row"><span class="skeleton" style="width:55%;"></span><span class="skeleton" style="width:15%;"></span></div>
-      </div>
-      <div style="font-size:11px;color:var(--muted);margin-top:10px;">Toque para ver o calendário completo →</div>
-    </div>
-  </div>
-  <div class="chart-panel" style="margin-top:16px;">
-    <h2>Orçado x Real por categoria</h2>
-    <div id="orcadoRealList">
-      <div class="skeleton-row"><span class="skeleton" style="width:100%;"></span></div>
-      <div class="skeleton-row"><span class="skeleton" style="width:100%;"></span></div>
-      <div class="skeleton-row"><span class="skeleton" style="width:100%;"></span></div>
-    </div>
-  </div>
   </div>
 
   <div id="alertasModal" class="modal-overlay hidden">
@@ -1682,7 +1682,7 @@ function setupSelectors(){
 }
 
 function render(){
-  const { cadastro, orcadoTotal } = raw;
+  const { cadastro } = raw;
   const mi = state.monthIdx;
 
   const row = (n) => rowComRealCalculado(n, state.year);
@@ -1692,7 +1692,10 @@ function render(){
   const receitaReal = row(48)[mi] || 0;
   const despesaReal = row(49)[mi] || 0;
   const saldoReal = row(50)[mi] || 0;
-  const orcado = (orcadoTotal[0] && orcadoTotal[0][0]) || 0;
+  // Orçado total é sempre a soma dos orçamentos de cada categoria (não um número digitado à parte em
+  // Cadastro!F4) -- evita o caso de alguém editar o orçamento de uma categoria e o total geral ficar
+  // desatualizado por não terem sido a mesma coisa.
+  const orcado = getCadastroCategoriasParsed().reduce((s, c) => s + (c.orcado || 0), 0);
 
   const userName = (raw.nomeUsuario && raw.nomeUsuario[0] && raw.nomeUsuario[0][0]) || "";
   document.getElementById("greeting").textContent = greetingWord() + (userName ? ", " + userName : "");
@@ -1914,15 +1917,6 @@ function renderResumo(){
   // Cards de atalho pras outras abas — altura fixa (mesmo padrão do resto do app), só cresce na horizontal.
   const irPara = (view) => `document.querySelector('.tabs [data-view=${view}]').click()`;
   const atalhosHtml = `<div class="cards" style="margin-top:16px;">
-    <div class="card panel-clickable" onclick="${irPara("mensal")}">
-      <div class="accent" style="background:var(--border)"></div>
-      <div class="body">
-        <div class="label">🏠 Visão Mensal</div>
-        <div class="value" style="font-size:17px;color:${saldoReal>=0?"var(--green)":"var(--red)"}">${fmtMoney(saldoReal)}</div>
-        <div class="sub">Receita ${fmtMoney(receitaReal)} · Despesa ${fmtMoney(despesaReal)}</div>
-        <div class="sub" style="margin-top:4px;color:var(--gold);">ver mais →</div>
-      </div>
-    </div>
     <div class="card panel-clickable" onclick="${irPara("investimentos")}">
       <div class="accent" style="background:var(--border)"></div>
       <div class="body">
@@ -1965,15 +1959,21 @@ function renderResumo(){
 
   // Modo Detalhado = os gráficos e tabelas que antes viviam sozinhos na aba Balanço
   const detalhadoEl = document.getElementById("resumoDetalhado");
+  const gastosEl = document.getElementById("resumoGastos");
   const isDetalhado = resumoModo === "detalhado";
+  const isGastos = resumoModo === "gastos";
   const isRelatorio = resumoModo === "relatorio";
   detalhadoEl.classList.toggle("hidden", !isDetalhado);
   document.querySelectorAll("#balancoCards .detalhado-only").forEach(card => card.classList.toggle("hidden", !isDetalhado));
   if(isDetalhado) renderCharts();
 
+  // Modo Gastos = panorama de gastos do mês (era a aba Visão Mensal)
+  gastosEl.classList.toggle("hidden", !isGastos);
+
   // Modo Relatório: visão completa da carteira, pronta pra exportar em PDF (window.print())
   document.getElementById("balancoCards").classList.toggle("hidden", isRelatorio);
   document.getElementById("resumoExtra").classList.toggle("hidden", isRelatorio);
+  document.getElementById("resumoVencimentosPanel").classList.toggle("hidden", isRelatorio);
   document.getElementById("resumoRelatorio").classList.toggle("hidden", !isRelatorio);
   if(isRelatorio) renderRelatorio(mi);
 }
@@ -3116,7 +3116,7 @@ function openConfigInicialModal(){
   const linhasCategoria = categoriasIniciais.map((c, i) => `
     <div style="display:flex;gap:8px;margin-bottom:6px;">
       <input class="ci-cat-nome" value="${c.nome}" style="flex:2;">
-      <input class="ci-cat-orcado" type="number" step="0.01" value="${c.orcado || 0}" style="flex:1;">
+      <input class="ci-cat-orcado" type="number" step="0.01" value="${c.orcado || 0}" style="flex:1;" oninput="atualizarOrcadoTotalConfigInicial()">
     </div>`).join("");
 
   const linhasCartao = Array.from({ length: Math.max(3, cartoesExistentes.length) }, (_, i) => {
@@ -3135,7 +3135,7 @@ function openConfigInicialModal(){
       <div><label>Nome completo</label><input id="ciNome" value="${nome}"></div>
       <div><label>Salário bruto mensal</label><input id="ciSalario" type="number" step="0.01" value="${salario || 0}"></div>
       <div><label>Reserva já acumulada</label><input id="ciReserva" type="number" step="0.01" value="${reserva || 0}"></div>
-      <div><label>Orçado total (mensal)</label><input id="ciOrcadoTotal" type="number" step="0.01" value="${orcadoTotalAtual || 0}"></div>
+      <div><label>Orçado total (mensal) <span style="font-weight:400;color:var(--muted);">(soma automática das categorias abaixo)</span></label><input id="ciOrcadoTotal" type="number" step="0.01" value="${orcadoTotalAtual || 0}" disabled></div>
     </div>
     <h3 style="font-size:13px;margin:0 0 8px;">Categorias e orçamento mensal</h3>
     <div style="display:flex;gap:8px;margin-bottom:6px;font-size:11px;color:var(--muted);font-weight:700;text-transform:uppercase;">
@@ -3153,20 +3153,34 @@ function openConfigInicialModal(){
       <button class="cancel-btn" onclick="closeConfigInicialModal()">Cancelar</button>
     </div>`;
   document.getElementById("configInicialModal").classList.remove("hidden");
+  atualizarOrcadoTotalConfigInicial(); // garante que o total já nasce correto, não só depois do primeiro input
+}
+// Soma ao vivo os orçamentos de categoria digitados no assistente e escreve no campo "Orçado total"
+// (desabilitado -- só exibição). Nunca deveria ser digitado à mão: é sempre a soma do que está
+// abaixo, senão os dois números podem divergir sem ninguém perceber.
+function atualizarOrcadoTotalConfigInicial(){
+  const total = [...document.querySelectorAll(".ci-cat-orcado")].reduce((s, el) => s + (parseFloat(el.value) || 0), 0);
+  const campo = document.getElementById("ciOrcadoTotal");
+  if(campo) campo.value = total.toFixed(2);
 }
 function adicionarLinhaCategoriaConfigInicial(){
   const el = document.getElementById("ciCategorias");
   el.insertAdjacentHTML("beforeend", `
     <div style="display:flex;gap:8px;margin-bottom:6px;">
       <input class="ci-cat-nome" placeholder="Nome da categoria" style="flex:2;">
-      <input class="ci-cat-orcado" type="number" step="0.01" value="0" style="flex:1;">
+      <input class="ci-cat-orcado" type="number" step="0.01" value="0" style="flex:1;" oninput="atualizarOrcadoTotalConfigInicial()">
     </div>`);
 }
 async function salvarConfigInicial(){
   const nome = document.getElementById("ciNome").value.trim();
   const salario = parseFloat(document.getElementById("ciSalario").value) || 0;
   const reserva = parseFloat(document.getElementById("ciReserva").value) || 0;
-  const orcadoTotal = parseFloat(document.getElementById("ciOrcadoTotal").value) || 0;
+
+  const catNomes = [...document.querySelectorAll(".ci-cat-nome")].map(el => el.value.trim());
+  const catOrcados = [...document.querySelectorAll(".ci-cat-orcado")].map(el => parseFloat(el.value) || 0);
+  // Orçado total é sempre a soma das categorias -- nunca lido de um campo digitado à parte, pra não
+  // correr o risco dos dois números divergirem.
+  const orcadoTotal = catOrcados.reduce((s, v) => s + v, 0);
 
   const updates = [
     { range: "Cadastro!T6", value: nome },
@@ -3175,8 +3189,6 @@ async function salvarConfigInicial(){
     { range: "Cadastro!F4", value: orcadoTotal },
   ];
 
-  const catNomes = [...document.querySelectorAll(".ci-cat-nome")].map(el => el.value.trim());
-  const catOrcados = [...document.querySelectorAll(".ci-cat-orcado")].map(el => parseFloat(el.value) || 0);
   catNomes.forEach((catNome, i) => {
     if(!catNome) return;
     updates.push({ range: `Cadastro!B${8+i}`, value: catNome });
