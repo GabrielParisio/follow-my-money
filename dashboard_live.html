@@ -1623,6 +1623,7 @@ function buildMonthRuler(){
       if(raw) renderCredito();
       if(raw) renderPlanejamento();
       if(raw) renderCadCategoriasTable();
+      if(raw) renderResumo();
     });
     ruler.appendChild(tick);
   });
@@ -4601,6 +4602,7 @@ function navegarMesCredito(delta){
   if(raw) renderCredito();
   if(raw) renderPlanejamento();
   if(raw) renderCadCategoriasTable();
+  if(raw) renderResumo();
 }
 
 // Mesmo padrão do navegarMesCredito — troca o mês global e redesenha o modal do Score no lugar,
@@ -4616,6 +4618,12 @@ function navegarMesScore(delta){
   if(yearSelEl) yearSelEl.value = novoAno;
   updateMonthRuler();
   render();
+  if(raw) renderCharts();
+  if(raw) renderLancamentos();
+  if(raw) renderCredito();
+  if(raw) renderPlanejamento();
+  if(raw) renderCadCategoriasTable();
+  if(raw) renderResumo();
   openScoreDetalheModal();
 }
 
@@ -7171,7 +7179,7 @@ function renderCharts(){
     bars += `<rect x="${x0+barW+4}" y="${H-PAD-hD}" width="${barW}" height="${hD}" rx="3" fill="var(--red)" fill-opacity="${op}"/>`;
     const labelColor = i === mi ? "#F2EEE4" : "#9C968A";
     bars += `<text x="${x0+barW}" y="${H-10}" font-size="10" font-weight="${i===mi?'700':'400'}" fill="${labelColor}" text-anchor="middle">${MONTHS[i]}</text>`;
-    const tipHtml = `<b>${MONTHS_FULL[i]}</b><br>Receita: ${fmtMoney(receita[i])}<br>Despesa: ${fmtMoney(despesa[i])}`.replace(/'/g,"&#39;");
+    const tipHtml = `<b>${MONTHS_FULL[i]}</b><br>Receita real: ${fmtMoney(receita[i])} <span style='color:#9C968A;'>(previsto ${fmtMoney(receitaPrevistoMes[i])})</span><br>Despesa real: ${fmtMoney(despesa[i])} <span style='color:#9C968A;'>(previsto ${fmtMoney(despesaPrevistoMes[i])})</span>`;
     bars += `<rect x="${gx}" y="0" width="${groupW}" height="${H}" fill="transparent" style="cursor:pointer;pointer-events:all;" onmousemove="showChartTooltip(event, '${tipHtml}')" onmouseleave="hideChartTooltip()" onclick="event.stopPropagation(); showChartTooltip(event, '${tipHtml}')"/>`;
   }
   document.getElementById("chartBarras").innerHTML =
