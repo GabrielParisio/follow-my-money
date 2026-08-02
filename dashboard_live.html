@@ -1614,16 +1614,8 @@ function buildMonthRuler(){
     tick.textContent = m;
     tick.addEventListener("click", () => {
       if(ruler.dataset.wasDragged === "1") return; // evita selecionar acidentalmente ao arrastar
-      state.monthIdx = i;
-      updateMonthRuler();
+      irParaMes(i);
       tick.scrollIntoView({ behavior: "smooth", inline: "center", block: "nearest" });
-      render();
-      if(raw) renderCharts();
-      if(raw) renderLancamentos();
-      if(raw) renderCredito();
-      if(raw) renderPlanejamento();
-      if(raw) renderCadCategoriasTable();
-      if(raw) renderResumo();
     });
     ruler.appendChild(tick);
   });
@@ -2469,6 +2461,20 @@ function gastoPorCategoriaMesSimples(targetMi, targetYear){
     if(d.getMonth() !== targetMi || d.getFullYear() !== targetYear) return;
     map[it.categoria] = (map[it.categoria] || 0) + (it.valor || 0);
   });
+  // Compras no cartão de crédito, somadas por categoria própria -- sem isso, gasto no cartão nunca
+  // aparecia aqui: nem antes da fatura ser paga (não existe em Débito ainda) nem depois (a "Fatura do
+  // Cartão" continua excluída de propósito do detalhamento por categoria acima, senão contaria duas
+  // vezes). Soma direto da compra, pelo VENCIMENTO da parcela daquele mês -- mesmo critério já usado
+  // no Comprometimento de renda -- então nunca duplica com o lado de Débito.
+  (raw.compras || []).forEach(c => {
+    const desc = c[2], categoria = c[3], vencimento = c[7];
+    if(!desc || !categoria || !vencimento) return;
+    const d = serialToDate(vencimento);
+    if(d.getMonth() !== targetMi || d.getFullYear() !== targetYear) return;
+    if(ehCategoriaTransferencia(categoria) || ehCategoriaPatrimonio(categoria)) return;
+    const valor = c[5] || c[4] || 0; // valor da parcela; se não for parcelada, valor total
+    map[categoria] = (map[categoria] || 0) + valor;
+  });
   return map;
 }
 
@@ -2614,31 +2620,100 @@ function exportarRelatorioPDF(){
   novaAba.document.close();
 }
 
-function renderInsights(mi){
-  const el = document.getElementById("insightsPanel");
-  if(!el) return;
-  const ano = state.year;
+// Gera até 10 insights pro mês em questão, em ordem de prioridade -- cada bloco é independente e só
+// entra na lista se tiver dado suficiente pra ser confiável (ex: categoria só entra na comparação
+// de alta/queda se já tinha uma base mínima de gasto no mês anterior, senão a % dispara sem
+// significar nada). renderInsights() decide quantos mostrar de cara.
+function gerarInsights(mi, ano){
+  const insights = [];
+  const hoje = new Date();
+  const mesJaAconteceu = ano < hoje.getFullYear() || (ano === hoje.getFullYear() && mi <= hoje.getMonth());
   const mesAnteriorData = new Date(ano, mi - 1, 1);
   const miAnt = mesAnteriorData.getMonth(), anoAnt = mesAnteriorData.getFullYear();
 
-  // 1) Comparação com você mesmo — despesa deste mês vs. mês anterior
   const despesaAtual = calcReal("Despesa", mi, ano);
   const despesaAnterior = calcReal("Despesa", miAnt, anoAnt);
-  let linhaComparacao;
+  const despesaPrevista = calcPrevisto("Despesa", mi, ano);
+  const receitaAtual = calcReal("Receita", mi, ano);
+
+  // 1) Gasto vs. mês passado — usa o PREVISTO quando o mês ainda não aconteceu de verdade (senão
+  // compararia contra R$0 real de um mês futuro, dando um "100% a menos" vazio e enganoso).
   if(despesaAnterior > 0){
-    const diffPct = (despesaAtual - despesaAnterior) / despesaAnterior * 100;
+    const baseAtual = mesJaAconteceu ? despesaAtual : despesaPrevista;
+    const rotulo = mesJaAconteceu ? "Gasto vs. mês passado" : "Gasto previsto vs. mês passado";
+    const diffPct = (baseAtual - despesaAnterior) / despesaAnterior * 100;
     const cor = diffPct <= 0 ? "var(--green)" : "var(--red)";
     const verbo = diffPct <= 0 ? "a menos" : "a mais";
-    linhaComparacao = `<div class="row"><span class="name">Gasto vs. mês passado</span><span class="val" style="color:${cor};">${Math.abs(diffPct).toFixed(1)}% ${verbo}</span></div>`;
-  } else {
-    linhaComparacao = `<div class="row"><span class="name">Gasto vs. mês passado</span><span class="val" style="color:var(--muted);">sem dado no mês anterior</span></div>`;
+    insights.push(`<div class="row"><span class="name">${rotulo}</span><span class="val" style="color:${cor};">${Math.abs(diffPct).toFixed(1)}% ${verbo}</span></div>`);
   }
 
-  // 2) Insight automático — prioriza o mais notável: melhor mês de poupança, senão categoria em alta
-  let insightTexto = "";
-  const receitaAtual = calcReal("Receita", mi, ano);
-  const poupancaAtual = receitaAtual > 0 ? ((receitaAtual - despesaAtual) / receitaAtual * 100) : null;
+  // 2) Ritmo do orçamento — só faz sentido pro mês que já está em andamento/passou
+  const orcadoTotal = getCadastroCategoriasParsed().reduce((s,c) => s + (c.orcado||0), 0);
+  if(orcadoTotal > 0 && mesJaAconteceu){
+    const diasNoMes = new Date(ano, mi+1, 0).getDate();
+    const ehMesAtualReal = ano === hoje.getFullYear() && mi === hoje.getMonth();
+    const diaRef = ehMesAtualReal ? hoje.getDate() : diasNoMes;
+    const pctTempo = (diaRef/diasNoMes) * 100;
+    const pctGasto = (despesaAtual/orcadoTotal) * 100;
+    const cor = pctGasto <= pctTempo + 5 ? "var(--green)" : "var(--red)";
+    insights.push(`💡 Você já gastou <b style="color:${cor};">${pctGasto.toFixed(0)}%</b> do orçado, e o mês já passou <b>${pctTempo.toFixed(0)}%</b>.`);
+  }
 
+  // 3) Maior lançamento de despesa do mês
+  const doMes = debitoRows().filter(it => {
+    if(it.tipo !== "Despesa" || !it.dataVenc) return false;
+    if(ehCategoriaTransferencia(it.categoria) || ehCategoriaFaturaCartao(it.categoria)) return false;
+    const d = serialToDate(it.dataVenc);
+    return d.getMonth() === mi && d.getFullYear() === ano;
+  });
+  if(doMes.length > 0){
+    const maior = doMes.reduce((m, it) => (it.valor||0) > (m.valor||0) ? it : m, doMes[0]);
+    insights.push(`💸 Seu maior gasto do mês foi <b>${maior.desc}</b>, ${fmtMoney(maior.valor)}.`);
+  }
+
+  // 4/5) Categoria que mais subiu / mais caiu vs. mês anterior
+  const atualCat = gastoPorCategoriaMesSimples(mi, ano);
+  const anteriorCat = gastoPorCategoriaMesSimples(miAnt, anoAnt);
+  let altaCategoria = null, altaPct = 25, quedaCategoria = null, quedaPct = -25; // só entra passando de 25% pra qualquer lado
+  Object.keys(atualCat).forEach(cat => {
+    const valAnterior = anteriorCat[cat] || 0;
+    if(valAnterior < 50) return; // base pequena demais, % dispara sem significar muito
+    const pct = (atualCat[cat] - valAnterior) / valAnterior * 100;
+    if(pct > altaPct){ altaPct = pct; altaCategoria = cat; }
+    if(pct < quedaPct){ quedaPct = pct; quedaCategoria = cat; }
+  });
+  if(altaCategoria) insights.push(`📈 <b>${altaCategoria}</b> subiu ${altaPct.toFixed(0)}% em relação ao mês passado.`);
+  if(quedaCategoria) insights.push(`📉 <b>${quedaCategoria}</b> caiu ${Math.abs(quedaPct).toFixed(0)}% em relação ao mês passado.`);
+
+  // 6) Comparação vs. média dos últimos meses (mais estável que só o mês anterior, que pode ser atípico)
+  const despesasAnteriores = [];
+  for(let i = 1; i <= 6; i++){
+    const d = new Date(ano, mi - i, 1);
+    const de = calcReal("Despesa", d.getMonth(), d.getFullYear());
+    if(de > 0) despesasAnteriores.push(de);
+  }
+  if(despesasAnteriores.length >= 3){
+    const media = despesasAnteriores.reduce((s,v) => s+v, 0) / despesasAnteriores.length;
+    const base = mesJaAconteceu ? despesaAtual : despesaPrevista;
+    const diffPct = ((base - media) / media) * 100;
+    const cor = diffPct <= 0 ? "var(--green)" : "var(--red)";
+    const verbo = diffPct <= 0 ? "abaixo" : "acima";
+    insights.push(`<div class="row"><span class="name">Vs. média dos últimos ${despesasAnteriores.length} meses</span><span class="val" style="color:${cor};">${Math.abs(diffPct).toFixed(0)}% ${verbo}</span></div>`);
+  }
+
+  // 7) Streak de meses seguidos com saldo positivo (contando pra trás a partir do mês em questão)
+  let streak = 0;
+  for(let i = 0; i < 12; i++){
+    const d = new Date(ano, mi - i, 1);
+    const r = calcReal("Receita", d.getMonth(), d.getFullYear());
+    const de = calcReal("Despesa", d.getMonth(), d.getFullYear());
+    if(r === 0 && de === 0) break;
+    if(r - de > 0) streak++; else break;
+  }
+  if(streak >= 2) insights.push(`🔥 <b>${streak} meses seguidos</b> com saldo positivo.`);
+
+  // 8) Melhor mês de poupança
+  const poupancaAtual = receitaAtual > 0 ? ((receitaAtual - despesaAtual) / receitaAtual * 100) : null;
   const poupancasAnteriores = [];
   for(let i = 1; i <= 6; i++){
     const d = new Date(ano, mi - i, 1);
@@ -2648,26 +2723,60 @@ function renderInsights(mi){
     poupancasAnteriores.push(r > 0 ? (r - de) / r * 100 : 0);
   }
   const melhorAnterior = poupancasAnteriores.length > 0 ? Math.max(...poupancasAnteriores) : null;
-
   if(poupancaAtual !== null && melhorAnterior !== null && poupancasAnteriores.length >= 2 && poupancaAtual > melhorAnterior){
-    insightTexto = `🏆 Este é seu melhor mês de poupança nos últimos ${poupancasAnteriores.length + 1} meses.`;
-  } else {
-    const atualCat = gastoPorCategoriaMesSimples(mi, ano);
-    const anteriorCat = gastoPorCategoriaMesSimples(miAnt, anoAnt);
-    let maiorAltaCategoria = null, maiorAltaPct = 25; // só entra se passar de 25%
-    Object.keys(atualCat).forEach(cat => {
-      const valAnterior = anteriorCat[cat] || 0;
-      if(valAnterior < 50) return; // base pequena demais, % dispara sem significar muito
-      const pct = (atualCat[cat] - valAnterior) / valAnterior * 100;
-      if(pct > maiorAltaPct){ maiorAltaPct = pct; maiorAltaCategoria = cat; }
-    });
-    if(maiorAltaCategoria){
-      insightTexto = `📈 <b>${maiorAltaCategoria}</b> subiu ${maiorAltaPct.toFixed(0)}% em relação ao mês passado.`;
-    }
+    insights.push(`🏆 Este é seu melhor mês de poupança nos últimos ${poupancasAnteriores.length + 1} meses.`);
   }
 
-  el.innerHTML = linhaComparacao +
-    (insightTexto ? `<div style="border-top:1px solid var(--border);margin-top:8px;padding-top:10px;font-size:13px;">${insightTexto}</div>` : "");
+  // 9) Categoria que já estourou o orçamento
+  let categoriaEstourada = null, excessoPct = 0;
+  getCadastroCategoriasParsed().forEach(c => {
+    if(!c.orcado || c.orcado <= 0) return;
+    const gasto = atualCat[c.nome] || 0;
+    if(gasto > c.orcado){
+      const pct = ((gasto - c.orcado) / c.orcado) * 100;
+      if(pct > excessoPct){ excessoPct = pct; categoriaEstourada = c.nome; }
+    }
+  });
+  if(categoriaEstourada) insights.push(`⚠️ <b>${categoriaEstourada}</b> já passou do orçado em ${excessoPct.toFixed(0)}%.`);
+
+  // 10) Lançamentos sem categoria (higiene de dados -- afeta a precisão de tudo mais nesta lista)
+  const semCategoria = debitoRows().filter(it => {
+    if(it.categoria || !it.dataVenc) return false;
+    const d = serialToDate(it.dataVenc);
+    return d.getMonth() === mi && d.getFullYear() === ano;
+  }).length;
+  if(semCategoria > 0) insights.push(`🏷️ ${semCategoria} lançamento${semCategoria===1?"":"s"} deste mês sem categoria.`);
+
+  return insights;
+}
+
+const QTD_INSIGHTS_VISIVEIS = 3;
+function renderInsights(mi){
+  const el = document.getElementById("insightsPanel");
+  if(!el) return;
+  const ano = state.year;
+  const insights = gerarInsights(mi, ano);
+  if(insights.length === 0){
+    el.innerHTML = `<p class="empty" style="font-size:13px;">Sem dado suficiente ainda pra gerar insights desse mês.</p>`;
+    return;
+  }
+  const linha = (html) => `<div style="padding:6px 0;font-size:13px;">${html}</div>`;
+  const visiveis = insights.slice(0, QTD_INSIGHTS_VISIVEIS);
+  const escondidos = insights.slice(QTD_INSIGHTS_VISIVEIS);
+  let html = visiveis.map(linha).join("");
+  if(escondidos.length > 0){
+    html += `<div id="insightsExtra" class="hidden">${escondidos.map(linha).join("")}</div>`;
+    html += `<a href="#" id="insightsToggleLink" data-qtd="${escondidos.length}" onclick="event.preventDefault(); toggleInsightsExtra();" style="display:inline-block;margin-top:4px;color:var(--gold);font-size:12px;">ver mais (+${escondidos.length}) →</a>`;
+  }
+  el.innerHTML = html;
+}
+function toggleInsightsExtra(){
+  const extra = document.getElementById("insightsExtra");
+  const link = document.getElementById("insightsToggleLink");
+  if(!extra || !link) return;
+  const estaEscondido = extra.classList.contains("hidden");
+  extra.classList.toggle("hidden", !estaEscondido);
+  link.textContent = estaEscondido ? "ver menos ←" : `ver mais (+${link.dataset.qtd}) →`;
 }
 
 function renderVencimentos(){
@@ -4586,15 +4695,15 @@ function isCompraParcelada(c){
 // Setas de mês na tela do cartão — fazem exatamente o mesmo que clicar num pill de mês lá em cima,
 // só que sem precisar rolar a tela até lá. Troca o mesmo estado global (state.monthIdx/year), então
 // fica sincronizado com o resto do app.
-function navegarMesCredito(delta){
-  let novoMes = state.monthIdx + delta;
-  let novoAno = state.year;
-  if(novoMes < 0){ novoMes = 11; novoAno -= 1; }
-  else if(novoMes > 11){ novoMes = 0; novoAno += 1; }
-  state.monthIdx = novoMes;
-  state.year = novoAno;
+// Função central de navegação de mês -- ÚNICO lugar que decide "o que precisa recarregar quando o
+// mês vigente muda". Todo trecho do app que troca state.monthIdx deveria passar por aqui, não
+// duplicar essa lista de render*() na mão -- foi exatamente essa duplicação que causou vários dos
+// bugs de "esse card não atualiza ao trocar de mês" corrigidos ao longo desta sessão.
+function irParaMes(mi, ano){
+  state.monthIdx = mi;
+  if(ano !== undefined) state.year = ano;
   const yearSelEl = document.getElementById("yearSelect");
-  if(yearSelEl) yearSelEl.value = novoAno;
+  if(yearSelEl && ano !== undefined) yearSelEl.value = ano;
   updateMonthRuler();
   render();
   if(raw) renderCharts();
@@ -4605,6 +4714,14 @@ function navegarMesCredito(delta){
   if(raw) renderResumo();
 }
 
+function navegarMesCredito(delta){
+  let novoMes = state.monthIdx + delta;
+  let novoAno = state.year;
+  if(novoMes < 0){ novoMes = 11; novoAno -= 1; }
+  else if(novoMes > 11){ novoMes = 0; novoAno += 1; }
+  irParaMes(novoMes, novoAno);
+}
+
 // Mesmo padrão do navegarMesCredito — troca o mês global e redesenha o modal do Score no lugar,
 // sem fechar e reabrir a sobreposição.
 function navegarMesScore(delta){
@@ -4612,18 +4729,7 @@ function navegarMesScore(delta){
   let novoAno = state.year;
   if(novoMes < 0){ novoMes = 11; novoAno -= 1; }
   else if(novoMes > 11){ novoMes = 0; novoAno += 1; }
-  state.monthIdx = novoMes;
-  state.year = novoAno;
-  const yearSelEl = document.getElementById("yearSelect");
-  if(yearSelEl) yearSelEl.value = novoAno;
-  updateMonthRuler();
-  render();
-  if(raw) renderCharts();
-  if(raw) renderLancamentos();
-  if(raw) renderCredito();
-  if(raw) renderPlanejamento();
-  if(raw) renderCadCategoriasTable();
-  if(raw) renderResumo();
+  irParaMes(novoMes, novoAno);
   openScoreDetalheModal();
 }
 
@@ -6382,7 +6488,7 @@ function renderReservaCombo(saldo, saldoPrevisto, reserva, meta, mi){
     const labelColor = i === idxHoje ? "#F2EEE4" : "#9C968A";
     const { ano, mesIdx } = pontosMeses[i];
     const labelMes = ano !== state.year ? `${MONTHS[mesIdx]}/${String(ano).slice(-2)}` : MONTHS[mesIdx];
-    svg += `<text x="${p.x}" y="${H-10}" font-size="10" font-weight="${i===idxHoje?'700':'400'}" fill="${labelColor}" text-anchor="middle">${labelMes}</text>`;
+    svg += `<text x="${p.x}" y="${H-10}" font-size="10" font-weight="${i===idxHoje?'700':'400'}" fill="${labelColor}" text-anchor="middle" style="cursor:pointer;pointer-events:all;" onclick="event.stopPropagation(); irParaMes(${mesIdx}, ${ano})">${labelMes}</text>`;
     // Tooltip reformulado: pra ponto REAL mostra reserva+saldo real de verdade; pra ponto PROJETADO
     // mostra as duas projeções (média e previsto) com o % da meta de cada uma — antes, todo ponto
     // projetado mostrava "Saldo do mês" calculado a partir de dado REAL, que pra mês futuro sempre
@@ -7180,7 +7286,7 @@ function renderCharts(){
     const labelColor = i === mi ? "#F2EEE4" : "#9C968A";
     bars += `<text x="${x0+barW}" y="${H-10}" font-size="10" font-weight="${i===mi?'700':'400'}" fill="${labelColor}" text-anchor="middle">${MONTHS[i]}</text>`;
     const tipHtml = `<b>${MONTHS_FULL[i]}</b><br>Receita real: ${fmtMoney(receita[i])} <span style='color:#9C968A;'>(previsto ${fmtMoney(receitaPrevistoMes[i])})</span><br>Despesa real: ${fmtMoney(despesa[i])} <span style='color:#9C968A;'>(previsto ${fmtMoney(despesaPrevistoMes[i])})</span>`;
-    bars += `<rect x="${gx}" y="0" width="${groupW}" height="${H}" fill="transparent" style="cursor:pointer;pointer-events:all;" onmousemove="showChartTooltip(event, '${tipHtml}')" onmouseleave="hideChartTooltip()" onclick="event.stopPropagation(); showChartTooltip(event, '${tipHtml}')"/>`;
+    bars += `<rect x="${gx}" y="0" width="${groupW}" height="${H}" fill="transparent" style="cursor:pointer;pointer-events:all;" onmousemove="showChartTooltip(event, '${tipHtml}')" onmouseleave="hideChartTooltip()" onclick="event.stopPropagation(); showChartTooltip(event, '${tipHtml}'); irParaMes(${i}, ${state.year})"/>`;
   }
   document.getElementById("chartBarras").innerHTML =
     `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;max-height:340px;">${bars}</svg>`;
@@ -7295,7 +7401,7 @@ function renderDetalheChart(){
     bars += `<rect x="${x0}" y="${H-PAD-hR}" width="${barW}" height="${hR}" rx="3" fill="var(--green)" fill-opacity="${op}"/>`;
     bars += `<rect x="${x0+barW+4}" y="${H-PAD-hD}" width="${barW}" height="${hD}" rx="3" fill="var(--red)" fill-opacity="${op}"/>`;
     const labelColor = i === mi ? "#F2EEE4" : "#9C968A";
-    bars += `<text x="${x0+barW}" y="${H-10}" font-size="10" font-weight="${i===mi?'700':'400'}" fill="${labelColor}" text-anchor="middle">${MONTHS[i]}</text>`;
+    bars += `<text x="${x0+barW}" y="${H-10}" font-size="10" font-weight="${i===mi?'700':'400'}" fill="${labelColor}" text-anchor="middle" style="cursor:pointer;pointer-events:all;" onclick="event.stopPropagation(); irParaMes(${i}, ${state.year})">${MONTHS[i]}</text>`;
   }
   document.getElementById("detalheChart").innerHTML =
     `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;max-height:340px;">${bars}</svg>
