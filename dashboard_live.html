@@ -1107,7 +1107,7 @@
     <div class="chart-panel">
       <h2>📈 Taxa real de retorno esperada</h2>
       <p style="font-size:13px;color:var(--muted);margin-top:-6px;margin-bottom:14px;">
-        Usada na projeção de Independência Financeira (aba Planejamento Financeiro). Escolha o perfil de investidor mais próximo do seu — a taxa <b>acima da inflação</b> é calculada em cima da <b>mediana da Selic real dos últimos 15 anos fechados</b> (não a Selic do momento, pra não travar décadas de projeção no pico ou vale de um ciclo específico de juros), ou digite manualmente se preferir uma taxa própria.
+        Usada na projeção de Independência Financeira (aba Planejamento Financeiro). Escolha o perfil de investidor mais próximo do seu — cada perfil tem uma taxa <b>fixa acima da inflação (IPCA+X%)</b>, definida pela política de investimento. A mediana da Selic real dos últimos 15 anos aparece como referência informativa ao lado do resultado, mas não entra na conta. Ou digite manualmente se preferir uma taxa própria.
       </p>
       <div class="edit-form" style="margin-bottom:0;">
         <div>
@@ -5638,19 +5638,19 @@ const SELIC_REAL_PCT = calcularMediana(
   HISTORICO_SELIC_IPCA.map(d => ((1 + d.selic/100) / (1 + d.ipca/100) - 1) * 100)
 );
 
-// Cada perfil = Selic real + um spread (prêmio de risco esperado pela alocação mais arrojada). Os
-// spreads são uma estimativa razoável baseada em carteiras-modelo típicas de private/MFO -- não é
-// um número oficial único, vale revisar com você se achar que não reflete a política de investimento
-// que pretende seguir.
+// Cada perfil = uma taxa real fixa (IPCA + X%), definida diretamente pelo Gabriel em 02/08/2026 --
+// não é mais derivada da mediana da Selic real + spread (SELIC_REAL_PCT continua calculada acima só
+// como referência informativa no texto, não entra mais na conta). Trocar aqui se a política de
+// investimento mudar; não precisa mexer em mais nada, o resto do app já lê por essas funções.
 const PERFIS_RENTABILIDADE = {
-  "Conservador": { spread: 0,   desc: "Renda fixa pura (Tesouro Selic, CDB) — sem exposição a risco de mercado" },
-  "Moderado":    { spread: 1,   desc: "Majoritariamente renda fixa, com uma fatia em crédito privado/multimercado" },
-  "Dinâmico":    { spread: 2.5, desc: "Alocação balanceada, com parcela relevante em multimercado/ações" },
-  "Arrojado":    { spread: 4,   desc: "Maior exposição a renda variável/alternativos — maior volatilidade esperada" },
+  "Conservador": { taxa: 5,   desc: "Renda fixa pura (Tesouro Selic, CDB) — sem exposição a risco de mercado" },
+  "Moderado":    { taxa: 6.5, desc: "Majoritariamente renda fixa, com uma fatia em crédito privado/multimercado" },
+  "Dinâmico":    { taxa: 7,   desc: "Alocação balanceada, com parcela relevante em multimercado/ações" },
+  "Arrojado":    { taxa: 8.5, desc: "Maior exposição a renda variável/alternativos — maior volatilidade esperada" },
 };
 function getTaxaRealPorPerfil(perfil){
   const p = PERFIS_RENTABILIDADE[perfil];
-  return p ? SELIC_REAL_PCT + p.spread : null;
+  return p ? p.taxa : null;
 }
 // Qual perfil está selecionado hoje -- retorna null se o valor salvo for um número direto (taxa
 // personalizada, ou dado antigo salvo antes dos perfis existirem).
@@ -5827,7 +5827,7 @@ function onChangePerfilRentabilidade(){
     wrap.classList.add("hidden");
     const taxa = getTaxaRealPorPerfil(perfil);
     const p = PERFIS_RENTABILIDADE[perfil];
-    info.innerHTML = `≈ <b>${taxa.toFixed(1)}% a.a. real</b> (mediana da Selic real ${SELIC_REAL_PCT.toFixed(1)}% dos últimos 15 anos + ${p.spread}pp) — ${p.desc}`;
+    info.innerHTML = `≈ <b>${taxa.toFixed(1)}% a.a. real</b> (IPCA + ${taxa.toFixed(1)}%) — ${p.desc}. <span style="color:var(--muted);">Referência: a mediana da Selic real dos últimos 15 anos foi ${SELIC_REAL_PCT.toFixed(1)}%.</span>`;
   }
 }
 async function saveCadastroTaxaRealEsperada(){
