@@ -5835,7 +5835,7 @@ function onChangePerfilRentabilidade(){
     wrap.classList.add("hidden");
     const taxa = getTaxaRealPorPerfil(perfil);
     const p = PERFIS_RENTABILIDADE[perfil];
-    info.innerHTML = `≈ <b>${taxa.toFixed(1)}% a.a. real</b> (IPCA + ${taxa.toFixed(1)}%) — ${p.desc}. <span style="color:var(--muted);">Referência: a mediana da Selic real dos últimos 15 anos foi ${SELIC_REAL_PCT.toFixed(1)}%.</span>`;
+    info.innerHTML = `≈ <b>${taxa.toFixed(1)}% a.a. real</b> (IPCA + ${taxa.toFixed(1)}%) — ${p.desc}`;
   }
 }
 async function saveCadastroTaxaRealEsperada(){
@@ -5996,11 +5996,12 @@ function renderPlanejamento(){
   const despesaAnual = despesaMedia * 12; // só usado como sinalizador de "tem dado suficiente pra projetar"
   const taxaReal = getTaxaRealEsperada();
   const rendaMensalDesejada = getRendaDesejadaIndependencia();
-  // Patrimônio-alvo = perpetuidade: capital = (renda mensal desejada × 12) / taxa real anual. É a
-  // mesma matemática por trás da regra dos 4% (que é só o caso particular de taxa real = 4%) — só
-  // que agora usando a taxa real DE VERDADE configurada pro perfil da pessoa, e uma renda-alvo que
-  // ela escolhe, em vez de deduzir a meta do que ela já gasta hoje.
-  const patrimonioAlvo = taxaReal > 0 ? (rendaMensalDesejada * 12) / (taxaReal / 100) : 0;
+  // Patrimônio-alvo = perpetuidade, no molde HP12C: N=9999 (praticamente infinito — o "n" de uma
+  // perpetuidade), I = taxa real MENSAL (a taxa real anual composta, não dividida por 12 — juro
+  // composto de verdade), PMT = retirada mensal desejada, FV = não se aplica. Reusa pvAnnuity(), a
+  // mesma função de valor presente já usada pros cálculos de dívida.
+  const taxaRealMensal = taxaReal > 0 ? Math.pow(1 + taxaReal/100, 1/12) - 1 : 0;
+  const patrimonioAlvo = taxaRealMensal > 0 ? pvAnnuity(taxaRealMensal, 9999, rendaMensalDesejada) : 0;
 
   const reserva = calcSaldoInvestimento("Reserva de Emergência");
   const rendaFixa = calcSaldoInvestimento("Renda Fixa");
@@ -6053,7 +6054,7 @@ function renderPlanejamento(){
       <div class="body">
         <div class="label">Patrimônio-alvo</div>
         <div class="value" style="font-size:20px;">${fmtMoney(patrimonioAlvo)}</div>
-        <div class="sub">Renda desejada ${fmtMoney(rendaMensalDesejada)}/mês × 12 ÷ ${taxaReal.toFixed(1)}% (taxa real)</div>
+        <div class="sub">Perpetuidade: ${fmtMoney(rendaMensalDesejada)}/mês, a ${(taxaRealMensal*100).toFixed(2)}% real ao mês (${taxaReal.toFixed(1)}% a.a.)</div>
       </div>
     </div>
     <div class="card">
