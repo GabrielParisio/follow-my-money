@@ -1218,7 +1218,7 @@ const TEMPLATE_SPREADSHEET_ID = "1Kttayt0-msSOdKkZlUJ9l7wwBNWVLj2Fbz1tZndP-u0";
 // Começou em v0.1.0 em 02/08/2026, a pedido do Gabriel -- fica em v0.x enquanto o app estiver em
 // fase de beta fechado (só Gabriel + Felipe testando); v1.0.0 marca a primeira versão considerada
 // estável o suficiente pra abrir pra mais gente.
-const APP_BUILD_VERSION = "0.2.0";
+const APP_BUILD_VERSION = "0.3.0";
 
 const MONTHS = ["Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"];
 const MONTHS_FULL = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
@@ -5234,7 +5234,7 @@ function renderDividas(){
   const rows = dividasExibidas.map(d => {
     const quitada = isDividaQuitada(d);
     const pctPago = d.numParcelas > 0 ? (d.parcelasPagas / d.numParcelas * 100) : (d.valorInicial > 0 ? (d.valorPago / d.valorInicial * 100) : 0);
-    return `<tr style="${quitada?'opacity:.6;':''}">
+    return `<tr style="cursor:pointer;${quitada?'opacity:.6;':''}" onclick="openDividaEditForm(${d.row})">
       <td data-label="Descrição">${d.desc}</td>
       <td style="color:var(--muted);" data-label="Credor">${d.credor}</td>
       <td class="val-col despesa" data-label="Saldo devedor">${d.saldoDevedorAutoCalculado ? "≈ " : ""}${fmtMoney(d.saldoDevedor)}</td>
@@ -5249,8 +5249,7 @@ function renderDividas(){
       </td>
       <td data-label="Status"><span class="pill">${d.status || "—"}</span></td>
       <td data-label="">
-        <button class="icon-btn" onclick="openDividaEditForm(${d.row})" title="Editar">✏️</button>
-        ${!quitada ? `<button class="icon-btn" onclick="openSimuladorQuitacao(${d.row})" title="Simular quitação antecipada">💡</button>` : ""}
+        ${!quitada ? `<button class="icon-btn" onclick="event.stopPropagation(); openSimuladorQuitacao(${d.row})" title="Simular quitação antecipada">💡</button>` : ""}
       </td>
     </tr>`;
   }).join("");
