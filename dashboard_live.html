@@ -1218,7 +1218,7 @@ const TEMPLATE_SPREADSHEET_ID = "1Kttayt0-msSOdKkZlUJ9l7wwBNWVLj2Fbz1tZndP-u0";
 // Começou em v0.1.0 em 02/08/2026, a pedido do Gabriel -- fica em v0.x enquanto o app estiver em
 // fase de beta fechado (só Gabriel + Felipe testando); v1.0.0 marca a primeira versão considerada
 // estável o suficiente pra abrir pra mais gente.
-const APP_BUILD_VERSION = "0.1.0";
+const APP_BUILD_VERSION = "0.2.0";
 
 const MONTHS = ["Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"];
 const MONTHS_FULL = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
@@ -1446,6 +1446,20 @@ document.addEventListener("mouseleave", (e) => {
   }
 }, true);
 document.addEventListener("click", (e) => {
+  // Clique num ponto/rótulo de mês dentro de um gráfico (Reserva, Receita x Despesa) -- via
+  // DELEGAÇÃO de evento aqui no document, não onclick inline dentro do SVG. O SVG desses gráficos é
+  // reconstruído inteiro via innerHTML toda vez que o mês muda ou os dados recarregam; um listener
+  // anexado direto num elemento do SVG se perde nesse processo (o elemento antigo é destruído). Um
+  // listener aqui no document nunca se perde, então funciona não importa quantas vezes o gráfico
+  // seja redesenhado -- mais robusto que confiar em atributos onclick embutidos em texto gerado.
+  const mesTarget = e.target.closest ? e.target.closest("[data-mesidx]") : null;
+  if(mesTarget){
+    const mesIdx = parseInt(mesTarget.dataset.mesidx, 10);
+    const ano = parseInt(mesTarget.dataset.ano, 10);
+    if(mesTarget.dataset.tip) showChartTooltip(e, mesTarget.dataset.tip);
+    if(!isNaN(mesIdx)) irParaMes(mesIdx, isNaN(ano) ? undefined : ano);
+    return;
+  }
   if(e.target.classList && e.target.classList.contains("info-icon")){
     const tip = document.getElementById("chartTooltip");
     if(tip && tip.style.display === "block"){ hideChartTooltip(); }
@@ -6695,7 +6709,7 @@ function renderReservaCombo(saldo, saldoPrevisto, reserva, meta, mi){
     const labelColor = i === idxHoje ? "#F2EEE4" : "#9C968A";
     const { ano, mesIdx } = pontosMeses[i];
     const labelMes = ano !== state.year ? `${MONTHS[mesIdx]}/${String(ano).slice(-2)}` : MONTHS[mesIdx];
-    svg += `<text x="${p.x}" y="${H-10}" font-size="10" font-weight="${i===idxHoje?'700':'400'}" fill="${labelColor}" text-anchor="middle" style="cursor:pointer;pointer-events:all;" onclick="event.stopPropagation(); irParaMes(${mesIdx}, ${ano})">${labelMes}</text>`;
+    svg += `<text x="${p.x}" y="${H-10}" font-size="10" font-weight="${i===idxHoje?'700':'400'}" fill="${labelColor}" text-anchor="middle" style="cursor:pointer;pointer-events:all;" data-mesidx="${mesIdx}" data-ano="${ano}">${labelMes}</text>`;
     // Tooltip reformulado: pra ponto REAL mostra reserva+saldo real de verdade; pra ponto PROJETADO
     // mostra as duas projeções (média e previsto) com o % da meta de cada uma — antes, todo ponto
     // projetado mostrava "Saldo do mês" calculado a partir de dado REAL, que pra mês futuro sempre
@@ -6717,7 +6731,7 @@ function renderReservaCombo(saldo, saldoPrevisto, reserva, meta, mi){
         `<br>Reserva real: ${fmtMoney(projetado[i])} <span style='color:#9C968A;'>(${pctMeta.toFixed(0)}% da meta)</span>` +
         `<br>Saldo do mês: <span style='color:${corSaldo};'>${fmtMoney(saldoJanela[i])}</span>`;
     }
-    svg += `<rect x="${p.x - groupW/2}" y="0" width="${groupW}" height="${H}" fill="transparent" style="cursor:pointer;pointer-events:all;" onmousemove="showChartTooltip(event, '${tipHtml}')" onmouseleave="hideChartTooltip()" onclick="event.stopPropagation(); showChartTooltip(event, '${tipHtml}'); irParaMes(${mesIdx}, ${ano})"/>`;
+    svg += `<rect x="${p.x - groupW/2}" y="0" width="${groupW}" height="${H}" fill="transparent" style="cursor:pointer;pointer-events:all;" data-mesidx="${mesIdx}" data-ano="${ano}" data-tip="${tipHtml}" onmousemove="showChartTooltip(event, '${tipHtml}')" onmouseleave="hideChartTooltip()"/>`;
   });
   el.innerHTML = `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;max-height:340px;">${svg}</svg>`;
 
@@ -7493,7 +7507,7 @@ function renderCharts(){
     const labelColor = i === mi ? "#F2EEE4" : "#9C968A";
     bars += `<text x="${x0+barW}" y="${H-10}" font-size="10" font-weight="${i===mi?'700':'400'}" fill="${labelColor}" text-anchor="middle">${MONTHS[i]}</text>`;
     const tipHtml = `<b>${MONTHS_FULL[i]}</b><br>Receita real: ${fmtMoney(receita[i])} <span style='color:#9C968A;'>(previsto ${fmtMoney(receitaPrevistoMes[i])})</span><br>Despesa real: ${fmtMoney(despesa[i])} <span style='color:#9C968A;'>(previsto ${fmtMoney(despesaPrevistoMes[i])})</span>`;
-    bars += `<rect x="${gx}" y="0" width="${groupW}" height="${H}" fill="transparent" style="cursor:pointer;pointer-events:all;" onmousemove="showChartTooltip(event, '${tipHtml}')" onmouseleave="hideChartTooltip()" onclick="event.stopPropagation(); showChartTooltip(event, '${tipHtml}'); irParaMes(${i}, ${state.year})"/>`;
+    bars += `<rect x="${gx}" y="0" width="${groupW}" height="${H}" fill="transparent" style="cursor:pointer;pointer-events:all;" data-mesidx="${i}" data-ano="${state.year}" data-tip="${tipHtml}" onmousemove="showChartTooltip(event, '${tipHtml}')" onmouseleave="hideChartTooltip()"/>`;
   }
   document.getElementById("chartBarras").innerHTML =
     `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;max-height:340px;">${bars}</svg>`;
@@ -7618,7 +7632,7 @@ function renderDetalheChart(){
     bars += `<rect x="${x0}" y="${H-PAD-hR}" width="${barW}" height="${hR}" rx="3" fill="var(--green)" fill-opacity="${op}"/>`;
     bars += `<rect x="${x0+barW+4}" y="${H-PAD-hD}" width="${barW}" height="${hD}" rx="3" fill="var(--red)" fill-opacity="${op}"/>`;
     const labelColor = i === mi ? "#F2EEE4" : "#9C968A";
-    bars += `<text x="${x0+barW}" y="${H-10}" font-size="10" font-weight="${i===mi?'700':'400'}" fill="${labelColor}" text-anchor="middle" style="cursor:pointer;pointer-events:all;" onclick="event.stopPropagation(); irParaMes(${i}, ${state.year})">${MONTHS[i]}</text>`;
+    bars += `<text x="${x0+barW}" y="${H-10}" font-size="10" font-weight="${i===mi?'700':'400'}" fill="${labelColor}" text-anchor="middle" style="cursor:pointer;pointer-events:all;" data-mesidx="${i}" data-ano="${state.year}">${MONTHS[i]}</text>`;
   }
   document.getElementById("detalheChart").innerHTML =
     `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;max-height:340px;">${bars}</svg>
