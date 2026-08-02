@@ -1218,7 +1218,7 @@ const TEMPLATE_SPREADSHEET_ID = "1Kttayt0-msSOdKkZlUJ9l7wwBNWVLj2Fbz1tZndP-u0";
 // Começou em v0.1.0 em 02/08/2026, a pedido do Gabriel -- fica em v0.x enquanto o app estiver em
 // fase de beta fechado (só Gabriel + Felipe testando); v1.0.0 marca a primeira versão considerada
 // estável o suficiente pra abrir pra mais gente.
-const APP_BUILD_VERSION = "0.3.0";
+const APP_BUILD_VERSION = "0.1.3";
 
 const MONTHS = ["Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"];
 const MONTHS_FULL = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
@@ -5245,7 +5245,7 @@ function renderDividas(){
         <div style="height:6px;background:var(--border);border-radius:3px;overflow:hidden;">
           <div style="height:100%;width:${Math.min(pctPago,100)}%;background:${quitada?"var(--green)":"var(--blue)"};border-radius:3px;"></div>
         </div>
-        ${d.dataQuitacaoPrevista ? `<div style="font-size:11px;color:var(--muted);margin-top:3px;">quita em ${fmtDate(d.dataQuitacaoPrevista)} · faltam ${d.mesesRestantes} ${d.mesesRestantes===1?"mês":"meses"} (${d.diasRestantes}d)</div>` : ""}
+        ${d.dataQuitacaoPrevista ? `<div style="font-size:11px;color:var(--muted);margin-top:3px;">quita em ${fmtDate(d.dataQuitacaoPrevista)}/${d.dataQuitacaoPrevista.getFullYear()} · faltam ${d.mesesRestantes} ${d.mesesRestantes===1?"mês":"meses"} (${d.diasRestantes}d)</div>` : ""}
       </td>
       <td data-label="Status"><span class="pill">${d.status || "—"}</span></td>
       <td data-label="">
