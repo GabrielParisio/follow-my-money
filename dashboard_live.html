@@ -1107,12 +1107,26 @@
     <div class="chart-panel">
       <h2>📈 Taxa real de retorno esperada</h2>
       <p style="font-size:13px;color:var(--muted);margin-top:-6px;margin-bottom:14px;">
-        Usada na projeção de Independência Financeira (aba Planejamento Financeiro). É a taxa <b>acima da inflação</b> — ex: se sua carteira mira IPCA+4%, o número aqui é <b>4</b>, não a taxa nominal cheia. Padrão: 4% ao ano (regra clássica de retirada segura).
+        Usada na projeção de Independência Financeira (aba Planejamento Financeiro). Escolha o perfil de investidor mais próximo do seu — a taxa <b>acima da inflação</b> é calculada em cima da <b>mediana da Selic real dos últimos 15 anos fechados</b> (não a Selic do momento, pra não travar décadas de projeção no pico ou vale de um ciclo específico de juros), ou digite manualmente se preferir uma taxa própria.
       </p>
       <div class="edit-form" style="margin-bottom:0;">
-        <div><label>Taxa real esperada (% a.a.)</label><input id="cadTaxaRealEsperada" type="number" step="0.1" placeholder="4"></div>
+        <div>
+          <label>Perfil de rentabilidade esperada</label>
+          <select id="cadPerfilRentabilidade" onchange="onChangePerfilRentabilidade()">
+            <option value="Conservador">Conservador</option>
+            <option value="Moderado">Moderado</option>
+            <option value="Dinâmico">Dinâmico</option>
+            <option value="Arrojado">Arrojado</option>
+            <option value="Personalizado">Personalizado (digitar manualmente)</option>
+          </select>
+        </div>
+        <div id="cadTaxaRealPersonalizadaWrap" class="hidden">
+          <label>Taxa real esperada (% a.a., personalizada)</label>
+          <input id="cadTaxaRealEsperada" type="number" step="0.1" placeholder="4">
+        </div>
         <div class="actions"><button class="save-btn" onclick="saveCadastroTaxaRealEsperada()">Salvar</button></div>
       </div>
+      <p id="cadPerfilRentabilidadeInfo" style="font-size:12px;color:var(--muted);margin-top:10px;margin-bottom:0;"></p>
     </div>
 
     <div class="chart-panel">
@@ -5586,6 +5600,66 @@ function calcIRRF(baseCalculo){
 // Só CLT tem INSS+IRRF automáticos (retenção na folha). PJ/Autônomo/MEI pagam DAS/carnê-leão por
 // conta própria -- fora do escopo automático por enquanto, mas o campo "outros descontos" cobre
 // quem quiser lançar manualmente o que já sabe que paga.
+// =====================================================================================
+// PERFIS DE RENTABILIDADE ESPERADA -- baseados na Selic real HISTÓRICA (mediana dos últimos anos
+// FECHADOS, não a taxa do momento/spot). Por decisão explícita: usar o valor spot (14,25% hoje)
+// travaria décadas de projeção no pico atual do ciclo de juros -- a Selic é cíclica por natureza
+// (variou de -5,1% real em 2021 a +9,7% real em 2025 nos últimos 15 anos), então uma mediana de
+// vários anos completos é uma base mais estável pra uma suposição de longuíssimo prazo.
+//
+// Fonte dos dados abaixo (verificados em 02/08/2026): IPCA oficial fechado (IBGE); Selic acumulada
+// no ano (não a meta de fechamento de dezembro -- a acumulada reflete o juro efetivo do ano inteiro,
+// incluindo os meses em que a Selic esteve em outro patamar durante ciclos de alta/baixa). Atualize
+// esse array quando fechar um novo ano civil (ex: adicionar 2026 assim que ele terminar), ou quando
+// o Gabriel indicar. Ampliado de 5 pra 15 anos (2011-2025) em 02/08/2026, a pedido do Gabriel.
+const HISTORICO_SELIC_IPCA = [
+  { ano: 2011, selic: 11.62, ipca: 6.50 },
+  { ano: 2012, selic: 8.48,  ipca: 5.84 },
+  { ano: 2013, selic: 8.21,  ipca: 5.91 },
+  { ano: 2014, selic: 10.91, ipca: 6.41 },
+  { ano: 2015, selic: 13.29, ipca: 10.67 },
+  { ano: 2016, selic: 14.03, ipca: 6.29 },
+  { ano: 2017, selic: 9.96,  ipca: 2.95 },
+  { ano: 2018, selic: 6.42,  ipca: 3.75 },
+  { ano: 2019, selic: 5.95,  ipca: 4.31 },
+  { ano: 2020, selic: 2.75,  ipca: 4.52 },
+  { ano: 2021, selic: 4.44,  ipca: 10.06 },
+  { ano: 2022, selic: 12.38, ipca: 5.79 },
+  { ano: 2023, selic: 13.03, ipca: 4.62 },
+  { ano: 2024, selic: 10.89, ipca: 4.83 },
+  { ano: 2025, selic: 14.33, ipca: 4.26 },
+];
+function calcularMediana(valores){
+  const s = [...valores].sort((a,b) => a-b);
+  const meio = Math.floor(s.length/2);
+  return s.length % 2 !== 0 ? s[meio] : (s[meio-1] + s[meio]) / 2;
+}
+const SELIC_REAL_PCT = calcularMediana(
+  HISTORICO_SELIC_IPCA.map(d => ((1 + d.selic/100) / (1 + d.ipca/100) - 1) * 100)
+);
+
+// Cada perfil = Selic real + um spread (prêmio de risco esperado pela alocação mais arrojada). Os
+// spreads são uma estimativa razoável baseada em carteiras-modelo típicas de private/MFO -- não é
+// um número oficial único, vale revisar com você se achar que não reflete a política de investimento
+// que pretende seguir.
+const PERFIS_RENTABILIDADE = {
+  "Conservador": { spread: 0,   desc: "Renda fixa pura (Tesouro Selic, CDB) — sem exposição a risco de mercado" },
+  "Moderado":    { spread: 1,   desc: "Majoritariamente renda fixa, com uma fatia em crédito privado/multimercado" },
+  "Dinâmico":    { spread: 2.5, desc: "Alocação balanceada, com parcela relevante em multimercado/ações" },
+  "Arrojado":    { spread: 4,   desc: "Maior exposição a renda variável/alternativos — maior volatilidade esperada" },
+};
+function getTaxaRealPorPerfil(perfil){
+  const p = PERFIS_RENTABILIDADE[perfil];
+  return p ? SELIC_REAL_PCT + p.spread : null;
+}
+// Qual perfil está selecionado hoje -- retorna null se o valor salvo for um número direto (taxa
+// personalizada, ou dado antigo salvo antes dos perfis existirem).
+function getPerfilRentabilidadeAtual(){
+  const v = raw.taxaRealEsperada && raw.taxaRealEsperada[0] && raw.taxaRealEsperada[0][0];
+  const nome = typeof v === "string" ? v.trim() : "";
+  return PERFIS_RENTABILIDADE[nome] ? nome : null;
+}
+
 function calcSalarioLiquido(bruto, regime, outrosDescontos){
   const inss = calcINSS(bruto, regime);
   const irrf = regime === "CLT" ? calcIRRF(bruto - inss) : 0;
@@ -5615,8 +5689,16 @@ function renderCadastro(){
   const outrosDescontosInput = document.getElementById("cadOutrosDescontos");
   if(outrosDescontosInput && document.activeElement !== outrosDescontosInput) outrosDescontosInput.value = getOutrosDescontosMensais() || "";
   renderSalarioLiquidoBreakdown();
+  const perfilSelect = document.getElementById("cadPerfilRentabilidade");
+  if(perfilSelect && document.activeElement !== perfilSelect){
+    const perfilAtual = getPerfilRentabilidadeAtual();
+    perfilSelect.value = perfilAtual || "Personalizado";
+  }
   const taxaRealInput = document.getElementById("cadTaxaRealEsperada");
-  if(taxaRealInput && document.activeElement !== taxaRealInput) taxaRealInput.value = getTaxaRealEsperada();
+  if(taxaRealInput && document.activeElement !== taxaRealInput && !getPerfilRentabilidadeAtual()){
+    taxaRealInput.value = getTaxaRealEsperada();
+  }
+  onChangePerfilRentabilidade();
   const primeiraVezDetails = document.getElementById("cadPrimeiraVezDetails");
   if(primeiraVezDetails && !primeiraVezDetails.dataset.autoSet){
     primeiraVezDetails.dataset.autoSet = "1";
@@ -5730,9 +5812,35 @@ async function saveCadastroSalario(){
     writeCell("Cadastro!T16", outrosDescontos),
   ]), [renderCadastro, renderCharts, render, renderPlanejamento], "Salário e descontos atualizados");
 }
+// Mostra/esconde o campo de taxa personalizada e exibe a taxa calculada pro perfil escolhido, sem
+// precisar salvar antes de ver o número.
+function onChangePerfilRentabilidade(){
+  const perfilSelect = document.getElementById("cadPerfilRentabilidade");
+  const wrap = document.getElementById("cadTaxaRealPersonalizadaWrap");
+  const info = document.getElementById("cadPerfilRentabilidadeInfo");
+  if(!perfilSelect || !wrap || !info) return;
+  const perfil = perfilSelect.value;
+  if(perfil === "Personalizado"){
+    wrap.classList.remove("hidden");
+    info.textContent = "";
+  } else {
+    wrap.classList.add("hidden");
+    const taxa = getTaxaRealPorPerfil(perfil);
+    const p = PERFIS_RENTABILIDADE[perfil];
+    info.innerHTML = `≈ <b>${taxa.toFixed(1)}% a.a. real</b> (mediana da Selic real ${SELIC_REAL_PCT.toFixed(1)}% dos últimos 15 anos + ${p.spread}pp) — ${p.desc}`;
+  }
+}
 async function saveCadastroTaxaRealEsperada(){
-  const valor = parseFloat(document.getElementById("cadTaxaRealEsperada").value);
-  const valorFinal = isNaN(valor) ? 4 : valor;
+  const perfil = document.getElementById("cadPerfilRentabilidade").value;
+  let valorFinal;
+  if(perfil === "Personalizado"){
+    const valor = parseFloat(document.getElementById("cadTaxaRealEsperada").value);
+    if(isNaN(valor)){ showToast("Informe uma taxa personalizada válida antes de salvar", "error"); return; }
+    valorFinal = valor;
+  } else {
+    valorFinal = perfil; // salva o NOME do perfil, não o número calculado -- assim, se a Selic for
+    // recalibrada depois, a taxa da pessoa atualiza sozinha, sem precisar reeditar nada.
+  }
   await salvarEAtualizar(() => writeCell("Cadastro!T12", valorFinal), [renderCadastro, renderPlanejamento], "Taxa real esperada atualizada");
 }
 
@@ -5741,6 +5849,44 @@ async function saveCadastroTaxaRealEsperada(){
 // Despesa e saldo médios mensais REAIS, olhando pra trás a partir do mês vigente — pula meses sem
 // nenhum lançamento (receita e despesa ambos zerados), mesmo princípio já usado no Score e no
 // Índice de Poupança acumulado. maxMeses limita quantos meses pra trás olhar (12 = até 1 ano).
+// Despesa recorrente pra base do patrimônio-alvo -- Essencial + Discricionário (por natureza
+// cadastrada em Orçamento por Natureza), excluindo Investimento (não é gasto de sustento, é o que
+// constrói o patrimônio-alvo em primeiro lugar) e a categoria de Dívida (tratada à parte, por
+// dívida individual). Dívidas ativas só entram na conta se tiverem 48 parcelas ou mais no total --
+// um financiamento longo pesa no orçamento por anos, funciona como gasto recorrente de verdade pra
+// fins de planejamento; uma dívida curta (< 48 meses) vai acabar logo e não deveria inflar
+// permanentemente uma meta de patrimônio pensada pra durar pra sempre (regra dos 4%).
+function calcularDespesaEssencialRecorrente(maxMeses){
+  const hoje = new Date();
+  const mi = state.monthIdx, ano = state.year;
+  const naturezaPorCategoria = {};
+  getCadastroCategoriasParsed().forEach(c => { naturezaPorCategoria[c.nome] = c.natureza || ""; });
+
+  const despesasRecorrentes = [];
+  for(let i = 0; i < maxMeses; i++){
+    const d = new Date(ano, mi - i, 1);
+    if(d > hoje) continue; // não conta mês futuro
+    const porCategoria = gastoPorCategoriaMesSimples(d.getMonth(), d.getFullYear());
+    if(Object.keys(porCategoria).length === 0) continue;
+    let totalMes = 0;
+    Object.entries(porCategoria).forEach(([cat, valor]) => {
+      if(ehCategoriaDivida(cat)) return; // dívida entra à parte, por parcela individual (regra dos 48 meses)
+      if((naturezaPorCategoria[cat] || "") === "Investimento") return; // não é gasto de sustento
+      totalMes += valor; // Essencial, Discricionário, ou sem natureza definida ainda
+    });
+    despesasRecorrentes.push(totalMes);
+  }
+  const despesaNaoDividaMedia = despesasRecorrentes.length > 0
+    ? despesasRecorrentes.reduce((s,v)=>s+v,0) / despesasRecorrentes.length
+    : 0;
+
+  const parcelasDividaLonga = getDividasParsed()
+    .filter(d => !isDividaQuitada(d) && d.numParcelas >= 48)
+    .reduce((s,d) => s + (d.valorParcela||0), 0);
+
+  return despesaNaoDividaMedia + parcelasDividaLonga;
+}
+
 function calcularMediasReaisRecentes(maxMeses){
   const hoje = new Date();
   const mi = state.monthIdx, ano = state.year;
@@ -5836,8 +5982,10 @@ function renderPlanejamento(){
 
   // ---- Independência Financeira ----
   const { despesaMedia, saldoMedio, mesesComDado } = calcularMediasReaisRecentes(12);
-  const despesaAnual = despesaMedia * 12;
-  const patrimonioAlvo = despesaAnual / 0.04;
+  const despesaAnual = despesaMedia * 12; // despesa total (método antigo) -- mantido só pra comparação
+  const despesaRecorrenteMensal = calcularDespesaEssencialRecorrente(12);
+  const despesaAnualRecorrente = despesaRecorrenteMensal * 12;
+  const patrimonioAlvo = despesaAnualRecorrente / 0.04;
 
   const reserva = calcSaldoInvestimento("Reserva de Emergência");
   const rendaFixa = calcSaldoInvestimento("Renda Fixa");
@@ -5889,7 +6037,8 @@ function renderPlanejamento(){
       <div class="body">
         <div class="label">Patrimônio-alvo</div>
         <div class="value" style="font-size:20px;">${fmtMoney(patrimonioAlvo)}</div>
-        <div class="sub">Despesa anual ${fmtMoney(despesaAnual)} ÷ 4%</div>
+        <div class="sub">Despesa essencial+discricionária recorrente ${fmtMoney(despesaAnualRecorrente)} ÷ 4%</div>
+        <div class="sub" style="margin-top:2px;opacity:0.7;">Pela despesa total (sem excluir dívida curta/investimento): ${fmtMoney(despesaAnual / 0.04)}</div>
       </div>
     </div>
     <div class="card">
@@ -5973,7 +6122,11 @@ function getCadastroCategoriasParsed(){
 // de retirada segura (Trinity Study/Bengen), mas em termos REAIS, não nominais.
 function getTaxaRealEsperada(){
   const v = (raw.taxaRealEsperada && raw.taxaRealEsperada[0] && raw.taxaRealEsperada[0][0]);
-  return (v === undefined || v === null || v === "") ? 4 : (Number(v) || 4);
+  if(v === undefined || v === null || v === "") return getTaxaRealPorPerfil("Moderado"); // padrão razoável até a pessoa escolher
+  const perfil = getPerfilRentabilidadeAtual();
+  if(perfil) return getTaxaRealPorPerfil(perfil);
+  const num = Number(v);
+  return isNaN(num) ? getTaxaRealPorPerfil("Moderado") : num; // valor numérico direto -- personalizado, ou dado salvo antes dos perfis existirem
 }
 function renderCadCategoriasTable(){
   const categorias = getCadastroCategoriasParsed();
