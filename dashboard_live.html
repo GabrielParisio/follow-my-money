@@ -441,6 +441,7 @@
       <img class="brand-logo" style="width:26px;height:auto;flex-shrink:0;" alt="Legacy">
       Legacy
     </div>
+    <div id="appBuildVersion" style="font-size:9px;color:var(--muted);opacity:0.55;margin:-6px 0 10px 4px;letter-spacing:.02em;"></div>
     <div class="profile-block" title="Ver Cadastro" onclick="goToCadastro()" style="cursor:pointer;">
       <div class="profile-avatar" id="sidebarAvatar">👤</div>
       <div class="profile-info">
@@ -1031,7 +1032,7 @@
       </p>
       <div class="edit-form" style="margin-bottom:16px;">
         <div>
-          <label>Renda mensal líquida desejada na independência</label>
+          <label>Renda mensal desejada na independência</label>
           <input id="planRendaDesejada" type="number" step="0.01" placeholder="0.00">
         </div>
         <div class="actions"><button class="save-btn" onclick="salvarRendaDesejadaIndependencia()">Salvar</button></div>
@@ -1202,6 +1203,22 @@ const TEMPLATE_SPREADSHEET_ID = "1Kttayt0-msSOdKkZlUJ9l7wwBNWVLj2Fbz1tZndP-u0";
 
 // Nome (ou parte dele) que identifica a planilha de cada usuário no Drive dele
 // ==========================================================
+
+// Carimbo de versão -- MUDE ESSE VALOR toda vez que entregar um arquivo novo (data + um número
+// sequencial do dia é suficiente, ex: "2026-08-02.3" pra terceira entrega do dia). Aparece pequeno
+// embaixo do logo, na sidebar. Existe só pra resolver rápido a pergunta "isso é bug ou é cache
+// desatualizado?" sem precisar adivinhar -- se o carimbo bater com o que foi entregue, é bug de
+// verdade; se não bater, é cache.
+// Versionamento semântico (semver): MAJOR.MINOR.PATCH.
+// - PATCH sobe em toda entrega (garante que o carimbo sempre muda -- é o que resolve, de vez, o
+//   "isso é bug ou é cache?" que perseguimos a sessão inteira).
+// - MINOR sobe (e PATCH zera) quando a entrega tem funcionalidade nova de verdade, não só ajuste.
+// - MAJOR fica reservado pro dia de abrir o beta pra mais gente, ou alguma mudança que quebre
+//   compatibilidade com planilhas já em uso.
+// Começou em v0.1.0 em 02/08/2026, a pedido do Gabriel -- fica em v0.x enquanto o app estiver em
+// fase de beta fechado (só Gabriel + Felipe testando); v1.0.0 marca a primeira versão considerada
+// estável o suficiente pra abrir pra mais gente.
+const APP_BUILD_VERSION = "0.1.0";
 
 const MONTHS = ["Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"];
 const MONTHS_FULL = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
@@ -4722,11 +4739,23 @@ function isCompraParcelada(c){
 // duplicar essa lista de render*() na mão -- foi exatamente essa duplicação que causou vários dos
 // bugs de "esse card não atualiza ao trocar de mês" corrigidos ao longo desta sessão.
 function irParaMes(mi, ano){
+  // DIAGNÓSTICO: confirmação visível inconfundível de que o clique registrou -- ajuda a separar
+  // "o clique não está funcionando" de "funcionou, mas a mudança em outro canto da tela passou
+  // despercebida". Se esse toast não aparecer ao clicar num mês do gráfico, o clique não está
+  // chegando na função (bug de verdade ou JS desatualizado); se aparecer mas nada mais mudar na
+  // tela, o problema é em outro lugar (algum render específico que não está pegando o mês novo).
+  console.log("irParaMes chamado:", mi, ano);
+  showToast(`Mês alterado para ${MONTHS_FULL[mi]}${ano !== undefined ? "/" + ano : ""}`, "success");
   state.monthIdx = mi;
   if(ano !== undefined) state.year = ano;
   const yearSelEl = document.getElementById("yearSelect");
   if(yearSelEl && ano !== undefined) yearSelEl.value = ano;
   updateMonthRuler();
+  // Rola a régua de mês do topo até o mês selecionado -- mesmo comportamento que já existe ao clicar
+  // direto na régua, mas que faltava aqui (clicar num ponto do gráfico já trocava o mês nos bastidores,
+  // só não deixava isso visível na régua se ela estivesse rolada pra outro lugar da tela).
+  const tickAtivo = document.querySelector(`#monthRuler [data-idx="${mi}"]`);
+  if(tickAtivo) tickAtivo.scrollIntoView({ behavior: "smooth", inline: "center", block: "nearest" });
   render();
   if(raw) renderCharts();
   if(raw) renderLancamentos();
@@ -5835,7 +5864,7 @@ function onChangePerfilRentabilidade(){
     wrap.classList.add("hidden");
     const taxa = getTaxaRealPorPerfil(perfil);
     const p = PERFIS_RENTABILIDADE[perfil];
-    info.innerHTML = `≈ <b>${taxa.toFixed(1)}% a.a. real</b> (IPCA + ${taxa.toFixed(1)}%) — ${p.desc}`;
+    info.innerHTML = `≈ <b>${taxa.toFixed(1)}% a.a. acima da inflação</b> (IPCA + ${taxa.toFixed(1)}%) — ${p.desc}`;
   }
 }
 async function saveCadastroTaxaRealEsperada(){
@@ -6039,7 +6068,7 @@ function renderPlanejamento(){
 
   let previsaoTexto;
   if(rendaMensalDesejada <= 0){
-    previsaoTexto = "Preencha \"Renda mensal líquida desejada na independência\" acima pra calcular o patrimônio-alvo.";
+    previsaoTexto = "Preencha \"Renda mensal desejada na independência\" acima pra calcular o patrimônio-alvo.";
   } else if(despesaAnual === 0){
     previsaoTexto = "Sem dado de despesa suficiente ainda pra calcular — precisa de pelo menos 1 mês com lançamento real.";
   } else {
@@ -6054,7 +6083,7 @@ function renderPlanejamento(){
       <div class="body">
         <div class="label">Patrimônio-alvo</div>
         <div class="value" style="font-size:20px;">${fmtMoney(patrimonioAlvo)}</div>
-        <div class="sub">Perpetuidade: ${fmtMoney(rendaMensalDesejada)}/mês, a ${(taxaRealMensal*100).toFixed(2)}% real ao mês (${taxaReal.toFixed(1)}% a.a.)</div>
+        <div class="sub">Perpetuidade: ${fmtMoney(rendaMensalDesejada)}/mês, a ${(taxaRealMensal*100).toFixed(2)}% acima da inflação ao mês (${taxaReal.toFixed(1)}% a.a.)</div>
       </div>
     </div>
     <div class="card">
@@ -8626,6 +8655,8 @@ function setupModalOutsideClickClose(){
 
 window.onload = () => {
   aplicarTema(localStorage.getItem("ftm_tema") || "dark");
+  const buildEl = document.getElementById("appBuildVersion");
+  if(buildEl) buildEl.textContent = "v" + APP_BUILD_VERSION;
   if("serviceWorker" in navigator){
     // updateViaCache:"none" -- sem isso, o PRÓPRIO service-worker.js podia vir do cache HTTP do
     // navegador ao checar por atualização, fazendo o navegador achar que "nada mudou" mesmo depois
