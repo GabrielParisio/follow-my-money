@@ -1219,7 +1219,7 @@ const TEMPLATE_SPREADSHEET_ID = "1Kttayt0-msSOdKkZlUJ9l7wwBNWVLj2Fbz1tZndP-u0";
 // Começou em v0.1.0 em 02/08/2026, a pedido do Gabriel -- fica em v0.x enquanto o app estiver em
 // fase de beta fechado (só Gabriel + Felipe testando); v1.0.0 marca a primeira versão considerada
 // estável o suficiente pra abrir pra mais gente.
-const APP_BUILD_VERSION = "0.2.0";
+const APP_BUILD_VERSION = "0.2.1";
 
 const MONTHS = ["Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"];
 const MONTHS_FULL = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
@@ -3807,10 +3807,30 @@ function anoMesChave(data){
   return `${data.getFullYear()}-${String(data.getMonth()+1).padStart(2,"0")}`;
 }
 
+// Normaliza o valor da coluna A (chave "AAAA-MM") da aba Patrimonio pra um formato único -- porque
+// o Sheets grava com valueInputOption=USER_ENTERED, que interpreta o texto como se uma pessoa
+// tivesse digitado. "2026-08" sozinho é ambíguo o suficiente pro Sheets reconhecer como DATA e
+// converter pra um número de série, em vez de manter como texto puro -- então o que volta na
+// leitura pode ser tanto a string "2026-08" quanto um número de série de data. Essa função aceita
+// os dois formatos e sempre devolve "AAAA-MM" de volta, sem quebrar em nenhum dos dois casos.
+function normalizarChaveMes(valor){
+  if(valor === undefined || valor === null || valor === "") return "";
+  const str = String(valor).trim();
+  if(/^\d{4}-\d{2}$/.test(str)) return str; // já veio como texto normal
+  const num = Number(valor);
+  if(!isNaN(num) && num > 0){
+    // Veio como número de série de data (o Sheets converteu sozinho) -- reconstrói "AAAA-MM" a
+    // partir dele, usando o mesmo conversor de serial já usado no resto do app.
+    const d = serialToDate(num);
+    return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`;
+  }
+  return str; // não reconheceu nem como texto nem como serial -- devolve como veio, sem inventar
+}
+
 async function garantirSnapshotMensal(){
   const hoje = new Date();
   const chave = anoMesChave(hoje);
-  const jaExiste = (raw.patrimonio || []).some(r => String(r[0] || "").trim() === chave);
+  const jaExiste = (raw.patrimonio || []).some(r => normalizarChaveMes(r[0]) === chave);
   if(jaExiste) return;
 
   const reserva = calcSaldoInvestimento("Reserva de Emergência");
@@ -3820,11 +3840,14 @@ async function garantirSnapshotMensal(){
   const totalDividas = getDividasParsed().filter(d => !isDividaQuitada(d)).reduce((s,d) => s + (d.saldoDevedor || 0), 0);
   const patrimonioLiquido = totalAtivos - totalDividas;
   const { score } = calcularScoreSaudeFinanceira(hoje.getMonth(), hoje.getFullYear());
-  const linha = [chave, reserva, rendaFixa, rendaVariavel, totalAtivos, totalDividas, patrimonioLiquido, score];
+  // O apóstrofo na frente força o Sheets a gravar como TEXTO puro, mesmo em USER_ENTERED -- sem ele,
+  // "2026-08" sozinho é interpretado como data e vira um número de série (a causa raiz do bug que a
+  // leitura acima já tolera, mas é melhor prevenir do que remendar em toda leitura futura).
+  const linha = ["'" + chave, reserva, rendaFixa, rendaVariavel, totalAtivos, totalDividas, patrimonioLiquido, score];
 
   try{
     await appendRows("Patrimonio", "A:H", [linha]);
-    raw.patrimonio = [...(raw.patrimonio || []), linha]; // atualiza em memória — não precisa recarregar tudo de novo
+    raw.patrimonio = [...(raw.patrimonio || []), [chave, ...linha.slice(1)]]; // atualiza em memória com a chave limpa (sem o apóstrofo, que é só um sinal de formatação pro Sheets, não faz parte do valor de verdade) — não precisa recarregar tudo de novo
   }catch(err){
     // Não trava o carregamento do app por causa disso — é histórico "nice to have", não algo crítico
     // pro uso do dia a dia. Provavelmente a aba "Patrimonio" ainda não existe nessa planilha.
@@ -3836,7 +3859,7 @@ async function garantirSnapshotMensal(){
 // garantirSnapshotMensal só cria a linha do mês ATUAL na primeira vez que o app carrega naquele mês,
 // então meses sem uso do app nunca tiveram uma linha criada.
 function acharLinhaPatrimonio(chave){
-  const idx = (raw.patrimonio || []).findIndex(r => String(r[0] || "").trim() === chave);
+  const idx = (raw.patrimonio || []).findIndex(r => normalizarChaveMes(r[0]) === chave);
   return idx === -1 ? null : idx + 2; // +2 porque o fetch começa em A2 (linha 1 é cabeçalho)
 }
 
@@ -3865,7 +3888,11 @@ function getRendimentoAcumulado(){
   const linhas = (raw.patrimonio || []).filter(r =>
     (r[8] !== undefined && r[8] !== "") || (r[9] !== undefined && r[9] !== "") || (r[10] !== undefined && r[10] !== ""));
   if(linhas.length === 0) return null; // nunca reconciliado ainda
-  const ultima = linhas.reduce((max, r) => (String(r[0]) > String(max[0]) ? r : max), linhas[0]);
+  // Compara pela chave NORMALIZADA (não a bruta) -- se uma linha veio como texto "2026-08" e outra
+  // como número de série de data (o bug que o Sheets introduz sozinho), comparar os valores brutos
+  // dá resultado errado; normalizando os dois primeiro, a comparação de "mais recente" funciona certo.
+  const ultima = linhas.reduce((max, r) =>
+    (normalizarChaveMes(r[0]) > normalizarChaveMes(max[0]) ? r : max), linhas[0]);
   const reservaReal = Number(ultima[8]) || 0, rfReal = Number(ultima[9]) || 0, rvReal = Number(ultima[10]) || 0;
   const reservaFluxo = Number(ultima[1]) || 0, rfFluxo = Number(ultima[2]) || 0, rvFluxo = Number(ultima[3]) || 0;
   const totalReal = reservaReal + rfReal + rvReal;
@@ -3873,7 +3900,7 @@ function getRendimentoAcumulado(){
   const rendimento = totalReal - totalFluxo;
   const pct = totalFluxo > 0 ? (rendimento / totalFluxo) * 100 : 0;
   return {
-    mesChave: ultima[0],
+    mesChave: normalizarChaveMes(ultima[0]),
     porCategoria: {
       "Reserva de Emergência": { real: reservaReal, fluxo: reservaFluxo, rendimento: reservaReal - reservaFluxo },
       "Renda Fixa": { real: rfReal, fluxo: rfFluxo, rendimento: rfReal - rfFluxo },
@@ -3889,7 +3916,8 @@ function getRendimentoAcumulado(){
 function reservaHistoricaAno(ano){
   const porMes = {};
   (raw.patrimonio || []).forEach(r => {
-    const m = String(r[0] || "").trim().match(/^(\d{4})-(\d{2})$/);
+    const chave = normalizarChaveMes(r[0]);
+    const m = chave.match(/^(\d{4})-(\d{2})$/);
     if(!m || +m[1] !== ano) return;
     porMes[+m[2] - 1] = Number(r[1]) || 0; // coluna B = Reserva
   });
