@@ -816,6 +816,7 @@
       <div id="allocBar" class="alloc-bar"></div>
       <div class="legend" id="allocLegend"></div>
     </div>
+    <div class="chart-panel" id="rebalanceamentoPanel" style="margin-top:16px;"></div>
     <div class="chart-panel" id="rendimentoPanel" style="margin-top:16px;"></div>
   </div>
 
@@ -1219,7 +1220,7 @@ const TEMPLATE_SPREADSHEET_ID = "1Kttayt0-msSOdKkZlUJ9l7wwBNWVLj2Fbz1tZndP-u0";
 // Começou em v0.1.0 em 02/08/2026, a pedido do Gabriel -- fica em v0.x enquanto o app estiver em
 // fase de beta fechado (só Gabriel + Felipe testando); v1.0.0 marca a primeira versão considerada
 // estável o suficiente pra abrir pra mais gente.
-const APP_BUILD_VERSION = "0.2.1";
+const APP_BUILD_VERSION = "0.3.0";
 
 const MONTHS = ["Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"];
 const MONTHS_FULL = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
@@ -3119,6 +3120,7 @@ function renderInvestimentos(){
     `<span><i style="background:${p.color}"></i>${p.label} — ${fmtPct(p.value/sum)}</span>`
   ).join("");
 
+  renderRebalanceamentoPanel({ reserva, rendaFixa, rendaVariavel, total });
   renderRendimentoPanel({ reserva, rendaFixa, rendaVariavel });
 }
 
@@ -3126,6 +3128,77 @@ function renderInvestimentos(){
 // que TEM de verdade e o que o app calcula só de fluxo de caixa), ou convida a reconciliar pela
 // primeira vez se isso nunca foi feito. Sem essa reconciliação manual, o app não tem como saber se a
 // carteira está rendendo -- ele só enxerga quanto entrou e saiu, não cotação de mercado nenhuma.
+// Compara a alocação REAL da carteira (Reserva/RF/RV) com a alocação-ALVO do perfil de risco
+// escolhido, e sugere o que fazer -- sem mexer em nada sozinho, só aponta a direção. Não precisa de
+// nenhum dado de mercado novo: usa a mesma alocação já calculada pra barra logo acima, e o mesmo
+// sistema de perfis já usado no cálculo da taxa real.
+function renderRebalanceamentoPanel({ reserva, rendaFixa, rendaVariavel, total }){
+  const el = document.getElementById("rebalanceamentoPanel");
+  if(!el) return;
+
+  const perfilNome = getPerfilRentabilidadeAtual();
+  if(!perfilNome){
+    el.innerHTML = `
+      <h2>⚖️ Rebalanceamento</h2>
+      <p style="font-size:13px;color:var(--muted);margin-top:-6px;margin-bottom:0;">
+        Escolha um perfil de investidor (Conservador, Moderado, Dinâmico ou Arrojado) no <a href="#" onclick="event.preventDefault(); goToCadastro();" style="color:var(--gold);">Cadastro</a> pra eu comparar sua alocação atual com a alocação sugerida pra esse perfil. Com "Personalizado", não tenho uma referência pra comparar.
+      </p>`;
+    return;
+  }
+  if(total <= 0){
+    el.innerHTML = `<h2>⚖️ Rebalanceamento</h2><p style="font-size:13px;color:var(--muted);margin-top:-6px;margin-bottom:0;">Ainda sem saldo investido pra comparar com a alocação-alvo do perfil ${perfilNome}.</p>`;
+    return;
+  }
+
+  const alvo = PERFIS_RENTABILIDADE[perfilNome].alocacaoAlvo;
+  const atual = {
+    reserva: reserva/total*100,
+    rendaFixa: rendaFixa/total*100,
+    rendaVariavel: rendaVariavel/total*100,
+  };
+  const LIMITE_OK = 5; // até 5 pontos percentuais de diferença é considerado "dentro da faixa", não vale alarde
+  const linhas = [
+    { label: "Reserva", atual: atual.reserva, alvo: alvo.reserva, valor: reserva },
+    { label: "Renda Fixa", atual: atual.rendaFixa, alvo: alvo.rendaFixa, valor: rendaFixa },
+    { label: "Renda Variável", atual: atual.rendaVariavel, alvo: alvo.rendaVariavel, valor: rendaVariavel },
+  ].map(l => ({ ...l, diff: l.atual - l.alvo }));
+
+  const desalinhadas = linhas.filter(l => Math.abs(l.diff) > LIMITE_OK);
+
+  const barrinhas = linhas.map(l => `
+    <div style="margin-bottom:10px;">
+      <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px;">
+        <span>${l.label}</span>
+        <span style="color:${Math.abs(l.diff) > LIMITE_OK ? (l.diff > 0 ? "var(--red)" : "var(--blue)") : "var(--muted)"};">
+          ${l.atual.toFixed(0)}% atual · alvo ${l.alvo}%${Math.abs(l.diff) > LIMITE_OK ? ` (${l.diff > 0 ? "+" : ""}${l.diff.toFixed(0)}pp)` : ""}
+        </span>
+      </div>
+      <div style="position:relative;height:8px;background:var(--border);border-radius:4px;overflow:hidden;">
+        <div style="height:100%;width:${Math.min(100,l.atual)}%;background:${Math.abs(l.diff) > LIMITE_OK ? (l.diff > 0 ? "var(--red)" : "var(--blue)") : "var(--green)"};"></div>
+        <div style="position:absolute;top:-2px;left:${Math.min(100,l.alvo)}%;width:2px;height:12px;background:var(--gold);"></div>
+      </div>
+    </div>`).join("");
+
+  let mensagem;
+  if(desalinhadas.length === 0){
+    mensagem = `✅ Sua alocação está alinhada com o perfil <b>${perfilNome}</b> (dentro de ${LIMITE_OK} pontos percentuais em todas as categorias).`;
+  } else {
+    const sugestoes = desalinhadas.map(l => {
+      const diffValor = Math.abs(l.diff) / 100 * total;
+      return l.diff > 0
+        ? `<b>${l.label}</b> está ${l.diff.toFixed(0)}pp acima do alvo (≈ ${fmtMoney(diffValor)} a mais que o esperado)`
+        : `<b>${l.label}</b> está ${Math.abs(l.diff).toFixed(0)}pp abaixo do alvo (≈ ${fmtMoney(diffValor)} a menos que o esperado)`;
+    }).join("; ");
+    mensagem = `Comparado ao perfil <b>${perfilNome}</b>: ${sugestoes}. Considere direcionar os próximos aportes pra reequilibrar, em vez de mexer no que já está investido.`;
+  }
+
+  el.innerHTML = `
+    <h2>⚖️ Rebalanceamento</h2>
+    <p style="font-size:13px;margin-top:-6px;margin-bottom:14px;">${mensagem}</p>
+    ${barrinhas}
+    <p style="font-size:11px;color:var(--muted);margin-top:4px;margin-bottom:0;">A marca dourada em cada barra é o alvo do perfil ${perfilNome}. Isso é só uma sugestão de direção — o app nunca move dinheiro sozinho.</p>`;
+}
+
 function renderRendimentoPanel(fluxoCaixaAtual){
   const el = document.getElementById("rendimentoPanel");
   if(!el) return;
@@ -5851,15 +5924,15 @@ const SELIC_REAL_PCT = calcularMediana(
   HISTORICO_SELIC_IPCA.map(d => ((1 + d.selic/100) / (1 + d.ipca/100) - 1) * 100)
 );
 
-// Cada perfil = uma taxa real fixa (IPCA + X%), definida diretamente pelo Gabriel em 02/08/2026 --
-// não é mais derivada da mediana da Selic real + spread (SELIC_REAL_PCT continua calculada acima só
-// como referência informativa no texto, não entra mais na conta). Trocar aqui se a política de
-// investimento mudar; não precisa mexer em mais nada, o resto do app já lê por essas funções.
+// Cada perfil = uma taxa real fixa (IPCA + X%) + uma alocação-alvo (Reserva/RF/RV), definidas
+// diretamente pelo Gabriel. A alocação-alvo é usada só pra SUGERIR rebalanceamento -- nunca move
+// dinheiro sozinha, é só um comparativo "onde você está vs. onde o seu perfil sugere estar".
+// Trocar aqui se a política de investimento mudar; não precisa mexer em mais nada.
 const PERFIS_RENTABILIDADE = {
-  "Conservador": { taxa: 5,   desc: "Renda fixa pura (Tesouro Selic, CDB) — sem exposição a risco de mercado" },
-  "Moderado":    { taxa: 6.5, desc: "Majoritariamente renda fixa, com uma fatia em crédito privado/multimercado" },
-  "Dinâmico":    { taxa: 7,   desc: "Alocação balanceada, com parcela relevante em multimercado/ações" },
-  "Arrojado":    { taxa: 8.5, desc: "Maior exposição a renda variável/alternativos — maior volatilidade esperada" },
+  "Conservador": { taxa: 5,   desc: "Renda fixa pura (Tesouro Selic, CDB) — sem exposição a risco de mercado", alocacaoAlvo: { reserva: 15, rendaFixa: 85, rendaVariavel: 0 } },
+  "Moderado":    { taxa: 6.5, desc: "Majoritariamente renda fixa, com uma fatia em crédito privado/multimercado", alocacaoAlvo: { reserva: 10, rendaFixa: 70, rendaVariavel: 20 } },
+  "Dinâmico":    { taxa: 7,   desc: "Alocação balanceada, com parcela relevante em multimercado/ações", alocacaoAlvo: { reserva: 10, rendaFixa: 50, rendaVariavel: 40 } },
+  "Arrojado":    { taxa: 8.5, desc: "Maior exposição a renda variável/alternativos — maior volatilidade esperada", alocacaoAlvo: { reserva: 5,  rendaFixa: 30, rendaVariavel: 65 } },
 };
 function getTaxaRealPorPerfil(perfil){
   const p = PERFIS_RENTABILIDADE[perfil];
