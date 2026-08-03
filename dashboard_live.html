@@ -1583,7 +1583,7 @@ async function loadData(){
     // ainda não atualizou a planilha.
     let ativos = [];
     try{
-      [ativos] = await fetchRanges(["Ativos!B2:G"]);
+      [ativos] = await fetchRanges(["Ativos!B2:H"]);
     }catch(errAtivos){
       ativos = []; // aba "Ativos" não existe ainda nessa planilha -- segue sem essa funcionalidade, sem quebrar o resto
     }
@@ -3523,11 +3523,20 @@ function renderHistoricoRendimentoChart(){
 // Painel "Meus Ativos" -- concentração + tabela de posição (quantidade, preço médio, valor
 // investido por ativo) + formulário pra registrar compra/venda. Camada opcional: se a pessoa nunca
 // registrar nada aqui, o painel só convida a começar, sem quebrar nem exigir nada dos outros cards.
+// Painel "Meus Ativos", no molde do extrato de portfólio consolidado de corretora (Instituição /
+// Categoria / Ativo, valorização quando informada). Toggle de agrupamento do donut fica em
+// state.ativosDonutModo -- default "instituicao".
 function renderAtivosPanel(){
   const el = document.getElementById("ativosPanel");
   if(!el) return;
   const posicoes = getPosicaoAtivos();
   const alertas = getAlertasConcentracao();
+
+  const totalAtual = posicoes.reduce((s,p) => s + p.valorAtual, 0);
+  const totalInvestido = posicoes.reduce((s,p) => s + p.valorInvestido, 0);
+  const valorizacaoTotal = totalAtual - totalInvestido;
+  const valorizacaoPctTotal = totalInvestido > 0 ? (valorizacaoTotal / totalInvestido * 100) : 0;
+  const algumaAtualizacao = posicoes.some(p => p.temAtualizacao);
 
   const alertasHtml = alertas.length > 0 ? `
     <div style="margin-bottom:14px;">
@@ -3542,58 +3551,139 @@ function renderAtivosPanel(){
     <div style="overflow-x:auto;">
       <table style="width:100%;font-size:13px;border-collapse:collapse;">
         <thead><tr style="color:var(--muted);font-size:11px;text-transform:uppercase;text-align:left;">
-          <th style="padding:4px 8px 8px 0;">Ativo</th><th style="padding:4px 8px 8px 0;">Categoria</th>
-          <th style="padding:4px 8px 8px 0;text-align:right;">Quantidade</th><th style="padding:4px 8px 8px 0;text-align:right;">Preço médio</th>
-          <th style="padding:4px 0 8px 0;text-align:right;">Valor investido</th>
+          <th style="padding:4px 8px 8px 0;">Ativo</th><th style="padding:4px 8px 8px 0;">Instituição</th>
+          <th style="padding:4px 8px 8px 0;text-align:right;">Investido</th><th style="padding:4px 8px 8px 0;text-align:right;">Atual</th>
+          <th style="padding:4px 8px 8px 0;text-align:right;">Valorização</th><th style="padding:4px 0 8px 0;"></th>
         </tr></thead>
         <tbody>
-          ${posicoes.map(p => `
+          ${posicoes.map(p => {
+            const cor = p.valorizacao >= 0 ? "var(--green)" : "var(--red)";
+            const sinal = p.valorizacao >= 0 ? "+" : "";
+            return `
             <tr style="border-top:1px solid var(--border);">
-              <td style="padding:6px 8px 6px 0;">${p.ativo}</td>
-              <td style="padding:6px 8px 6px 0;color:var(--muted);">${p.categoria}</td>
-              <td style="padding:6px 8px 6px 0;text-align:right;">${p.quantidade.toLocaleString("pt-BR",{maximumFractionDigits:4})}</td>
-              <td style="padding:6px 8px 6px 0;text-align:right;">${fmtMoney(p.precoMedio)}</td>
-              <td style="padding:6px 0 6px 0;text-align:right;font-weight:700;">${fmtMoney(p.valorInvestido)}</td>
-            </tr>`).join("")}
+              <td style="padding:6px 8px 6px 0;">${p.ativo}<div style="font-size:11px;color:var(--muted);">${p.categoria}</div></td>
+              <td style="padding:6px 8px 6px 0;color:var(--muted);">${p.instituicao || "—"}</td>
+              <td style="padding:6px 8px 6px 0;text-align:right;">${fmtMoney(p.valorInvestido)}</td>
+              <td style="padding:6px 8px 6px 0;text-align:right;font-weight:700;">${fmtMoney(p.valorAtual)}</td>
+              <td style="padding:6px 8px 6px 0;text-align:right;color:${cor};">${p.temAtualizacao ? `${sinal}${fmtMoney(p.valorizacao)} (${sinal}${p.valorizacaoPct.toFixed(1)}%)` : `<span style="color:var(--muted);">—</span>`}</td>
+              <td style="padding:6px 0 6px 0;text-align:right;"><button class="icon-btn" title="Atualizar valor atual" onclick="abrirModalAtualizarValor('${p.ativo.replace(/'/g,"\\'")}')">🔄</button></td>
+            </tr>`;
+          }).join("")}
         </tbody>
       </table>
     </div>` : `
     <p style="font-size:13px;color:var(--muted);margin:0;">
-      Registre suas compras e vendas por ativo (ação, FII, título específico...) pra acompanhar concentração e preço médio por papel — camada opcional, separada dos 3 cards agregados acima.
+      Registre suas compras e vendas por ativo (ação, FII, título específico...) pra acompanhar concentração, instituição e valorização por papel — camada opcional, separada dos 3 cards agregados acima.
     </p>`;
 
+  const donutTotals = calcularDonutAtivosPorModo(posicoes, state.ativosDonutModo || "instituicao");
+  const donutHtml = posicoes.length > 0 ? `
+    <div class="seg-toggle" id="ativosDonutToggle" style="margin-bottom:14px;">
+      <button class="seg-btn ${((state.ativosDonutModo||"instituicao")==="instituicao")?"active":""}" data-donutmodo="instituicao">Instituição</button>
+      <button class="seg-btn ${(state.ativosDonutModo==="categoria")?"active":""}" data-donutmodo="categoria">Categoria</button>
+      <button class="seg-btn ${(state.ativosDonutModo==="ativo")?"active":""}" data-donutmodo="ativo">Ativo</button>
+    </div>
+    <div style="display:flex;gap:20px;flex-wrap:wrap;align-items:center;margin-bottom:16px;" id="ativosDonutWrap">
+      ${buildDonutFromTotals(donutTotals, "ativosDonut", false, "valor atual")}
+    </div>` : "";
+
   el.innerHTML = `
-    <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:10px;margin-bottom:14px;">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:10px;margin-bottom:6px;">
       <h2 style="margin:0;">📦 Meus Ativos</h2>
       <button class="connect-btn" onclick="abrirModalNovoAtivo()">+ Registrar operação</button>
     </div>
+    ${posicoes.length > 0 ? `
+    <div style="margin-bottom:16px;">
+      <div style="font-size:22px;font-weight:700;">${fmtMoney(totalAtual)}</div>
+      ${algumaAtualizacao ? `<div style="font-size:13px;color:${valorizacaoTotal>=0?"var(--green)":"var(--red)"};">${valorizacaoTotal>=0?"↑":"↓"} ${valorizacaoPctTotal>=0?"+":""}${valorizacaoPctTotal.toFixed(2)}% · ${fmtMoney(Math.abs(valorizacaoTotal))}</div>` : `<div style="font-size:12px;color:var(--muted);">Valorização aparece quando você atualizar o valor de algum ativo (botão 🔄 na tabela)</div>`}
+    </div>` : ""}
+    ${donutHtml}
     ${alertasHtml}
     ${tabelaHtml}`;
+
+  setupAtivosDonutToggle();
+}
+// Monta o mapa {rótulo: valor} pro donut, conforme o modo escolhido (Instituição/Categoria/Ativo) --
+// sempre pelo valor ATUAL (não o custo), pra bater com o que a tela mostra em destaque no topo.
+function calcularDonutAtivosPorModo(posicoes, modo){
+  const totals = {};
+  posicoes.forEach(p => {
+    const chave = modo === "instituicao" ? (p.instituicao || "Sem instituição") : modo === "categoria" ? p.categoria : p.ativo;
+    totals[chave] = (totals[chave] || 0) + p.valorAtual;
+  });
+  return totals;
+}
+function setupAtivosDonutToggle(){
+  const toggle = document.getElementById("ativosDonutToggle");
+  if(!toggle) return;
+  toggle.querySelectorAll(".seg-btn").forEach(btn => {
+    btn.onclick = () => {
+      state.ativosDonutModo = btn.dataset.donutmodo;
+      renderAtivosPanel();
+    };
+  });
 }
 function abrirModalNovoAtivo(){
+  montarFormularioAtivo("Compra");
+  document.getElementById("novoAtivoModal").classList.remove("hidden");
+}
+// Atalho a partir do botão 🔄 de uma linha da tabela -- já abre o modal com Operação = "Atualização de
+// valor" e o nome do ativo preenchido, focando só no campo que falta (o valor atual).
+function abrirModalAtualizarValor(nomeAtivo){
+  montarFormularioAtivo("Atualização de valor", nomeAtivo);
+  document.getElementById("novoAtivoModal").classList.remove("hidden");
+  setTimeout(() => {
+    const campo = document.getElementById("ativoValorAtual");
+    if(campo){ campo.focus(); campo.select(); }
+  }, 50);
+}
+function montarFormularioAtivo(operacaoInicial, nomeAtivoPreset){
+  const posicaoExistente = nomeAtivoPreset ? getPosicaoAtivos().find(p => p.ativo === nomeAtivoPreset) : null;
   const conteudo = document.getElementById("novoAtivoModalContent");
   conteudo.innerHTML = `
     <div class="edit-form" style="margin-bottom:0;">
       <div><label>Data</label><input id="ativoData" type="date" value="${new Date().toISOString().slice(0,10)}"></div>
-      <div><label>Ativo (nome/ticker)</label><input id="ativoNome" placeholder="Ex: PETR4, Tesouro IPCA+2035"></div>
+      <div><label>Ativo (nome/ticker)</label><input id="ativoNome" placeholder="Ex: PETR4, Tesouro IPCA+2035" value="${nomeAtivoPreset || ""}" ${nomeAtivoPreset ? "readonly" : ""}></div>
+      <div><label>Instituição</label><input id="ativoInstituicao" placeholder="Ex: Bradesco, Ágora, XP" value="${posicaoExistente ? posicaoExistente.instituicao : ""}"></div>
       <div><label>Categoria</label>
         <select id="ativoCategoria">
-          <option value="Reserva de Emergência">Reserva de Emergência</option>
-          <option value="Renda Fixa" selected>Renda Fixa</option>
-          <option value="Renda Variável">Renda Variável</option>
+          <option value="Reserva de Emergência" ${posicaoExistente && posicaoExistente.categoria==="Reserva de Emergência"?"selected":""}>Reserva de Emergência</option>
+          <option value="Renda Fixa" ${!posicaoExistente || posicaoExistente.categoria==="Renda Fixa"?"selected":""}>Renda Fixa</option>
+          <option value="Renda Variável" ${posicaoExistente && posicaoExistente.categoria==="Renda Variável"?"selected":""}>Renda Variável</option>
         </select>
       </div>
       <div><label>Operação</label>
-        <select id="ativoOperacao"><option value="Compra">Compra</option><option value="Venda">Venda</option></select>
+        <select id="ativoOperacao" onchange="atualizarCamposModalAtivo()">
+          <option value="Compra" ${operacaoInicial==="Compra"?"selected":""}>Compra</option>
+          <option value="Venda" ${operacaoInicial==="Venda"?"selected":""}>Venda</option>
+          <option value="Atualização de valor" ${operacaoInicial==="Atualização de valor"?"selected":""}>Atualização de valor atual</option>
+        </select>
       </div>
-      <div><label>Quantidade</label><input id="ativoQuantidade" type="number" step="0.000001" placeholder="0"></div>
-      <div><label>Preço unitário</label><input id="ativoPreco" type="number" step="0.01" placeholder="0.00"></div>
+      <div id="camposCompraVenda">
+        <div><label>Quantidade</label><input id="ativoQuantidade" type="number" step="0.000001" placeholder="0"></div>
+        <div><label>Preço unitário</label><input id="ativoPreco" type="number" step="0.01" placeholder="0.00"></div>
+      </div>
+      <div id="campoAtualizacao" class="hidden">
+        <label>Valor atual TOTAL dessa posição (o que você vê no extrato hoje)</label>
+        <input id="ativoValorAtual" type="number" step="0.01" placeholder="0.00" value="${posicaoExistente ? posicaoExistente.valorAtual.toFixed(2) : ""}">
+        <p style="font-size:11px;color:var(--muted);margin:2px 0 0;">Isso não muda sua quantidade de cotas/ações — só registra quanto essa posição vale hoje, pra calcular a valorização.</p>
+      </div>
       <div class="actions">
         <button class="save-btn" onclick="salvarNovoAtivoForm()">Salvar</button>
         <button class="cancel-btn" onclick="fecharModalNovoAtivo()">Cancelar</button>
       </div>
     </div>`;
-  document.getElementById("novoAtivoModal").classList.remove("hidden");
+  atualizarCamposModalAtivo();
+}
+// Mostra/esconde os campos certos conforme o tipo de operação escolhido -- Compra/Venda precisam de
+// quantidade+preço; Atualização de valor precisa só do valor total atual.
+function atualizarCamposModalAtivo(){
+  const operacao = document.getElementById("ativoOperacao")?.value;
+  const compraVenda = document.getElementById("camposCompraVenda");
+  const atualizacao = document.getElementById("campoAtualizacao");
+  const ehAtualizacao = operacao === "Atualização de valor";
+  if(compraVenda) compraVenda.classList.toggle("hidden", ehAtualizacao);
+  if(atualizacao) atualizacao.classList.toggle("hidden", !ehAtualizacao);
 }
 function fecharModalNovoAtivo(){
   document.getElementById("novoAtivoModal").classList.add("hidden");
@@ -3601,21 +3691,41 @@ function fecharModalNovoAtivo(){
 async function salvarNovoAtivoForm(){
   const dataInput = document.getElementById("ativoData").value;
   const ativo = document.getElementById("ativoNome").value.trim();
+  const instituicao = document.getElementById("ativoInstituicao").value.trim();
   const categoria = document.getElementById("ativoCategoria").value;
   const operacao = document.getElementById("ativoOperacao").value;
-  const quantidade = parseFloat(document.getElementById("ativoQuantidade").value) || 0;
-  const precoUnitario = parseFloat(document.getElementById("ativoPreco").value) || 0;
-  if(!ativo || quantidade <= 0){
-    showToast("Preencha o nome do ativo e uma quantidade maior que zero.", "error");
+  const ehAtualizacao = operacao === "Atualização de valor";
+
+  if(!ativo){
+    showToast("Preencha o nome do ativo.", "error");
     return;
   }
+
+  let quantidade, precoUnitario;
+  if(ehAtualizacao){
+    const valorAtual = parseFloat(document.getElementById("ativoValorAtual").value);
+    if(isNaN(valorAtual) || valorAtual < 0){
+      showToast("Preencha o valor atual dessa posição.", "error");
+      return;
+    }
+    quantidade = 0; // não muda a posição, só o valor informado
+    precoUnitario = valorAtual; // reaproveita o campo pra guardar o valor TOTAL informado
+  } else {
+    quantidade = parseFloat(document.getElementById("ativoQuantidade").value) || 0;
+    precoUnitario = parseFloat(document.getElementById("ativoPreco").value) || 0;
+    if(quantidade <= 0){
+      showToast("Preencha uma quantidade maior que zero.", "error");
+      return;
+    }
+  }
+
   try{
     const data = dataInput ? new Date(dataInput + "T00:00:00") : new Date();
-    await salvarOperacaoAtivo(data, ativo, categoria, operacao, quantidade, precoUnitario);
+    await salvarOperacaoAtivo(data, ativo, categoria, operacao, quantidade, precoUnitario, instituicao);
     await loadData();
     renderInvestimentos();
     fecharModalNovoAtivo();
-    showToast("Operação registrada", "success");
+    showToast(ehAtualizacao ? "Valor atual atualizado" : "Operação registrada", "success");
   }catch(err){
     showToast("Não foi possível salvar: " + err.message, "error");
   }
@@ -4398,6 +4508,7 @@ function getAtivosRows(){
     operacao: r[3] || "",
     quantidade: Number(r[4]) || 0,
     precoUnitario: Number(r[5]) || 0,
+    instituicao: r[6] || "",
   })).filter(a => a.ativo);
 }
 
@@ -4406,13 +4517,22 @@ function getAtivosRows(){
 // custo total NA PROPORÇÃO do preço médio vigente até ali (não o preço da venda) -- assim o preço
 // médio dos que restam continua correto mesmo depois de uma venda parcial. É o mesmo método que a
 // Receita Federal usa pra apurar ganho de capital.
+//
+// "Atualização de valor" é um terceiro tipo de operação (além de Compra/Venda) -- reaproveita a
+// coluna Preço Unitário pra guardar o VALOR TOTAL ATUAL informado da posição (não preço por unidade),
+// sem precisar de uma coluna nova na planilha. É o mesmo princípio da reconciliação de saldo real
+// que já existe pros 3 baldes agregados, só que agora por ativo individual -- dá pra calcular
+// valorização de verdade (valor atual − custo) sem precisar de cotação de mercado ao vivo.
 function getPosicaoAtivos(){
   const rows = getAtivosRows().slice().sort((a,b) => (a.data||0) - (b.data||0));
   const porAtivo = {};
   rows.forEach(r => {
-    if(!porAtivo[r.ativo]) porAtivo[r.ativo] = { ativo: r.ativo, categoria: r.categoria, quantidade: 0, custoTotal: 0 };
+    if(!porAtivo[r.ativo]) porAtivo[r.ativo] = { ativo: r.ativo, categoria: r.categoria, instituicao: r.instituicao, quantidade: 0, custoTotal: 0, valorAtualInformado: null, dataAtualizacao: null };
     const pos = porAtivo[r.ativo];
-    if(/venda/i.test(r.operacao)){
+    if(/atualiza/i.test(r.operacao)){
+      pos.valorAtualInformado = r.precoUnitario;
+      pos.dataAtualizacao = r.data;
+    } else if(/venda/i.test(r.operacao)){
       const precoMedioAtual = pos.quantidade > 0 ? pos.custoTotal / pos.quantidade : 0;
       pos.quantidade -= r.quantidade;
       pos.custoTotal -= r.quantidade * precoMedioAtual;
@@ -4420,41 +4540,49 @@ function getPosicaoAtivos(){
       pos.quantidade += r.quantidade;
       pos.custoTotal += r.quantidade * r.precoUnitario;
     }
-    if(r.categoria) pos.categoria = r.categoria; // usa a categoria do lançamento mais recente
+    if(r.categoria) pos.categoria = r.categoria; // usa a categoria/instituição do lançamento mais recente
+    if(r.instituicao) pos.instituicao = r.instituicao;
   });
   return Object.values(porAtivo)
     .filter(a => a.quantidade > 0.0001) // zerou a posição (vendeu tudo) -- não mostra mais
-    .map(a => ({
-      ...a,
-      precoMedio: a.quantidade > 0 ? a.custoTotal / a.quantidade : 0,
-      valorInvestido: a.custoTotal,
-    }))
-    .sort((a,b) => b.valorInvestido - a.valorInvestido);
+    .map(a => {
+      const precoMedio = a.quantidade > 0 ? a.custoTotal / a.quantidade : 0;
+      const valorInvestido = a.custoTotal;
+      // Sem atualização informada ainda, assume valor atual = custo (nem ganho nem perda) -- mais
+      // conservador do que inventar uma valorização que ninguém confirmou.
+      const valorAtual = a.valorAtualInformado !== null ? a.valorAtualInformado : valorInvestido;
+      const valorizacao = valorAtual - valorInvestido;
+      const valorizacaoPct = valorInvestido > 0 ? (valorizacao / valorInvestido * 100) : 0;
+      return { ...a, precoMedio, valorInvestido, valorAtual, valorizacao, valorizacaoPct, temAtualizacao: a.valorAtualInformado !== null };
+    })
+    .sort((a,b) => b.valorAtual - a.valorAtual);
 }
 
-async function salvarOperacaoAtivo(data, ativo, categoria, operacao, quantidade, precoUnitario){
+async function salvarOperacaoAtivo(data, ativo, categoria, operacao, quantidade, precoUnitario, instituicao){
   const dataBR = fmtDataBR(data);
-  await appendRow("Ativos", [dataBR, ativo, categoria, operacao, quantidade, precoUnitario]);
+  await appendRow("Ativos", [dataBR, ativo, categoria, operacao, quantidade, precoUnitario, instituicao || ""]);
 }
 
 // Alerta de concentração: dentro de cada categoria (Reserva/RF/RV), se um único ativo responder por
-// mais que o limite (40% por padrão) do total investido NAQUELA categoria, entra na lista. Limite
-// alto de propósito -- concentração moderada é normal, só vale alarde quando é dominante mesmo.
+// mais que o limite (40% por padrão) do total investido NAQUELA categoria, entra na lista. Usa o
+// valor ATUAL (quando informado) em vez do custo -- concentração é sobre o que você TEM hoje, não
+// sobre quanto custou. Limite alto de propósito -- concentração moderada é normal, só vale alarde
+// quando é dominante mesmo.
 function getAlertasConcentracao(){
   const LIMITE_PCT = 40;
   const posicoes = getPosicaoAtivos();
   const porCategoria = {};
   posicoes.forEach(p => {
     if(!porCategoria[p.categoria]) porCategoria[p.categoria] = { total: 0, ativos: [] };
-    porCategoria[p.categoria].total += p.valorInvestido;
+    porCategoria[p.categoria].total += p.valorAtual;
     porCategoria[p.categoria].ativos.push(p);
   });
   const alertas = [];
   Object.entries(porCategoria).forEach(([categoria, info]) => {
     if(info.total <= 0) return;
     info.ativos.forEach(a => {
-      const pct = (a.valorInvestido / info.total) * 100;
-      if(pct > LIMITE_PCT) alertas.push({ categoria, ativo: a.ativo, pct, valorInvestido: a.valorInvestido, totalCategoria: info.total });
+      const pct = (a.valorAtual / info.total) * 100;
+      if(pct > LIMITE_PCT) alertas.push({ categoria, ativo: a.ativo, pct, valorInvestido: a.valorAtual, totalCategoria: info.total });
     });
   });
   return alertas.sort((a,b) => b.pct - a.pct);
