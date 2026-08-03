@@ -1220,7 +1220,7 @@ const TEMPLATE_SPREADSHEET_ID = "1Kttayt0-msSOdKkZlUJ9l7wwBNWVLj2Fbz1tZndP-u0";
 // Começou em v0.1.0 em 02/08/2026, a pedido do Gabriel -- fica em v0.x enquanto o app estiver em
 // fase de beta fechado (só Gabriel + Felipe testando); v1.0.0 marca a primeira versão considerada
 // estável o suficiente pra abrir pra mais gente.
-const APP_BUILD_VERSION = "0.3.0";
+const APP_BUILD_VERSION = "0.4.0";
 
 const MONTHS = ["Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"];
 const MONTHS_FULL = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
@@ -3238,6 +3238,7 @@ function renderRendimentoPanel(fluxoCaixaAtual){
             <div class="value" style="color:var(--gold);font-size:20px;">${fmtMoney(rend.totalReal)}</div>
             <div class="sub">o que você informou ter de verdade</div></div></div>
       </div>
+      <div id="historicoRendimentoChart" style="margin-top:16px;"></div>
       <div id="formSaldoRealWrap" class="hidden" style="margin-top:14px;"></div>`;
   }
 
@@ -3257,6 +3258,7 @@ function renderRendimentoPanel(fluxoCaixaAtual){
         </div>
       </div>`;
   }
+  renderHistoricoRendimentoChart();
 }
 function toggleFormSaldoReal(){
   const wrap = document.getElementById("formSaldoRealWrap");
@@ -3274,6 +3276,40 @@ async function salvarSaldoRealForm(){
   }catch(err){
     showToast("Não foi possível salvar: " + err.message, "error");
   }
+}
+
+// Gráfico de barras -- um período entre cada duas reconciliações consecutivas, colorido por ganho
+// (verde) ou perda (vermelho). Só aparece de verdade a partir da SEGUNDA vez que você confirmar o
+// saldo real -- antes disso não existe "período" nenhum pra comparar, só um ponto isolado.
+function renderHistoricoRendimentoChart(){
+  const el = document.getElementById("historicoRendimentoChart");
+  if(!el) return;
+  const periodos = getHistoricoRendimentos();
+  if(periodos.length === 0){
+    el.innerHTML = `<p style="font-size:12px;color:var(--muted);margin:0;">Confirme o saldo real de novo num próximo mês pra ver a evolução do rendimento período a período (precisa de pelo menos 2 confirmações).</p>`;
+    return;
+  }
+
+  const W = Math.max(320, periodos.length * 70), H = 160, PAD = 30, PADL = 46;
+  const maxAbs = Math.max(...periodos.map(p => Math.abs(p.pct)), 1) * 1.3;
+  const groupW = (W - PADL - PAD) / periodos.length;
+  const zeroY = H/2;
+  let svg = `<line x1="${PADL}" y1="${zeroY}" x2="${W-PAD}" y2="${zeroY}" stroke="var(--border)" stroke-width="1"/>`;
+  periodos.forEach((p, i) => {
+    const x = PADL + i*groupW + groupW*0.2;
+    const barW = groupW*0.6;
+    const h = Math.abs(p.pct)/maxAbs * (H/2 - 20);
+    const y = p.pct >= 0 ? zeroY - h : zeroY;
+    const cor = p.pct >= 0 ? "var(--green)" : "var(--red)";
+    const [, mesFimNum] = p.mesFim.split("-");
+    const tipHtml = `<b>${MONTHS_FULL[+mesFimNum-1]}</b><br>Rendimento do período: ${fmtMoney(p.rendimento)} (${p.pct>=0?"+":""}${p.pct.toFixed(1)}%)`;
+    svg += `<rect x="${x}" y="${y}" width="${barW}" height="${Math.max(2,h)}" rx="2" fill="${cor}" style="cursor:pointer;pointer-events:all;" onmousemove="showChartTooltip(event, '${tipHtml}')" onmouseleave="hideChartTooltip()"/>`;
+    svg += `<text x="${x+barW/2}" y="${p.pct>=0 ? y-6 : y+h+14}" font-size="10" fill="${cor}" text-anchor="middle" font-weight="700">${p.pct>=0?"+":""}${p.pct.toFixed(1)}%</text>`;
+    svg += `<text x="${x+barW/2}" y="${H-8}" font-size="9" fill="var(--muted)" text-anchor="middle">${MONTHS[+mesFimNum-1]}</text>`;
+  });
+  el.innerHTML = `
+    <p style="font-size:11px;color:var(--muted);font-weight:700;text-transform:uppercase;margin-bottom:6px;">Rendimento por período</p>
+    <svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;max-height:${H}px;">${svg}</svg>`;
 }
 
 // ===================== LANÇAMENTOS =====================
@@ -3981,6 +4017,34 @@ function getRendimentoAcumulado(){
     },
     totalReal, totalFluxo, rendimento, pct,
   };
+}
+
+// Rendimento POR PERÍODO -- entre cada reconciliação e a anterior, não só a mais recente contra o
+// total acumulado desde sempre. Isola o que rendeu SÓ naquele intervalo, descontando qualquer aporte
+// ou resgate novo feito no meio do caminho (senão um aporte grande pareceria "rendimento", e um
+// resgate pareceria "perda", o que não é verdade).
+function getHistoricoRendimentos(){
+  const linhas = (raw.patrimonio || [])
+    .filter(r => (r[8] !== undefined && r[8] !== "") || (r[9] !== undefined && r[9] !== "") || (r[10] !== undefined && r[10] !== ""))
+    .map(r => ({
+      mesChave: normalizarChaveMes(r[0]),
+      real: (Number(r[8])||0) + (Number(r[9])||0) + (Number(r[10])||0),
+      fluxo: (Number(r[1])||0) + (Number(r[2])||0) + (Number(r[3])||0),
+    }))
+    .sort((a,b) => a.mesChave.localeCompare(b.mesChave));
+
+  const periodos = [];
+  for(let i = 1; i < linhas.length; i++){
+    const ant = linhas[i-1], atu = linhas[i];
+    // Quanto entrou/saiu de caixa (aporte líquido) NESSE intervalo específico -- é a diferença do
+    // fluxo de caixa acumulado entre as duas reconciliações, não o fluxo total desde o início.
+    const aportesNoPeriodo = atu.fluxo - ant.fluxo;
+    const rendimento = (atu.real - ant.real) - aportesNoPeriodo;
+    const base = ant.real + aportesNoPeriodo; // patrimônio que "deveria" ter sem rendimento nenhum
+    const pct = base > 0 ? (rendimento / base) * 100 : 0;
+    periodos.push({ mesInicio: ant.mesChave, mesFim: atu.mesChave, rendimento, pct, aportesNoPeriodo });
+  }
+  return periodos;
 }
 
 // Histórico de Reserva por mês, lido da aba Patrimonio — usado no gráfico de evolução, no lugar do
