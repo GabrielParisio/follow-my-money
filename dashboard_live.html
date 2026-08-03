@@ -816,6 +816,7 @@
       <div id="allocBar" class="alloc-bar"></div>
       <div class="legend" id="allocLegend"></div>
     </div>
+    <div class="chart-panel" id="rendimentoPanel" style="margin-top:16px;"></div>
   </div>
 
   <div id="view-lancamentos" class="view">
@@ -1218,7 +1219,7 @@ const TEMPLATE_SPREADSHEET_ID = "1Kttayt0-msSOdKkZlUJ9l7wwBNWVLj2Fbz1tZndP-u0";
 // Começou em v0.1.0 em 02/08/2026, a pedido do Gabriel -- fica em v0.x enquanto o app estiver em
 // fase de beta fechado (só Gabriel + Felipe testando); v1.0.0 marca a primeira versão considerada
 // estável o suficiente pra abrir pra mais gente.
-const APP_BUILD_VERSION = "0.1.3";
+const APP_BUILD_VERSION = "0.2.0";
 
 const MONTHS = ["Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"];
 const MONTHS_FULL = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
@@ -1507,7 +1508,7 @@ async function loadData(){
       "Dívidas!B1:M",
       "Cadastro!T8",
       "Cadastro!T10",
-      "Patrimonio!A2:H",
+      "Patrimonio!A2:K",
       "Cadastro!M7:N20",
       "Cadastro!T12",
       "Cadastro!T14",
@@ -3117,6 +3118,89 @@ function renderInvestimentos(){
   legend.innerHTML = parts.map(p =>
     `<span><i style="background:${p.color}"></i>${p.label} — ${fmtPct(p.value/sum)}</span>`
   ).join("");
+
+  renderRendimentoPanel({ reserva, rendaFixa, rendaVariavel });
+}
+
+// Painel de rendimento real -- mostra o ganho/perda de verdade (diferença entre o que você informou
+// que TEM de verdade e o que o app calcula só de fluxo de caixa), ou convida a reconciliar pela
+// primeira vez se isso nunca foi feito. Sem essa reconciliação manual, o app não tem como saber se a
+// carteira está rendendo -- ele só enxerga quanto entrou e saiu, não cotação de mercado nenhuma.
+function renderRendimentoPanel(fluxoCaixaAtual){
+  const el = document.getElementById("rendimentoPanel");
+  if(!el) return;
+  const rend = getRendimentoAcumulado();
+
+  if(!rend){
+    el.innerHTML = `
+      <h2>💹 Rendimento</h2>
+      <p style="font-size:13px;color:var(--muted);margin-top:-6px;">
+        Hoje os valores acima são só o quanto você <b>colocou</b> (aportes menos resgates) — não sabem se isso <b>rendeu</b> ou perdeu valor, porque o app não tem acesso a cotação de mercado. Confirme de vez em quando o saldo real de cada categoria (o que você vê no extrato do banco/corretora) pra descobrir a rentabilidade de verdade.
+      </p>
+      <button class="connect-btn" onclick="toggleFormSaldoReal()">📊 Confirmar saldo real pela primeira vez</button>
+      <div id="formSaldoRealWrap" class="hidden" style="margin-top:14px;"></div>`;
+  } else {
+    const cor = rend.rendimento >= 0 ? "var(--green)" : "var(--red)";
+    const sinal = rend.rendimento >= 0 ? "+" : "";
+    const [ano, mes] = rend.mesChave.split("-");
+    el.innerHTML = `
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:10px;">
+        <div>
+          <h2 style="margin-bottom:2px;">💹 Rendimento</h2>
+          <p style="font-size:12px;color:var(--muted);margin:0;">Desde a última confirmação, em ${MONTHS_FULL[+mes-1]}/${ano}</p>
+        </div>
+        <button class="connect-btn" onclick="toggleFormSaldoReal()" style="flex-shrink:0;">🔄 Atualizar saldo real</button>
+      </div>
+      <div class="cards" style="margin-top:14px;margin-bottom:0;">
+        <div class="card"><div class="accent" style="background:${cor}"></div>
+          <div class="body"><div class="label">Rendimento total</div>
+            <div class="value" style="color:${cor};font-size:20px;">${sinal}${fmtMoney(rend.rendimento)}</div>
+            <div class="sub">${sinal}${rend.pct.toFixed(1)}% sobre o total aportado</div></div></div>
+        <div class="card"><div class="accent" style="background:var(--muted)"></div>
+          <div class="body"><div class="label">Total aportado</div>
+            <div class="value" style="font-size:20px;">${fmtMoney(rend.totalFluxo)}</div>
+            <div class="sub">só aporte − resgate, sem rendimento</div></div></div>
+        <div class="card"><div class="accent" style="background:var(--gold)"></div>
+          <div class="body"><div class="label">Saldo real confirmado</div>
+            <div class="value" style="color:var(--gold);font-size:20px;">${fmtMoney(rend.totalReal)}</div>
+            <div class="sub">o que você informou ter de verdade</div></div></div>
+      </div>
+      <div id="formSaldoRealWrap" class="hidden" style="margin-top:14px;"></div>`;
+  }
+
+  // Preenche o formulário (mesmo que esteja escondido agora) já com o saldo de fluxo de caixa atual
+  // como ponto de partida -- a pessoa só ajusta pro valor real, não precisa digitar tudo do zero.
+  const wrap = document.getElementById("formSaldoRealWrap");
+  if(wrap){
+    wrap.innerHTML = `
+      <div class="edit-form" style="margin-bottom:0;background:var(--bg-soft, rgba(255,255,255,.03));border-radius:10px;padding:14px;">
+        <p style="grid-column:1/-1;font-size:12px;color:var(--muted);margin:0 0 4px;">Preenchido com o valor de fluxo de caixa como ponto de partida — ajuste pro que você vê de verdade no extrato do banco/corretora hoje.</p>
+        <div><label>Reserva de Emergência (real)</label><input id="saldoRealReserva" type="number" step="0.01" value="${fluxoCaixaAtual.reserva.toFixed(2)}"></div>
+        <div><label>Renda Fixa (real)</label><input id="saldoRealRF" type="number" step="0.01" value="${fluxoCaixaAtual.rendaFixa.toFixed(2)}"></div>
+        <div><label>Renda Variável (real)</label><input id="saldoRealRV" type="number" step="0.01" value="${fluxoCaixaAtual.rendaVariavel.toFixed(2)}"></div>
+        <div class="actions">
+          <button class="save-btn" onclick="salvarSaldoRealForm()">Salvar</button>
+          <button class="cancel-btn" onclick="toggleFormSaldoReal()">Cancelar</button>
+        </div>
+      </div>`;
+  }
+}
+function toggleFormSaldoReal(){
+  const wrap = document.getElementById("formSaldoRealWrap");
+  if(wrap) wrap.classList.toggle("hidden");
+}
+async function salvarSaldoRealForm(){
+  const reserva = parseFloat(document.getElementById("saldoRealReserva").value) || 0;
+  const rendaFixa = parseFloat(document.getElementById("saldoRealRF").value) || 0;
+  const rendaVariavel = parseFloat(document.getElementById("saldoRealRV").value) || 0;
+  try{
+    await salvarSaldoRealInvestimentos(reserva, rendaFixa, rendaVariavel);
+    await loadData();
+    renderInvestimentos();
+    showToast("Saldo real confirmado — rendimento atualizado", "success");
+  }catch(err){
+    showToast("Não foi possível salvar: " + err.message, "error");
+  }
 }
 
 // ===================== LANÇAMENTOS =====================
@@ -3746,6 +3830,57 @@ async function garantirSnapshotMensal(){
     // pro uso do dia a dia. Provavelmente a aba "Patrimonio" ainda não existe nessa planilha.
     console.error("Não foi possível gravar o snapshot mensal de patrimônio:", err.message);
   }
+}
+
+// Acha a linha (número real na planilha) do snapshot de um mês, ou null se ainda não existir --
+// garantirSnapshotMensal só cria a linha do mês ATUAL na primeira vez que o app carrega naquele mês,
+// então meses sem uso do app nunca tiveram uma linha criada.
+function acharLinhaPatrimonio(chave){
+  const idx = (raw.patrimonio || []).findIndex(r => String(r[0] || "").trim() === chave);
+  return idx === -1 ? null : idx + 2; // +2 porque o fetch começa em A2 (linha 1 é cabeçalho)
+}
+
+// Salva o saldo REAL informado manualmente (reserva/RF/RV) pro mês vigente -- colunas I/J/K da aba
+// Patrimonio, separadas das colunas B/C/D (que são só fluxo de caixa: aporte menos resgate). A
+// diferença entre os dois é o rendimento de verdade da carteira -- ganho ou perda que o app não tem
+// como calcular sozinho, já que não tem acesso a nenhuma cotação de mercado.
+async function salvarSaldoRealInvestimentos(reserva, rendaFixa, rendaVariavel){
+  const hoje = new Date();
+  const chave = anoMesChave(hoje);
+  await garantirSnapshotMensal(); // garante que a linha do mês existe antes de tentar escrever nela
+  const linha = acharLinhaPatrimonio(chave);
+  if(!linha) throw new Error("Não encontrei a linha desse mês na aba Patrimonio — tente recarregar a página.");
+  await writeCellsBatch([
+    { range: `Patrimonio!I${linha}`, value: reserva },
+    { range: `Patrimonio!J${linha}`, value: rendaFixa },
+    { range: `Patrimonio!K${linha}`, value: rendaVariavel },
+  ]);
+}
+
+// Rendimento acumulado: acha a reconciliação mais RECENTE (linha mais nova com I/J/K preenchidos) e
+// compara com o fluxo de caixa (B/C/D) DA MESMA LINHA -- não com o fluxo de caixa de hoje, porque aí
+// a comparação ficaria desalinhada no tempo (ex: você aportou mais depois da última reconciliação --
+// isso é aporte novo, não rendimento, não pode entrar nessa conta).
+function getRendimentoAcumulado(){
+  const linhas = (raw.patrimonio || []).filter(r =>
+    (r[8] !== undefined && r[8] !== "") || (r[9] !== undefined && r[9] !== "") || (r[10] !== undefined && r[10] !== ""));
+  if(linhas.length === 0) return null; // nunca reconciliado ainda
+  const ultima = linhas.reduce((max, r) => (String(r[0]) > String(max[0]) ? r : max), linhas[0]);
+  const reservaReal = Number(ultima[8]) || 0, rfReal = Number(ultima[9]) || 0, rvReal = Number(ultima[10]) || 0;
+  const reservaFluxo = Number(ultima[1]) || 0, rfFluxo = Number(ultima[2]) || 0, rvFluxo = Number(ultima[3]) || 0;
+  const totalReal = reservaReal + rfReal + rvReal;
+  const totalFluxo = reservaFluxo + rfFluxo + rvFluxo;
+  const rendimento = totalReal - totalFluxo;
+  const pct = totalFluxo > 0 ? (rendimento / totalFluxo) * 100 : 0;
+  return {
+    mesChave: ultima[0],
+    porCategoria: {
+      "Reserva de Emergência": { real: reservaReal, fluxo: reservaFluxo, rendimento: reservaReal - reservaFluxo },
+      "Renda Fixa": { real: rfReal, fluxo: rfFluxo, rendimento: rfReal - rfFluxo },
+      "Renda Variável": { real: rvReal, fluxo: rvFluxo, rendimento: rvReal - rvFluxo },
+    },
+    totalReal, totalFluxo, rendimento, pct,
+  };
 }
 
 // Histórico de Reserva por mês, lido da aba Patrimonio — usado no gráfico de evolução, no lugar do
