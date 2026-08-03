@@ -830,6 +830,7 @@
     </div>
     <div class="chart-panel" id="rebalanceamentoPanel" style="margin-top:16px;"></div>
     <div class="chart-panel" id="rendimentoPanel" style="margin-top:16px;"></div>
+    <div class="chart-panel" id="ativosPanel" style="margin-top:16px;"></div>
   </div>
 
   <div id="view-lancamentos" class="view">
@@ -1236,7 +1237,7 @@ const TEMPLATE_SPREADSHEET_ID = "1Kttayt0-msSOdKkZlUJ9l7wwBNWVLj2Fbz1tZndP-u0";
 // Começou em v0.1.0 em 02/08/2026, a pedido do Gabriel -- fica em v0.x enquanto o app estiver em
 // fase de beta fechado (só Gabriel + Felipe testando); v1.0.0 marca a primeira versão considerada
 // estável o suficiente pra abrir pra mais gente.
-const APP_BUILD_VERSION = "0.5.0";
+const APP_BUILD_VERSION = "0.7.0";
 
 const MONTHS = ["Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"];
 const MONTHS_FULL = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
@@ -1515,7 +1516,7 @@ setInterval(updateLastUpdatedLabel, 30000);
 async function loadData(){
   setLoading(true);
   try{
-    const [cadastro, orcadoTotal, cartoes, compras, nomeUsuario, debito, dividas, salarioBruto, reservaInicial, patrimonio, contasDebito, taxaRealEsperada, regimeTrabalho, outrosDescontos, rendaDesejadaIndep] = await fetchRanges([
+    const [cadastro, orcadoTotal, cartoes, compras, nomeUsuario, debito, dividas, salarioBruto, reservaInicial, patrimonio, contasDebito, taxaRealEsperada, regimeTrabalho, outrosDescontos, rendaDesejadaIndep, ativos] = await fetchRanges([
       "Cadastro!B7:F60",
       "Cadastro!F4",
       "Cadastro!H7:K20",
@@ -1525,14 +1526,15 @@ async function loadData(){
       "Dívidas!B1:M",
       "Cadastro!T8",
       "Cadastro!T10",
-      "Patrimonio!A2:K",
+      "Patrimonio!A2:L",
       "Cadastro!M7:N20",
       "Cadastro!T12",
       "Cadastro!T14",
       "Cadastro!T16",
-      "Cadastro!T18"
+      "Cadastro!T18",
+      "Ativos!B2:G"
     ]);
-    raw = { cadastro, orcadoTotal, cartoes, compras, nomeUsuario, debito, dividas, salarioBruto, reservaInicial, patrimonio, contasDebito, taxaRealEsperada, regimeTrabalho, outrosDescontos, rendaDesejadaIndep };
+    raw = { cadastro, orcadoTotal, cartoes, compras, nomeUsuario, debito, dividas, salarioBruto, reservaInicial, patrimonio, contasDebito, taxaRealEsperada, regimeTrabalho, outrosDescontos, rendaDesejadaIndep, ativos };
     await garantirSnapshotMensal();
     state.lastUpdated = Date.now();
     updateLastUpdatedLabel();
@@ -3208,6 +3210,7 @@ function renderInvestimentos(){
 
   renderRebalanceamentoPanel({ reserva, rendaFixa, rendaVariavel, total });
   renderRendimentoPanel({ reserva, rendaFixa, rendaVariavel });
+  renderAtivosPanel();
 }
 
 // Painel de rendimento real -- mostra o ganho/perda de verdade (diferença entre o que você informou
@@ -3338,11 +3341,36 @@ function renderRendimentoPanel(fluxoCaixaAtual){
         <div><label>Reserva de Emergência (real)</label><input id="saldoRealReserva" type="number" step="0.01" value="${fluxoCaixaAtual.reserva.toFixed(2)}"></div>
         <div><label>Renda Fixa (real)</label><input id="saldoRealRF" type="number" step="0.01" value="${fluxoCaixaAtual.rendaFixa.toFixed(2)}"></div>
         <div><label>Renda Variável (real)</label><input id="saldoRealRV" type="number" step="0.01" value="${fluxoCaixaAtual.rendaVariavel.toFixed(2)}"></div>
+        <div>
+          <label>CDI acumulado no período (%, opcional)</label>
+          <input id="cdiPeriodo" type="number" step="0.01" placeholder="${rend ? 'buscando automaticamente...' : 'disponível a partir da 2ª confirmação'}" ${rend ? "" : "disabled"}>
+          <p id="cdiPeriodoNota" style="grid-column:1/-1;font-size:11px;color:var(--muted);margin:2px 0 0;"></p>
+        </div>
         <div class="actions">
           <button class="save-btn" onclick="salvarSaldoRealForm()">Salvar</button>
           <button class="cancel-btn" onclick="toggleFormSaldoReal()">Cancelar</button>
         </div>
       </div>`;
+    // Tenta buscar o CDI do período direto da API do Bacen -- se conseguir, pré-preenche (a pessoa
+    // ainda pode editar); se falhar (CORS, sem internet, API fora do ar), deixa em branco pra digitar
+    // na mão, sem travar nem avisar com alarde (é um extra, não algo crítico pro resto do app).
+    if(rend){
+      const [anoM, mesM] = rend.mesChave.split("-");
+      const dataInicio = new Date(+anoM, +mesM - 1, 1);
+      buscarCDIAcumuladoPeriodo(dataInicio, new Date()).then(cdi => {
+        const campo = document.getElementById("cdiPeriodo");
+        const nota = document.getElementById("cdiPeriodoNota");
+        if(!campo) return;
+        if(cdi !== null){
+          campo.value = cdi.toFixed(2);
+          campo.placeholder = "";
+          if(nota) nota.textContent = "Preenchido automaticamente via API do Banco Central — confira e ajuste se quiser.";
+        } else {
+          campo.placeholder = "0.00";
+          if(nota) nota.textContent = "Não consegui buscar automaticamente — digite o CDI do período (seu extrato do banco/corretora geralmente mostra isso).";
+        }
+      });
+    }
   }
   renderHistoricoRendimentoChart();
 }
@@ -3371,8 +3399,10 @@ async function salvarSaldoRealForm(){
   const reserva = parseFloat(document.getElementById("saldoRealReserva").value) || 0;
   const rendaFixa = parseFloat(document.getElementById("saldoRealRF").value) || 0;
   const rendaVariavel = parseFloat(document.getElementById("saldoRealRV").value) || 0;
+  const cdiInput = document.getElementById("cdiPeriodo");
+  const cdiPeriodo = cdiInput && !cdiInput.disabled && cdiInput.value !== "" ? parseFloat(cdiInput.value) : null;
   try{
-    await salvarSaldoRealInvestimentos(reserva, rendaFixa, rendaVariavel);
+    await salvarSaldoRealInvestimentos(reserva, rendaFixa, rendaVariavel, cdiPeriodo);
     await loadData();
     renderInvestimentos();
     showToast("Saldo real confirmado — rendimento atualizado", "success");
@@ -3394,7 +3424,8 @@ function renderHistoricoRendimentoChart(){
   }
 
   const W = Math.max(320, periodos.length * 70), H = 160, PAD = 30, PADL = 46;
-  const maxAbs = Math.max(...periodos.map(p => Math.abs(p.pct)), 1) * 1.3;
+  const valoresParaEscala = periodos.flatMap(p => [Math.abs(p.pct), p.cdi !== null ? Math.abs(p.cdi) : 0]);
+  const maxAbs = Math.max(...valoresParaEscala, 1) * 1.3;
   const groupW = (W - PADL - PAD) / periodos.length;
   const zeroY = H/2;
   let svg = `<line x1="${PADL}" y1="${zeroY}" x2="${W-PAD}" y2="${zeroY}" stroke="var(--border)" stroke-width="1"/>`;
@@ -3405,15 +3436,127 @@ function renderHistoricoRendimentoChart(){
     const y = p.pct >= 0 ? zeroY - h : zeroY;
     const cor = p.pct >= 0 ? "var(--green)" : "var(--red)";
     const [, mesFimNum] = p.mesFim.split("-");
-    const tipHtml = `<b>${MONTHS_FULL[+mesFimNum-1]}</b><br>Rendimento do período: ${fmtMoney(p.rendimento)} (${p.pct>=0?"+":""}${p.pct.toFixed(1)}%)`;
+    const comparacaoCdi = p.cdi !== null
+      ? `<br><span style='color:var(--gold);'>CDI do período: ${p.cdi>=0?"+":""}${p.cdi.toFixed(2)}%</span> (${p.pct >= p.cdi ? "carteira ganhou do CDI" : "carteira perdeu do CDI"})`
+      : "";
+    const tipHtml = `<b>${MONTHS_FULL[+mesFimNum-1]}</b><br>Rendimento do período: ${fmtMoney(p.rendimento)} (${p.pct>=0?"+":""}${p.pct.toFixed(1)}%)${comparacaoCdi}`;
     svg += `<rect x="${x}" y="${y}" width="${barW}" height="${Math.max(2,h)}" rx="2" fill="${cor}" style="cursor:pointer;pointer-events:all;" onmousemove="showChartTooltip(event, '${tipHtml}')" onmouseleave="hideChartTooltip()"/>`;
+    if(p.cdi !== null){
+      // Marca dourada na altura do CDI acumulado do período -- comparação visual direta com a barra
+      const yCdi = zeroY - (p.cdi/maxAbs) * (H/2 - 20);
+      svg += `<line x1="${x-3}" y1="${yCdi}" x2="${x+barW+3}" y2="${yCdi}" stroke="var(--gold)" stroke-width="2" stroke-dasharray="3,2"/>`;
+    }
     svg += `<text x="${x+barW/2}" y="${p.pct>=0 ? y-6 : y+h+14}" font-size="10" fill="${cor}" text-anchor="middle" font-weight="700">${p.pct>=0?"+":""}${p.pct.toFixed(1)}%</text>`;
     svg += `<text x="${x+barW/2}" y="${H-8}" font-size="9" fill="var(--muted)" text-anchor="middle">${MONTHS[+mesFimNum-1]}</text>`;
   });
+  const temCdi = periodos.some(p => p.cdi !== null);
   el.innerHTML = `
-    <p style="font-size:11px;color:var(--muted);font-weight:700;text-transform:uppercase;margin-bottom:6px;">Rendimento por período</p>
+    <p style="font-size:11px;color:var(--muted);font-weight:700;text-transform:uppercase;margin-bottom:6px;">Rendimento por período${temCdi ? ' <span style="color:var(--gold);">— tracejado dourado = CDI do período</span>' : ""}</p>
     <svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;max-height:${H}px;">${svg}</svg>`;
 }
+
+// Painel "Meus Ativos" -- concentração + tabela de posição (quantidade, preço médio, valor
+// investido por ativo) + formulário pra registrar compra/venda. Camada opcional: se a pessoa nunca
+// registrar nada aqui, o painel só convida a começar, sem quebrar nem exigir nada dos outros cards.
+function renderAtivosPanel(){
+  const el = document.getElementById("ativosPanel");
+  if(!el) return;
+  const posicoes = getPosicaoAtivos();
+  const alertas = getAlertasConcentracao();
+
+  const alertasHtml = alertas.length > 0 ? `
+    <div style="margin-bottom:14px;">
+      ${alertas.map(a => `
+        <div style="display:flex;gap:8px;align-items:flex-start;padding:8px 10px;background:rgba(239,68,68,.08);border-radius:8px;margin-bottom:6px;font-size:12px;">
+          <span>⚠️</span>
+          <span><b>${a.ativo}</b> responde por <b>${a.pct.toFixed(0)}%</b> da sua ${a.categoria} (${fmtMoney(a.valorInvestido)} de ${fmtMoney(a.totalCategoria)}) — concentração alta num único ativo.</span>
+        </div>`).join("")}
+    </div>` : "";
+
+  const tabelaHtml = posicoes.length > 0 ? `
+    <div style="overflow-x:auto;">
+      <table style="width:100%;font-size:13px;border-collapse:collapse;">
+        <thead><tr style="color:var(--muted);font-size:11px;text-transform:uppercase;text-align:left;">
+          <th style="padding:4px 8px 8px 0;">Ativo</th><th style="padding:4px 8px 8px 0;">Categoria</th>
+          <th style="padding:4px 8px 8px 0;text-align:right;">Quantidade</th><th style="padding:4px 8px 8px 0;text-align:right;">Preço médio</th>
+          <th style="padding:4px 0 8px 0;text-align:right;">Valor investido</th>
+        </tr></thead>
+        <tbody>
+          ${posicoes.map(p => `
+            <tr style="border-top:1px solid var(--border);">
+              <td style="padding:6px 8px 6px 0;">${p.ativo}</td>
+              <td style="padding:6px 8px 6px 0;color:var(--muted);">${p.categoria}</td>
+              <td style="padding:6px 8px 6px 0;text-align:right;">${p.quantidade.toLocaleString("pt-BR",{maximumFractionDigits:4})}</td>
+              <td style="padding:6px 8px 6px 0;text-align:right;">${fmtMoney(p.precoMedio)}</td>
+              <td style="padding:6px 0 6px 0;text-align:right;font-weight:700;">${fmtMoney(p.valorInvestido)}</td>
+            </tr>`).join("")}
+        </tbody>
+      </table>
+    </div>` : `
+    <p style="font-size:13px;color:var(--muted);margin:0;">
+      Registre suas compras e vendas por ativo (ação, FII, título específico...) pra acompanhar concentração e preço médio por papel — camada opcional, separada dos 3 cards agregados acima.
+    </p>`;
+
+  el.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:10px;margin-bottom:14px;">
+      <h2 style="margin:0;">📦 Meus Ativos</h2>
+      <button class="connect-btn" onclick="toggleFormNovoAtivo()">+ Registrar operação</button>
+    </div>
+    ${alertasHtml}
+    ${tabelaHtml}
+    <div id="formNovoAtivoWrap" class="hidden" style="margin-top:14px;"></div>`;
+
+  const wrap = document.getElementById("formNovoAtivoWrap");
+  if(wrap){
+    wrap.innerHTML = `
+      <div class="edit-form" style="margin-bottom:0;background:var(--bg-soft, rgba(255,255,255,.03));border-radius:10px;padding:14px;">
+        <div><label>Data</label><input id="ativoData" type="date" value="${new Date().toISOString().slice(0,10)}"></div>
+        <div><label>Ativo (nome/ticker)</label><input id="ativoNome" placeholder="Ex: PETR4, Tesouro IPCA+2035"></div>
+        <div><label>Categoria</label>
+          <select id="ativoCategoria">
+            <option value="Reserva de Emergência">Reserva de Emergência</option>
+            <option value="Renda Fixa" selected>Renda Fixa</option>
+            <option value="Renda Variável">Renda Variável</option>
+          </select>
+        </div>
+        <div><label>Operação</label>
+          <select id="ativoOperacao"><option value="Compra">Compra</option><option value="Venda">Venda</option></select>
+        </div>
+        <div><label>Quantidade</label><input id="ativoQuantidade" type="number" step="0.000001" placeholder="0"></div>
+        <div><label>Preço unitário</label><input id="ativoPreco" type="number" step="0.01" placeholder="0.00"></div>
+        <div class="actions">
+          <button class="save-btn" onclick="salvarNovoAtivoForm()">Salvar</button>
+          <button class="cancel-btn" onclick="toggleFormNovoAtivo()">Cancelar</button>
+        </div>
+      </div>`;
+  }
+}
+function toggleFormNovoAtivo(){
+  const wrap = document.getElementById("formNovoAtivoWrap");
+  if(wrap) wrap.classList.toggle("hidden");
+}
+async function salvarNovoAtivoForm(){
+  const dataInput = document.getElementById("ativoData").value;
+  const ativo = document.getElementById("ativoNome").value.trim();
+  const categoria = document.getElementById("ativoCategoria").value;
+  const operacao = document.getElementById("ativoOperacao").value;
+  const quantidade = parseFloat(document.getElementById("ativoQuantidade").value) || 0;
+  const precoUnitario = parseFloat(document.getElementById("ativoPreco").value) || 0;
+  if(!ativo || quantidade <= 0){
+    showToast("Preencha o nome do ativo e uma quantidade maior que zero.", "error");
+    return;
+  }
+  try{
+    const data = dataInput ? new Date(dataInput + "T00:00:00") : new Date();
+    await salvarOperacaoAtivo(data, ativo, categoria, operacao, quantidade, precoUnitario);
+    await loadData();
+    renderInvestimentos();
+    showToast("Operação registrada", "success");
+  }catch(err){
+    showToast("Não foi possível salvar: " + err.message, "error");
+  }
+}
+
 
 // ===================== LANÇAMENTOS =====================
 function debitoRows(){
@@ -4075,21 +4218,47 @@ function acharLinhaPatrimonio(chave){
   return idx === -1 ? null : idx + 2; // +2 porque o fetch começa em A2 (linha 1 é cabeçalho)
 }
 
+// Busca o CDI acumulado (%) num período direto da API pública do Banco Central (SGS, série 12 =
+// CDI diário) -- sem chave, sem custo, dado aberto do governo. TENTA chamar direto do navegador; se
+// a API não aceitar (CORS) ou a pessoa estiver sem internet, cai pra null silenciosamente e o campo
+// no formulário fica em branco pra preencher na mão -- nunca trava o app por causa disso.
+async function buscarCDIAcumuladoPeriodo(dataInicio, dataFim){
+  try{
+    const fmtBCB = (d) => String(d.getDate()).padStart(2,"0") + "/" + String(d.getMonth()+1).padStart(2,"0") + "/" + d.getFullYear();
+    const url = `https://api.bcb.gov.br/dados/serie/bcdata.sgs.12/dados?formato=json&dataInicial=${fmtBCB(dataInicio)}&dataFinal=${fmtBCB(dataFim)}`;
+    const resp = await fetch(url);
+    if(!resp.ok) throw new Error("resposta " + resp.status);
+    const dados = await resp.json();
+    if(!Array.isArray(dados) || dados.length === 0) return null;
+    // CDI diário vem em % ao dia -- acumula por juros compostos (não soma simples) dia a dia
+    const fator = dados.reduce((acc, d) => acc * (1 + (parseFloat(String(d.valor).replace(",", ".")) || 0)/100), 1);
+    return (fator - 1) * 100;
+  }catch(err){
+    console.warn("Não consegui buscar o CDI direto da API do Bacen (provavelmente bloqueio de CORS, ou sem internet) -- caindo pro preenchimento manual:", err.message);
+    return null;
+  }
+}
+
 // Salva o saldo REAL informado manualmente (reserva/RF/RV) pro mês vigente -- colunas I/J/K da aba
 // Patrimonio, separadas das colunas B/C/D (que são só fluxo de caixa: aporte menos resgate). A
 // diferença entre os dois é o rendimento de verdade da carteira -- ganho ou perda que o app não tem
-// como calcular sozinho, já que não tem acesso a nenhuma cotação de mercado.
-async function salvarSaldoRealInvestimentos(reserva, rendaFixa, rendaVariavel){
+// como calcular sozinho, já que não tem acesso a nenhuma cotação de mercado. A coluna L guarda o CDI
+// acumulado do período, pra comparação -- vem da API do Bacen quando possível, ou digitado na mão.
+async function salvarSaldoRealInvestimentos(reserva, rendaFixa, rendaVariavel, cdiPeriodo){
   const hoje = new Date();
   const chave = anoMesChave(hoje);
   await garantirSnapshotMensal(); // garante que a linha do mês existe antes de tentar escrever nela
   const linha = acharLinhaPatrimonio(chave);
   if(!linha) throw new Error("Não encontrei a linha desse mês na aba Patrimonio — tente recarregar a página.");
-  await writeCellsBatch([
+  const updates = [
     { range: `Patrimonio!I${linha}`, value: reserva },
     { range: `Patrimonio!J${linha}`, value: rendaFixa },
     { range: `Patrimonio!K${linha}`, value: rendaVariavel },
-  ]);
+  ];
+  if(cdiPeriodo !== null && cdiPeriodo !== undefined && cdiPeriodo !== ""){
+    updates.push({ range: `Patrimonio!L${linha}`, value: cdiPeriodo });
+  }
+  await writeCellsBatch(updates);
 }
 
 // Rendimento acumulado: acha a reconciliação mais RECENTE (linha mais nova com I/J/K preenchidos) e
@@ -4133,6 +4302,7 @@ function getHistoricoRendimentos(){
       mesChave: normalizarChaveMes(r[0]),
       real: (Number(r[8])||0) + (Number(r[9])||0) + (Number(r[10])||0),
       fluxo: (Number(r[1])||0) + (Number(r[2])||0) + (Number(r[3])||0),
+      cdi: (r[11] !== undefined && r[11] !== "") ? Number(r[11]) : null, // coluna L -- CDI acumulado informado nessa reconciliação
     }))
     .sort((a,b) => a.mesChave.localeCompare(b.mesChave));
 
@@ -4145,10 +4315,87 @@ function getHistoricoRendimentos(){
     const rendimento = (atu.real - ant.real) - aportesNoPeriodo;
     const base = ant.real + aportesNoPeriodo; // patrimônio que "deveria" ter sem rendimento nenhum
     const pct = base > 0 ? (rendimento / base) * 100 : 0;
-    periodos.push({ mesInicio: ant.mesChave, mesFim: atu.mesChave, rendimento, pct, aportesNoPeriodo });
+    periodos.push({ mesInicio: ant.mesChave, mesFim: atu.mesChave, rendimento, pct, aportesNoPeriodo, cdi: atu.cdi });
   }
   return periodos;
 }
+
+// ===================== ATIVOS INDIVIDUAIS (ticker/nome, quantidade, preço médio) =====================
+// Camada ADICIONAL, em paralelo aos 3 baldes agregados (Reserva/RF/RV) que já existem — não substitui
+// nada. Os cards de saldo continuam vindo do fluxo de caixa em Débito (Investimento/Resgate). Isso
+// aqui é só pra quem quiser registrar CADA ativo específico, habilitando concentração e preço médio
+// por papel -- coisa que o balde agregado nunca teria como saber sozinho.
+function getAtivosRows(){
+  return (raw.ativos || []).map((r, i) => ({
+    row: i + 2, // +2 porque o fetch começa em B2 (linha 1 é cabeçalho)
+    data: r[0],
+    ativo: (r[1] || "").trim(),
+    categoria: r[2] || "",
+    operacao: r[3] || "",
+    quantidade: Number(r[4]) || 0,
+    precoUnitario: Number(r[5]) || 0,
+  })).filter(a => a.ativo);
+}
+
+// Posição atual de cada ativo -- quantidade e preço médio (custo), calculados por CUSTO MÉDIO
+// PONDERADO: cada compra soma quantidade e custo total; cada venda reduz a quantidade e desconta do
+// custo total NA PROPORÇÃO do preço médio vigente até ali (não o preço da venda) -- assim o preço
+// médio dos que restam continua correto mesmo depois de uma venda parcial. É o mesmo método que a
+// Receita Federal usa pra apurar ganho de capital.
+function getPosicaoAtivos(){
+  const rows = getAtivosRows().slice().sort((a,b) => (a.data||0) - (b.data||0));
+  const porAtivo = {};
+  rows.forEach(r => {
+    if(!porAtivo[r.ativo]) porAtivo[r.ativo] = { ativo: r.ativo, categoria: r.categoria, quantidade: 0, custoTotal: 0 };
+    const pos = porAtivo[r.ativo];
+    if(/venda/i.test(r.operacao)){
+      const precoMedioAtual = pos.quantidade > 0 ? pos.custoTotal / pos.quantidade : 0;
+      pos.quantidade -= r.quantidade;
+      pos.custoTotal -= r.quantidade * precoMedioAtual;
+    } else {
+      pos.quantidade += r.quantidade;
+      pos.custoTotal += r.quantidade * r.precoUnitario;
+    }
+    if(r.categoria) pos.categoria = r.categoria; // usa a categoria do lançamento mais recente
+  });
+  return Object.values(porAtivo)
+    .filter(a => a.quantidade > 0.0001) // zerou a posição (vendeu tudo) -- não mostra mais
+    .map(a => ({
+      ...a,
+      precoMedio: a.quantidade > 0 ? a.custoTotal / a.quantidade : 0,
+      valorInvestido: a.custoTotal,
+    }))
+    .sort((a,b) => b.valorInvestido - a.valorInvestido);
+}
+
+async function salvarOperacaoAtivo(data, ativo, categoria, operacao, quantidade, precoUnitario){
+  const dataBR = fmtDataBR(data);
+  await appendRow("Ativos", [dataBR, ativo, categoria, operacao, quantidade, precoUnitario]);
+}
+
+// Alerta de concentração: dentro de cada categoria (Reserva/RF/RV), se um único ativo responder por
+// mais que o limite (40% por padrão) do total investido NAQUELA categoria, entra na lista. Limite
+// alto de propósito -- concentração moderada é normal, só vale alarde quando é dominante mesmo.
+function getAlertasConcentracao(){
+  const LIMITE_PCT = 40;
+  const posicoes = getPosicaoAtivos();
+  const porCategoria = {};
+  posicoes.forEach(p => {
+    if(!porCategoria[p.categoria]) porCategoria[p.categoria] = { total: 0, ativos: [] };
+    porCategoria[p.categoria].total += p.valorInvestido;
+    porCategoria[p.categoria].ativos.push(p);
+  });
+  const alertas = [];
+  Object.entries(porCategoria).forEach(([categoria, info]) => {
+    if(info.total <= 0) return;
+    info.ativos.forEach(a => {
+      const pct = (a.valorInvestido / info.total) * 100;
+      if(pct > LIMITE_PCT) alertas.push({ categoria, ativo: a.ativo, pct, valorInvestido: a.valorInvestido, totalCategoria: info.total });
+    });
+  });
+  return alertas.sort((a,b) => b.pct - a.pct);
+}
+
 
 // Histórico de Reserva por mês, lido da aba Patrimonio — usado no gráfico de evolução, no lugar do
 // que antes vinha da aba Balanço. Meses sem snapshot (antes dessa funcionalidade existir, ou meses
@@ -6411,6 +6658,22 @@ function projetarMesesAtePrevistoDetalhado(patrimonioAtual, taxaRealAnualPct, al
   return null;
 }
 
+// Simulador de retirada (drawdown): quanto tempo um patrimônio dura se você começar a SACAR uma
+// renda mensal fixa dele, em vez de só olhar se ele sustenta essa renda pra sempre (perpetuidade).
+// É a mesma fórmula de prestação de financiamento, só que resolvida pro N (quantos meses) em vez do
+// PV -- fórmula fechada, não precisa de loop mês a mês.
+// Retorna null quando a retirada é menor ou igual ao rendimento mensal do patrimônio -- nesse caso
+// ele NUNCA se esgota (mesma lógica da perpetuidade: sustentável pra sempre).
+function calcularMesesAteEsgotar(patrimonio, taxaRealAnualPct, retiradaMensal){
+  if(retiradaMensal <= 0 || patrimonio <= 0) return null;
+  const taxaMensal = Math.pow(1 + taxaRealAnualPct/100, 1/12) - 1;
+  if(taxaMensal <= 0) return patrimonio / retiradaMensal; // sem juros, é divisão simples
+  const rendimentoMensalDoPatrimonio = patrimonio * taxaMensal;
+  if(retiradaMensal <= rendimentoMensalDoPatrimonio) return null; // retirada sustentável pra sempre
+  const n = -Math.log(1 - (patrimonio * taxaMensal) / retiradaMensal) / Math.log(1 + taxaMensal);
+  return n;
+}
+
 // Saldo PREVISTO médio dos próximos meses — mesmo princípio da "Projeção (previsto lançado)" do
 // gráfico de reserva (usa calcPrevisto, que já inclui a provisão de fatura de cartão), só que aqui
 // resumido numa média só, pra alimentar a projeção de anos até a independência financeira.
@@ -6456,6 +6719,10 @@ function renderPlanejamento(){
   const patrimonioAtual = totalAtivos - totalDividas;
 
   const pctAlcancado = patrimonioAlvo > 0 ? Math.min(100, Math.max(0, patrimonioAtual / patrimonioAlvo * 100)) : 0;
+  // Simulador de retirada: "se eu começasse a sacar a renda desejada JÁ, com o patrimônio de HOJE
+  // (não o alvo), quanto tempo duraria?" -- complementa a pergunta da perpetuidade ("quanto preciso
+  // acumular pra nunca esgotar") com uma leitura de "e se eu começasse a gastar agora mesmo".
+  const mesesAteEsgotar = rendaMensalDesejada > 0 ? calcularMesesAteEsgotar(patrimonioAtual, taxaReal, rendaMensalDesejada) : null;
   const mesesRestantes = despesaAnual > 0 && patrimonioAlvo > 0 ? projetarMesesAteIndependencia(patrimonioAtual, saldoMedio, taxaReal, patrimonioAlvo) : null;
 
   // Segundo cenário: leva em conta o valor PREVISTO (não só a média histórica realizada) — usa
@@ -6516,6 +6783,19 @@ function renderPlanejamento(){
         <div class="label">Aporte médio mensal</div>
         <div class="value" style="font-size:20px;">${fmtMoney(saldoMedio)}</div>
         <div class="sub">Média dos últimos ${mesesComDado} mês${mesesComDado===1?"":"es"} com dado</div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="accent" style="background:var(--purple)"></div>
+      <div class="body">
+        <div class="label">Se começasse a sacar hoje</div>
+        <div class="value" style="font-size:20px;">${
+          rendaMensalDesejada <= 0 ? "—" :
+          mesesAteEsgotar === null ? "Pra sempre" :
+          mesesAteEsgotar >= 1200 ? "> 100 anos" :
+          `${Math.floor(mesesAteEsgotar/12)} anos`
+        }</div>
+        <div class="sub">${rendaMensalDesejada <= 0 ? "preencha a renda desejada acima" : `sacando ${fmtMoney(rendaMensalDesejada)}/mês do patrimônio atual`}</div>
       </div>
     </div>`;
 
