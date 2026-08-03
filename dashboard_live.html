@@ -659,6 +659,26 @@
     </div>
   </div>
 
+  <div id="saldoRealModal" class="modal-overlay hidden">
+    <div class="modal-box">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
+        <h2 style="margin:0;">Confirmar saldo real</h2>
+        <button class="icon-btn" style="font-size:20px;" onclick="fecharModalSaldoReal()">✕</button>
+      </div>
+      <div id="saldoRealModalContent"></div>
+    </div>
+  </div>
+
+  <div id="novoAtivoModal" class="modal-overlay hidden">
+    <div class="modal-box">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
+        <h2 style="margin:0;">Registrar operação</h2>
+        <button class="icon-btn" style="font-size:20px;" onclick="fecharModalNovoAtivo()">✕</button>
+      </div>
+      <div id="novoAtivoModalContent"></div>
+    </div>
+  </div>
+
   <div id="dividaEditModal" class="modal-overlay hidden">
     <div class="modal-box">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
@@ -808,29 +828,52 @@
   </div>
 
   <div id="view-investimentos" class="view">
-    <div style="text-align:right;margin-bottom:6px;"><button class="icon-btn" onclick="openManual('investimentos')" title="Como essa aba funciona" style="font-size:12px;">📖 Como funciona</button></div>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:10px;">
+      <h1 style="margin:0;">💰 Investimentos</h1>
+      <button class="icon-btn" onclick="openManual('investimentos')" title="Como essa aba funciona" style="font-size:12px;">📖 Como funciona</button>
+    </div>
     <div class="cards" style="margin-bottom:16px;">
-      <div class="card panel-clickable" onclick="abrirEFocarFormSaldoReal('saldoRealReserva')"><div class="accent" style="background:var(--blue)"></div>
+      <div class="card panel-clickable" onclick="abrirModalSaldoReal('saldoRealReserva')"><div class="accent" style="background:var(--blue)"></div>
         <div class="body"><div class="label">Reserva</div>
           <div class="value" id="iReserva"><span class="skeleton" style="width:70%;"></span></div></div></div>
-      <div class="card panel-clickable" onclick="abrirEFocarFormSaldoReal('saldoRealRF')"><div class="accent" style="background:var(--green)"></div>
+      <div class="card panel-clickable" onclick="abrirModalSaldoReal('saldoRealRF')"><div class="accent" style="background:var(--green)"></div>
         <div class="body"><div class="label">Renda Fixa</div>
           <div class="value" id="iRendaFixa"><span class="skeleton" style="width:70%;"></span></div></div></div>
-      <div class="card panel-clickable" onclick="abrirEFocarFormSaldoReal('saldoRealRV')"><div class="accent" style="background:var(--purple)"></div>
+      <div class="card panel-clickable" onclick="abrirModalSaldoReal('saldoRealRV')"><div class="accent" style="background:var(--purple)"></div>
         <div class="body"><div class="label">Renda Variável</div>
           <div class="value" id="iRendaVariavel"><span class="skeleton" style="width:70%;"></span></div></div></div>
       <div class="card"><div class="accent" style="background:var(--gold)"></div>
         <div class="body"><div class="label">Total Investido</div>
           <div class="value" id="iTotal" style="color:var(--gold)"><span class="skeleton" style="width:70%;"></span></div></div></div>
     </div>
-    <div class="chart-panel">
-      <h2>Alocação da carteira</h2>
-      <div id="allocBar" class="alloc-bar"></div>
-      <div class="legend" id="allocLegend"></div>
+
+    <div class="seg-toggle" id="investModoToggle" style="margin-bottom:16px;">
+      <button class="seg-btn active" data-modo="resumo">Resumo</button>
+      <button class="seg-btn" data-modo="alocacao">Alocação</button>
+      <button class="seg-btn" data-modo="ativos">Ativos</button>
+      <button class="seg-btn" data-modo="historico">Histórico</button>
     </div>
-    <div class="chart-panel" id="rebalanceamentoPanel" style="margin-top:16px;"></div>
-    <div class="chart-panel" id="rendimentoPanel" style="margin-top:16px;"></div>
-    <div class="chart-panel" id="ativosPanel" style="margin-top:16px;"></div>
+
+    <div id="investModoResumoWrap">
+      <div class="chart-panel" id="rendimentoResumoPanel"></div>
+    </div>
+
+    <div id="investModoAlocacaoWrap" class="hidden">
+      <div class="chart-panel">
+        <h2>Alocação da carteira</h2>
+        <div id="allocBar" class="alloc-bar"></div>
+        <div class="legend" id="allocLegend"></div>
+      </div>
+      <div class="chart-panel" id="rebalanceamentoPanel" style="margin-top:16px;"></div>
+    </div>
+
+    <div id="investModoAtivosWrap" class="hidden">
+      <div class="chart-panel" id="ativosPanel"></div>
+    </div>
+
+    <div id="investModoHistoricoWrap" class="hidden">
+      <div class="chart-panel" id="historicoRendimentoPanel"></div>
+    </div>
   </div>
 
   <div id="view-lancamentos" class="view">
@@ -1237,7 +1280,7 @@ const TEMPLATE_SPREADSHEET_ID = "1Kttayt0-msSOdKkZlUJ9l7wwBNWVLj2Fbz1tZndP-u0";
 // Começou em v0.1.0 em 02/08/2026, a pedido do Gabriel -- fica em v0.x enquanto o app estiver em
 // fase de beta fechado (só Gabriel + Felipe testando); v1.0.0 marca a primeira versão considerada
 // estável o suficiente pra abrir pra mais gente.
-const APP_BUILD_VERSION = "0.7.0";
+const APP_BUILD_VERSION = "0.8.0";
 
 const MONTHS = ["Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"];
 const MONTHS_FULL = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
@@ -1516,7 +1559,7 @@ setInterval(updateLastUpdatedLabel, 30000);
 async function loadData(){
   setLoading(true);
   try{
-    const [cadastro, orcadoTotal, cartoes, compras, nomeUsuario, debito, dividas, salarioBruto, reservaInicial, patrimonio, contasDebito, taxaRealEsperada, regimeTrabalho, outrosDescontos, rendaDesejadaIndep, ativos] = await fetchRanges([
+    const [cadastro, orcadoTotal, cartoes, compras, nomeUsuario, debito, dividas, salarioBruto, reservaInicial, patrimonio, contasDebito, taxaRealEsperada, regimeTrabalho, outrosDescontos, rendaDesejadaIndep] = await fetchRanges([
       "Cadastro!B7:F60",
       "Cadastro!F4",
       "Cadastro!H7:K20",
@@ -1531,9 +1574,19 @@ async function loadData(){
       "Cadastro!T12",
       "Cadastro!T14",
       "Cadastro!T16",
-      "Cadastro!T18",
-      "Ativos!B2:G"
+      "Cadastro!T18"
     ]);
+    // "Ativos" é uma aba OPCIONAL e nova -- buscada separada do resto de propósito. Se a pessoa ainda
+    // não criou essa aba na planilha dela, essa busca falha sozinha (sem derrubar o app inteiro): o
+    // batchGet principal acima já não depende dela, então o resto do app carrega normal mesmo sem
+    // "Ativos" existir ainda. Isso é o que impede uma funcionalidade nova de travar o acesso de quem
+    // ainda não atualizou a planilha.
+    let ativos = [];
+    try{
+      [ativos] = await fetchRanges(["Ativos!B2:G"]);
+    }catch(errAtivos){
+      ativos = []; // aba "Ativos" não existe ainda nessa planilha -- segue sem essa funcionalidade, sem quebrar o resto
+    }
     raw = { cadastro, orcadoTotal, cartoes, compras, nomeUsuario, debito, dividas, salarioBruto, reservaInicial, patrimonio, contasDebito, taxaRealEsperada, regimeTrabalho, outrosDescontos, rendaDesejadaIndep, ativos };
     await garantirSnapshotMensal();
     state.lastUpdated = Date.now();
@@ -3209,8 +3262,29 @@ function renderInvestimentos(){
   ).join("");
 
   renderRebalanceamentoPanel({ reserva, rendaFixa, rendaVariavel, total });
-  renderRendimentoPanel({ reserva, rendaFixa, rendaVariavel });
+  renderRendimentoResumoCards({ reserva, rendaFixa, rendaVariavel });
   renderAtivosPanel();
+  renderHistoricoRendimentoChart();
+  setupInvestModoToggle();
+}
+function setupInvestModoToggle(){
+  const toggle = document.getElementById("investModoToggle");
+  if(!toggle || toggle.dataset.wired === "1") return;
+  toggle.dataset.wired = "1";
+  const wraps = {
+    resumo: document.getElementById("investModoResumoWrap"),
+    alocacao: document.getElementById("investModoAlocacaoWrap"),
+    ativos: document.getElementById("investModoAtivosWrap"),
+    historico: document.getElementById("investModoHistoricoWrap"),
+  };
+  toggle.querySelectorAll(".seg-btn").forEach(btn => {
+    btn.addEventListener("click", () => {
+      toggle.querySelectorAll(".seg-btn").forEach(b => b.classList.remove("active"));
+      btn.classList.add("active");
+      const modo = btn.dataset.modo;
+      Object.entries(wraps).forEach(([k, el]) => { if(el) el.classList.toggle("hidden", k !== modo); });
+    });
+  });
 }
 
 // Painel de rendimento real -- mostra o ganho/perda de verdade (diferença entre o que você informou
@@ -3288,10 +3362,11 @@ function renderRebalanceamentoPanel({ reserva, rendaFixa, rendaVariavel, total }
     <p style="font-size:11px;color:var(--muted);margin-top:4px;margin-bottom:0;">A marca dourada em cada barra é o alvo do perfil ${perfilNome}. Isso é só uma sugestão de direção — o app nunca move dinheiro sozinho.</p>`;
 }
 
-function renderRendimentoPanel(fluxoCaixaAtual){
-  const el = document.getElementById("rendimentoPanel");
+function renderRendimentoResumoCards(fluxoCaixaAtual){
+  const el = document.getElementById("rendimentoResumoPanel");
   if(!el) return;
   const rend = getRendimentoAcumulado();
+  window._fluxoCaixaAtualInvest = fluxoCaixaAtual; // guarda pro modal usar quando abrir
 
   if(!rend){
     el.innerHTML = `
@@ -3299,8 +3374,7 @@ function renderRendimentoPanel(fluxoCaixaAtual){
       <p style="font-size:13px;color:var(--muted);margin-top:-6px;">
         Hoje os valores acima são só o quanto você <b>colocou</b> (aportes menos resgates) — não sabem se isso <b>rendeu</b> ou perdeu valor, porque o app não tem acesso a cotação de mercado. Confirme de vez em quando o saldo real de cada categoria (o que você vê no extrato do banco/corretora) pra descobrir a rentabilidade de verdade.
       </p>
-      <button class="connect-btn" onclick="toggleFormSaldoReal()">📊 Confirmar saldo real pela primeira vez</button>
-      <div id="formSaldoRealWrap" class="hidden" style="margin-top:14px;"></div>`;
+      <button class="connect-btn" onclick="abrirModalSaldoReal()">📊 Confirmar saldo real pela primeira vez</button>`;
   } else {
     const cor = rend.rendimento >= 0 ? "var(--green)" : "var(--red)";
     const sinal = rend.rendimento >= 0 ? "+" : "";
@@ -3311,7 +3385,7 @@ function renderRendimentoPanel(fluxoCaixaAtual){
           <h2 style="margin-bottom:2px;">💹 Rendimento</h2>
           <p style="font-size:12px;color:var(--muted);margin:0;">Desde a última confirmação, em ${MONTHS_FULL[+mes-1]}/${ano}</p>
         </div>
-        <button class="connect-btn" onclick="toggleFormSaldoReal()" style="flex-shrink:0;">🔄 Atualizar saldo real</button>
+        <button class="connect-btn" onclick="abrirModalSaldoReal()" style="flex-shrink:0;">🔄 Atualizar saldo real</button>
       </div>
       <div class="cards" style="margin-top:14px;margin-bottom:0;">
         <div class="card"><div class="accent" style="background:${cor}"></div>
@@ -3326,74 +3400,63 @@ function renderRendimentoPanel(fluxoCaixaAtual){
           <div class="body"><div class="label">Saldo real confirmado</div>
             <div class="value" style="color:var(--gold);font-size:20px;">${fmtMoney(rend.totalReal)}</div>
             <div class="sub">o que você informou ter de verdade</div></div></div>
-      </div>
-      <div id="historicoRendimentoChart" style="margin-top:16px;"></div>
-      <div id="formSaldoRealWrap" class="hidden" style="margin-top:14px;"></div>`;
-  }
-
-  // Preenche o formulário (mesmo que esteja escondido agora) já com o saldo de fluxo de caixa atual
-  // como ponto de partida -- a pessoa só ajusta pro valor real, não precisa digitar tudo do zero.
-  const wrap = document.getElementById("formSaldoRealWrap");
-  if(wrap){
-    wrap.innerHTML = `
-      <div class="edit-form" style="margin-bottom:0;background:var(--bg-soft, rgba(255,255,255,.03));border-radius:10px;padding:14px;">
-        <p style="grid-column:1/-1;font-size:12px;color:var(--muted);margin:0 0 4px;">Preenchido com o valor de fluxo de caixa como ponto de partida — ajuste pro que você vê de verdade no extrato do banco/corretora hoje.</p>
-        <div><label>Reserva de Emergência (real)</label><input id="saldoRealReserva" type="number" step="0.01" value="${fluxoCaixaAtual.reserva.toFixed(2)}"></div>
-        <div><label>Renda Fixa (real)</label><input id="saldoRealRF" type="number" step="0.01" value="${fluxoCaixaAtual.rendaFixa.toFixed(2)}"></div>
-        <div><label>Renda Variável (real)</label><input id="saldoRealRV" type="number" step="0.01" value="${fluxoCaixaAtual.rendaVariavel.toFixed(2)}"></div>
-        <div>
-          <label>CDI acumulado no período (%, opcional)</label>
-          <input id="cdiPeriodo" type="number" step="0.01" placeholder="${rend ? 'buscando automaticamente...' : 'disponível a partir da 2ª confirmação'}" ${rend ? "" : "disabled"}>
-          <p id="cdiPeriodoNota" style="grid-column:1/-1;font-size:11px;color:var(--muted);margin:2px 0 0;"></p>
-        </div>
-        <div class="actions">
-          <button class="save-btn" onclick="salvarSaldoRealForm()">Salvar</button>
-          <button class="cancel-btn" onclick="toggleFormSaldoReal()">Cancelar</button>
-        </div>
       </div>`;
-    // Tenta buscar o CDI do período direto da API do Bacen -- se conseguir, pré-preenche (a pessoa
-    // ainda pode editar); se falhar (CORS, sem internet, API fora do ar), deixa em branco pra digitar
-    // na mão, sem travar nem avisar com alarde (é um extra, não algo crítico pro resto do app).
-    if(rend){
-      const [anoM, mesM] = rend.mesChave.split("-");
-      const dataInicio = new Date(+anoM, +mesM - 1, 1);
-      buscarCDIAcumuladoPeriodo(dataInicio, new Date()).then(cdi => {
-        const campo = document.getElementById("cdiPeriodo");
-        const nota = document.getElementById("cdiPeriodoNota");
-        if(!campo) return;
-        if(cdi !== null){
-          campo.value = cdi.toFixed(2);
-          campo.placeholder = "";
-          if(nota) nota.textContent = "Preenchido automaticamente via API do Banco Central — confira e ajuste se quiser.";
-        } else {
-          campo.placeholder = "0.00";
-          if(nota) nota.textContent = "Não consegui buscar automaticamente — digite o CDI do período (seu extrato do banco/corretora geralmente mostra isso).";
-        }
-      });
-    }
   }
-  renderHistoricoRendimentoChart();
 }
-function toggleFormSaldoReal(){
-  const wrap = document.getElementById("formSaldoRealWrap");
-  if(wrap) wrap.classList.toggle("hidden");
+// Clique num dos 3 cards (Reserva/RF/RV), ou no botão "Atualizar saldo real", abre esse modal --
+// em vez de reativar o mecanismo antigo "Ajuste Saldo Total" (que nunca teve botão nenhum e
+// sobrescrevia o histórico de aporte sem deixar rastro do rendimento). Editar aqui É reconciliar: o
+// app sempre sabe tanto o que você aportou quanto o que você confirmou ter de verdade.
+function abrirModalSaldoReal(campoFoco){
+  const fluxoCaixaAtual = window._fluxoCaixaAtualInvest || { reserva: 0, rendaFixa: 0, rendaVariavel: 0 };
+  const rend = getRendimentoAcumulado();
+  const conteudo = document.getElementById("saldoRealModalContent");
+  conteudo.innerHTML = `
+    <div class="edit-form" style="margin-bottom:0;">
+      <p style="grid-column:1/-1;font-size:12px;color:var(--muted);margin:0 0 4px;">Preenchido com o valor de fluxo de caixa como ponto de partida — ajuste pro que você vê de verdade no extrato do banco/corretora hoje.</p>
+      <div><label>Reserva de Emergência (real)</label><input id="saldoRealReserva" type="number" step="0.01" value="${fluxoCaixaAtual.reserva.toFixed(2)}"></div>
+      <div><label>Renda Fixa (real)</label><input id="saldoRealRF" type="number" step="0.01" value="${fluxoCaixaAtual.rendaFixa.toFixed(2)}"></div>
+      <div><label>Renda Variável (real)</label><input id="saldoRealRV" type="number" step="0.01" value="${fluxoCaixaAtual.rendaVariavel.toFixed(2)}"></div>
+      <div>
+        <label>CDI acumulado no período (%, opcional)</label>
+        <input id="cdiPeriodo" type="number" step="0.01" placeholder="${rend ? 'buscando automaticamente...' : 'disponível a partir da 2ª confirmação'}" ${rend ? "" : "disabled"}>
+        <p id="cdiPeriodoNota" style="grid-column:1/-1;font-size:11px;color:var(--muted);margin:2px 0 0;"></p>
+      </div>
+      <div class="actions">
+        <button class="save-btn" onclick="salvarSaldoRealForm()">Salvar</button>
+        <button class="cancel-btn" onclick="fecharModalSaldoReal()">Cancelar</button>
+      </div>
+    </div>`;
+  document.getElementById("saldoRealModal").classList.remove("hidden");
+  if(campoFoco){
+    setTimeout(() => {
+      const campo = document.getElementById(campoFoco);
+      if(campo){ campo.focus(); campo.select(); }
+    }, 50);
+  }
+  // Tenta buscar o CDI do período direto da API do Bacen -- se conseguir, pré-preenche (a pessoa
+  // ainda pode editar); se falhar (CORS, sem internet, API fora do ar), deixa em branco pra digitar
+  // na mão, sem travar nem avisar com alarde (é um extra, não algo crítico pro resto do app).
+  if(rend){
+    const [anoM, mesM] = rend.mesChave.split("-");
+    const dataInicio = new Date(+anoM, +mesM - 1, 1);
+    buscarCDIAcumuladoPeriodo(dataInicio, new Date()).then(cdi => {
+      const campo = document.getElementById("cdiPeriodo");
+      const nota = document.getElementById("cdiPeriodoNota");
+      if(!campo) return;
+      if(cdi !== null){
+        campo.value = cdi.toFixed(2);
+        campo.placeholder = "";
+        if(nota) nota.textContent = "Preenchido automaticamente via API do Banco Central — confira e ajuste se quiser.";
+      } else {
+        campo.placeholder = "0.00";
+        if(nota) nota.textContent = "Não consegui buscar automaticamente — digite o CDI do período (seu extrato do banco/corretora geralmente mostra isso).";
+      }
+    });
+  }
 }
-// Clique num dos 3 cards (Reserva/RF/RV) abre o formulário de confirmação de saldo real já
-// existente e foca no campo correspondente -- em vez de reativar o mecanismo antigo "Ajuste Saldo
-// Total" (que nunca teve botão nenhum e sobrescrevia o histórico de aporte sem deixar rastro do
-// rendimento). Editar aqui É reconciliar: o app sempre sabe tanto o que você aportou quanto o que
-// você confirmou ter de verdade.
-function abrirEFocarFormSaldoReal(campoId){
-  const wrap = document.getElementById("formSaldoRealWrap");
-  if(wrap) wrap.classList.remove("hidden");
-  setTimeout(() => {
-    const campo = document.getElementById(campoId);
-    if(campo){
-      campo.scrollIntoView({ behavior: "smooth", block: "center" });
-      campo.focus();
-      campo.select();
-    }
-  }, 50); // pequeno atraso pra garantir que o formulário já foi desescondido/desenhado antes de focar
+function fecharModalSaldoReal(){
+  document.getElementById("saldoRealModal").classList.add("hidden");
 }
 async function salvarSaldoRealForm(){
   const reserva = parseFloat(document.getElementById("saldoRealReserva").value) || 0;
@@ -3405,6 +3468,7 @@ async function salvarSaldoRealForm(){
     await salvarSaldoRealInvestimentos(reserva, rendaFixa, rendaVariavel, cdiPeriodo);
     await loadData();
     renderInvestimentos();
+    fecharModalSaldoReal();
     showToast("Saldo real confirmado — rendimento atualizado", "success");
   }catch(err){
     showToast("Não foi possível salvar: " + err.message, "error");
@@ -3415,11 +3479,11 @@ async function salvarSaldoRealForm(){
 // (verde) ou perda (vermelho). Só aparece de verdade a partir da SEGUNDA vez que você confirmar o
 // saldo real -- antes disso não existe "período" nenhum pra comparar, só um ponto isolado.
 function renderHistoricoRendimentoChart(){
-  const el = document.getElementById("historicoRendimentoChart");
+  const el = document.getElementById("historicoRendimentoPanel");
   if(!el) return;
   const periodos = getHistoricoRendimentos();
   if(periodos.length === 0){
-    el.innerHTML = `<p style="font-size:12px;color:var(--muted);margin:0;">Confirme o saldo real de novo num próximo mês pra ver a evolução do rendimento período a período (precisa de pelo menos 2 confirmações).</p>`;
+    el.innerHTML = `<h2>📈 Histórico de rendimento</h2><p style="font-size:13px;color:var(--muted);margin-top:-6px;margin-bottom:0;">Confirme o saldo real de novo num próximo mês pra ver a evolução do rendimento período a período (precisa de pelo menos 2 confirmações).</p>`;
     return;
   }
 
@@ -3451,6 +3515,7 @@ function renderHistoricoRendimentoChart(){
   });
   const temCdi = periodos.some(p => p.cdi !== null);
   el.innerHTML = `
+    <h2 style="margin-bottom:2px;">📈 Histórico de rendimento</h2>
     <p style="font-size:11px;color:var(--muted);font-weight:700;text-transform:uppercase;margin-bottom:6px;">Rendimento por período${temCdi ? ' <span style="color:var(--gold);">— tracejado dourado = CDI do período</span>' : ""}</p>
     <svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;max-height:${H}px;">${svg}</svg>`;
 }
@@ -3500,40 +3565,38 @@ function renderAtivosPanel(){
   el.innerHTML = `
     <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:10px;margin-bottom:14px;">
       <h2 style="margin:0;">📦 Meus Ativos</h2>
-      <button class="connect-btn" onclick="toggleFormNovoAtivo()">+ Registrar operação</button>
+      <button class="connect-btn" onclick="abrirModalNovoAtivo()">+ Registrar operação</button>
     </div>
     ${alertasHtml}
-    ${tabelaHtml}
-    <div id="formNovoAtivoWrap" class="hidden" style="margin-top:14px;"></div>`;
-
-  const wrap = document.getElementById("formNovoAtivoWrap");
-  if(wrap){
-    wrap.innerHTML = `
-      <div class="edit-form" style="margin-bottom:0;background:var(--bg-soft, rgba(255,255,255,.03));border-radius:10px;padding:14px;">
-        <div><label>Data</label><input id="ativoData" type="date" value="${new Date().toISOString().slice(0,10)}"></div>
-        <div><label>Ativo (nome/ticker)</label><input id="ativoNome" placeholder="Ex: PETR4, Tesouro IPCA+2035"></div>
-        <div><label>Categoria</label>
-          <select id="ativoCategoria">
-            <option value="Reserva de Emergência">Reserva de Emergência</option>
-            <option value="Renda Fixa" selected>Renda Fixa</option>
-            <option value="Renda Variável">Renda Variável</option>
-          </select>
-        </div>
-        <div><label>Operação</label>
-          <select id="ativoOperacao"><option value="Compra">Compra</option><option value="Venda">Venda</option></select>
-        </div>
-        <div><label>Quantidade</label><input id="ativoQuantidade" type="number" step="0.000001" placeholder="0"></div>
-        <div><label>Preço unitário</label><input id="ativoPreco" type="number" step="0.01" placeholder="0.00"></div>
-        <div class="actions">
-          <button class="save-btn" onclick="salvarNovoAtivoForm()">Salvar</button>
-          <button class="cancel-btn" onclick="toggleFormNovoAtivo()">Cancelar</button>
-        </div>
-      </div>`;
-  }
+    ${tabelaHtml}`;
 }
-function toggleFormNovoAtivo(){
-  const wrap = document.getElementById("formNovoAtivoWrap");
-  if(wrap) wrap.classList.toggle("hidden");
+function abrirModalNovoAtivo(){
+  const conteudo = document.getElementById("novoAtivoModalContent");
+  conteudo.innerHTML = `
+    <div class="edit-form" style="margin-bottom:0;">
+      <div><label>Data</label><input id="ativoData" type="date" value="${new Date().toISOString().slice(0,10)}"></div>
+      <div><label>Ativo (nome/ticker)</label><input id="ativoNome" placeholder="Ex: PETR4, Tesouro IPCA+2035"></div>
+      <div><label>Categoria</label>
+        <select id="ativoCategoria">
+          <option value="Reserva de Emergência">Reserva de Emergência</option>
+          <option value="Renda Fixa" selected>Renda Fixa</option>
+          <option value="Renda Variável">Renda Variável</option>
+        </select>
+      </div>
+      <div><label>Operação</label>
+        <select id="ativoOperacao"><option value="Compra">Compra</option><option value="Venda">Venda</option></select>
+      </div>
+      <div><label>Quantidade</label><input id="ativoQuantidade" type="number" step="0.000001" placeholder="0"></div>
+      <div><label>Preço unitário</label><input id="ativoPreco" type="number" step="0.01" placeholder="0.00"></div>
+      <div class="actions">
+        <button class="save-btn" onclick="salvarNovoAtivoForm()">Salvar</button>
+        <button class="cancel-btn" onclick="fecharModalNovoAtivo()">Cancelar</button>
+      </div>
+    </div>`;
+  document.getElementById("novoAtivoModal").classList.remove("hidden");
+}
+function fecharModalNovoAtivo(){
+  document.getElementById("novoAtivoModal").classList.add("hidden");
 }
 async function salvarNovoAtivoForm(){
   const dataInput = document.getElementById("ativoData").value;
@@ -3551,6 +3614,7 @@ async function salvarNovoAtivoForm(){
     await salvarOperacaoAtivo(data, ativo, categoria, operacao, quantidade, precoUnitario);
     await loadData();
     renderInvestimentos();
+    fecharModalNovoAtivo();
     showToast("Operação registrada", "success");
   }catch(err){
     showToast("Não foi possível salvar: " + err.message, "error");
@@ -5403,23 +5467,11 @@ function isCompraParcelada(c){
 // duplicar essa lista de render*() na mão -- foi exatamente essa duplicação que causou vários dos
 // bugs de "esse card não atualiza ao trocar de mês" corrigidos ao longo desta sessão.
 function irParaMes(mi, ano){
-  // DIAGNÓSTICO: confirmação visível inconfundível de que o clique registrou -- ajuda a separar
-  // "o clique não está funcionando" de "funcionou, mas a mudança em outro canto da tela passou
-  // despercebida". Se esse toast não aparecer ao clicar num mês do gráfico, o clique não está
-  // chegando na função (bug de verdade ou JS desatualizado); se aparecer mas nada mais mudar na
-  // tela, o problema é em outro lugar (algum render específico que não está pegando o mês novo).
-  console.log("irParaMes chamado:", mi, ano);
-  showToast(`Mês alterado para ${MONTHS_FULL[mi]}${ano !== undefined ? "/" + ano : ""}`, "success");
   state.monthIdx = mi;
   if(ano !== undefined) state.year = ano;
   const yearSelEl = document.getElementById("yearSelect");
   if(yearSelEl && ano !== undefined) yearSelEl.value = ano;
   updateMonthRuler();
-  // Rola a régua de mês do topo até o mês selecionado -- mesmo comportamento que já existe ao clicar
-  // direto na régua, mas que faltava aqui (clicar num ponto do gráfico já trocava o mês nos bastidores,
-  // só não deixava isso visível na régua se ela estivesse rolada pra outro lugar da tela).
-  const tickAtivo = document.querySelector(`#monthRuler [data-idx="${mi}"]`);
-  if(tickAtivo) tickAtivo.scrollIntoView({ behavior: "smooth", inline: "center", block: "nearest" });
   render();
   if(raw) renderCharts();
   if(raw) renderLancamentos();
@@ -9330,6 +9382,8 @@ function setupModalOutsideClickClose(){
     parcelasModal: closeParcelasModal,
     categoriaDonutModal: closeCategoriaDonutModal,
     manualModal: closeManual,
+    saldoRealModal: fecharModalSaldoReal,
+    novoAtivoModal: fecharModalNovoAtivo,
     dividaEditModal: closeDividaEditForm,
     creditEditModal: closeCreditEditForm,
     pdfPreviewModal: closePdfPreviewModal,
