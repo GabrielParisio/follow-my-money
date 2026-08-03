@@ -846,20 +846,19 @@
         <div class="body"><div class="label">Total Investido</div>
           <div class="value" id="iTotal" style="color:var(--gold)"><span class="skeleton" style="width:70%;"></span></div></div></div>
     </div>
+    <p id="investCardsSelo" style="font-size:12px;color:var(--muted);margin:-10px 0 16px;"></p>
 
     <div class="seg-toggle" id="investModoToggle" style="margin-bottom:16px;">
       <button class="seg-btn active" data-modo="resumo">Resumo</button>
-      <button class="seg-btn" data-modo="alocacao">Alocação</button>
-      <button class="seg-btn" data-modo="ativos">Ativos</button>
+      <button class="seg-btn" data-modo="reserva">Reserva de Emergência</button>
+      <button class="seg-btn" data-modo="rendafixa">Renda Fixa</button>
+      <button class="seg-btn" data-modo="rendavariavel">Renda Variável</button>
       <button class="seg-btn" data-modo="historico">Histórico</button>
     </div>
 
     <div id="investModoResumoWrap">
       <div class="chart-panel" id="rendimentoResumoPanel"></div>
-    </div>
-
-    <div id="investModoAlocacaoWrap" class="hidden">
-      <div class="chart-panel">
+      <div class="chart-panel" style="margin-top:16px;">
         <h2>Alocação da carteira</h2>
         <div id="allocBar" class="alloc-bar"></div>
         <div class="legend" id="allocLegend"></div>
@@ -867,8 +866,19 @@
       <div class="chart-panel" id="rebalanceamentoPanel" style="margin-top:16px;"></div>
     </div>
 
-    <div id="investModoAtivosWrap" class="hidden">
-      <div class="chart-panel" id="ativosPanel"></div>
+    <div id="investModoReservaWrap" class="hidden">
+      <div class="chart-panel" id="ativosPanelReserva"></div>
+      <div class="chart-panel" id="lancamentosPanelReserva" style="margin-top:16px;"></div>
+    </div>
+
+    <div id="investModoRendaFixaWrap" class="hidden">
+      <div class="chart-panel" id="ativosPanelRendaFixa"></div>
+      <div class="chart-panel" id="lancamentosPanelRendaFixa" style="margin-top:16px;"></div>
+    </div>
+
+    <div id="investModoRendaVariavelWrap" class="hidden">
+      <div class="chart-panel" id="ativosPanelRendaVariavel"></div>
+      <div class="chart-panel" id="lancamentosPanelRendaVariavel" style="margin-top:16px;"></div>
     </div>
 
     <div id="investModoHistoricoWrap" class="hidden">
@@ -1280,7 +1290,7 @@ const TEMPLATE_SPREADSHEET_ID = "1Kttayt0-msSOdKkZlUJ9l7wwBNWVLj2Fbz1tZndP-u0";
 // Começou em v0.1.0 em 02/08/2026, a pedido do Gabriel -- fica em v0.x enquanto o app estiver em
 // fase de beta fechado (só Gabriel + Felipe testando); v1.0.0 marca a primeira versão considerada
 // estável o suficiente pra abrir pra mais gente.
-const APP_BUILD_VERSION = "0.8.0";
+const APP_BUILD_VERSION = "0.9.0";
 
 const MONTHS = ["Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"];
 const MONTHS_FULL = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
@@ -3238,15 +3248,32 @@ function closeSidebar(){
 function renderInvestimentos(){
   // Calculado a partir dos lançamentos tipo Investimento/Resgate Investimento na aba Débito
   // (antes vinha de um número estático em Investimentos!C4:C7, que você tinha que atualizar manualmente).
-  const reserva = calcSaldoInvestimento("Reserva de Emergência");
-  const rendaFixa = calcSaldoInvestimento("Renda Fixa");
-  const rendaVariavel = calcSaldoInvestimento("Renda Variável");
+  const reservaFluxo = calcSaldoInvestimento("Reserva de Emergência");
+  const rendaFixaFluxo = calcSaldoInvestimento("Renda Fixa");
+  const rendaVariavelFluxo = calcSaldoInvestimento("Renda Variável");
+  const totalFluxo = reservaFluxo + rendaFixaFluxo + rendaVariavelFluxo;
+
+  // Os cards principais e a barra de alocação mostram o saldo REAL confirmado (reconciliado), quando
+  // existir -- não o de fluxo de caixa puro. Antes disso, o card mostrava sempre o fluxo de caixa,
+  // mesmo depois da pessoa confirmar o saldo real na reconciliação -- o número "certo" ficava
+  // calculado só no painel de rendimento, escondido mais embaixo, dando a impressão de que os cards
+  // do topo tinham parado de atualizar.
+  const rend = getRendimentoAcumulado();
+  const reserva = rend ? rend.porCategoria["Reserva de Emergência"].real : reservaFluxo;
+  const rendaFixa = rend ? rend.porCategoria["Renda Fixa"].real : rendaFixaFluxo;
+  const rendaVariavel = rend ? rend.porCategoria["Renda Variável"].real : rendaVariavelFluxo;
   const total = reserva + rendaFixa + rendaVariavel;
 
   document.getElementById("iReserva").textContent = fmtMoney(reserva);
   document.getElementById("iRendaFixa").textContent = fmtMoney(rendaFixa);
   document.getElementById("iRendaVariavel").textContent = fmtMoney(rendaVariavel);
   document.getElementById("iTotal").textContent = fmtMoney(total);
+  const selosEl = document.getElementById("investCardsSelo");
+  if(selosEl){
+    selosEl.innerHTML = rend
+      ? `<span style="color:var(--green);">✓ saldo confirmado</span> em ${MONTHS_FULL[+rend.mesChave.split("-")[1]-1]}/${rend.mesChave.split("-")[0]}`
+      : `<span style="color:var(--muted);">estimado por fluxo de caixa</span> — <a href="#" onclick="event.preventDefault(); abrirModalSaldoReal('saldoRealReserva');" style="color:var(--gold);">confirmar saldo real →</a>`;
+  }
 
   const parts = [
     { label: "Reserva", value: reserva, color: "#60A5FA" },
@@ -3262,8 +3289,13 @@ function renderInvestimentos(){
   ).join("");
 
   renderRebalanceamentoPanel({ reserva, rendaFixa, rendaVariavel, total });
-  renderRendimentoResumoCards({ reserva, rendaFixa, rendaVariavel });
-  renderAtivosPanel();
+  renderRendimentoResumoCards({ reserva: reservaFluxo, rendaFixa: rendaFixaFluxo, rendaVariavel: rendaVariavelFluxo });
+  renderAtivosPanelCategoria("Reserva de Emergência", "ativosPanelReserva");
+  renderAtivosPanelCategoria("Renda Fixa", "ativosPanelRendaFixa");
+  renderAtivosPanelCategoria("Renda Variável", "ativosPanelRendaVariavel");
+  renderLancamentosCategoria("Reserva de Emergência", "lancamentosPanelReserva");
+  renderLancamentosCategoria("Renda Fixa", "lancamentosPanelRendaFixa");
+  renderLancamentosCategoria("Renda Variável", "lancamentosPanelRendaVariavel");
   renderHistoricoRendimentoChart();
   setupInvestModoToggle();
 }
@@ -3273,8 +3305,9 @@ function setupInvestModoToggle(){
   toggle.dataset.wired = "1";
   const wraps = {
     resumo: document.getElementById("investModoResumoWrap"),
-    alocacao: document.getElementById("investModoAlocacaoWrap"),
-    ativos: document.getElementById("investModoAtivosWrap"),
+    reserva: document.getElementById("investModoReservaWrap"),
+    rendafixa: document.getElementById("investModoRendaFixaWrap"),
+    rendavariavel: document.getElementById("investModoRendaVariavelWrap"),
     historico: document.getElementById("investModoHistoricoWrap"),
   };
   toggle.querySelectorAll(".seg-btn").forEach(btn => {
@@ -3295,6 +3328,62 @@ function setupInvestModoToggle(){
 // escolhido, e sugere o que fazer -- sem mexer em nada sozinho, só aponta a direção. Não precisa de
 // nenhum dado de mercado novo: usa a mesma alocação já calculada pra barra logo acima, e o mesmo
 // sistema de perfis já usado no cálculo da taxa real.
+// Lista TODOS os lançamentos de Débito que compõem o saldo de uma categoria (Reserva/RF/RV) --
+// mesmo filtro usado em calcSaldoInvestimento (tipo Investimento/Resgate Investimento + categoria),
+// mas mostrando a lista em vez de só a soma. Cada linha é clicável e abre pra editar, igual o resto
+// do app (Débito/Crédito/Dívidas) -- sem ícone de lápis, sem duplicar lógica de edição.
+function renderLancamentosCategoria(categoria, elId){
+  const el = document.getElementById(elId);
+  if(!el) return;
+  const alvoNorm = normalizeCatName(categoria);
+  const items = debitoRows()
+    .filter(it => normalizeCatName(it.categoria) === alvoNorm)
+    .filter(it => it.tipo === "Investimento" || it.tipo === "Resgate Investimento")
+    .filter(it => it.dataVenc)
+    .sort((a,b) => a.dataVenc - b.dataVenc); // cronológico, do mais antigo pro mais novo, pra bater o saldo corrido
+
+  if(items.length === 0){
+    el.innerHTML = `<h2>🧾 Lançamentos</h2><p style="font-size:13px;color:var(--muted);margin-top:-6px;margin-bottom:0;">Nenhum lançamento de Investimento ou Resgate ainda nessa categoria em Débito.</p>`;
+    return;
+  }
+
+  // Recalcula o saldo corrido linha a linha, do mesmo jeito que calcSaldoInvestimento -- pra que a
+  // lista sirva de auditoria visual de como o card do topo chegou naquele número.
+  let baseline = alvoNorm === normalizeCatName("Reserva de Emergência") ? getReservaInicial() : 0;
+  let startIdx = 0;
+  for(let i = items.length - 1; i >= 0; i--){
+    if(/ajuste saldo total/i.test(items[i].desc || "")){ baseline = items[i].valor || 0; startIdx = i + 1; break; }
+  }
+  let saldoCorrido = baseline;
+  const linhas = items.map((it, i) => {
+    if(i >= startIdx){
+      saldoCorrido += it.tipo === "Investimento" ? (it.valor||0) : -(it.valor||0);
+    }
+    const ehResgate = it.tipo === "Resgate Investimento";
+    const ehAjuste = /ajuste saldo total/i.test(it.desc || "");
+    const cor = ehAjuste ? "var(--gold)" : (ehResgate ? "var(--red)" : "var(--green)");
+    const sinal = ehAjuste ? "" : (ehResgate ? "−" : "+");
+    return `
+      <div class="lanc-card" onclick="openEditForm(${it.row})" style="cursor:pointer;display:flex;justify-content:space-between;align-items:center;gap:10px;padding:10px 0;border-top:1px solid var(--border);">
+        <div style="min-width:0;">
+          <div style="font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${it.desc || "(sem descrição)"}</div>
+          <div style="font-size:11px;color:var(--muted);">${fmtDate(serialToDate(it.dataVenc))} · ${ehAjuste ? "Ajuste de saldo" : (ehResgate ? "Resgate" : "Aporte")}</div>
+        </div>
+        <div style="text-align:right;flex-shrink:0;">
+          <div style="font-size:13px;font-weight:700;color:${cor};">${sinal}${fmtMoney(Math.abs(it.valor||0))}</div>
+          <div style="font-size:11px;color:var(--muted);">saldo: ${fmtMoney(saldoCorrido)}</div>
+        </div>
+      </div>`;
+  }).reverse().join(""); // reverte só pra EXIBIR do mais recente pro mais antigo, sem afetar o cálculo acima (que precisa ser cronológico)
+
+  el.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+      <h2 style="margin:0;">🧾 Lançamentos</h2>
+      <span style="font-size:12px;color:var(--muted);">${items.length} lançamento${items.length===1?"":"s"}</span>
+    </div>
+    <div>${linhas}</div>`;
+}
+
 function renderRebalanceamentoPanel({ reserva, rendaFixa, rendaVariavel, total }){
   const el = document.getElementById("rebalanceamentoPanel");
   if(!el) return;
@@ -3526,11 +3615,15 @@ function renderHistoricoRendimentoChart(){
 // Painel "Meus Ativos", no molde do extrato de portfólio consolidado de corretora (Instituição /
 // Categoria / Ativo, valorização quando informada). Toggle de agrupamento do donut fica em
 // state.ativosDonutModo -- default "instituicao".
-function renderAtivosPanel(){
-  const el = document.getElementById("ativosPanel");
+// Painel de ativos, agora ESCOPADO por categoria (Reserva/RF/RV) -- uma instância por aba, cada uma
+// só vendo os ativos daquela categoria. O donut de agrupamento (Instituição/Categoria/Ativo) saiu:
+// não faz sentido "agrupar por categoria" numa tela que já É uma categoria só -- e o resto (tabela,
+// alertas de concentração) já funciona igual, só filtrado.
+function renderAtivosPanelCategoria(categoria, elId){
+  const el = document.getElementById(elId);
   if(!el) return;
-  const posicoes = getPosicaoAtivos();
-  const alertas = getAlertasConcentracao();
+  const posicoes = getPosicaoAtivos().filter(p => p.categoria === categoria);
+  const alertas = getAlertasConcentracao().filter(a => a.categoria === categoria);
 
   const totalAtual = posicoes.reduce((s,p) => s + p.valorAtual, 0);
   const totalInvestido = posicoes.reduce((s,p) => s + p.valorInvestido, 0);
@@ -3543,7 +3636,7 @@ function renderAtivosPanel(){
       ${alertas.map(a => `
         <div style="display:flex;gap:8px;align-items:flex-start;padding:8px 10px;background:rgba(239,68,68,.08);border-radius:8px;margin-bottom:6px;font-size:12px;">
           <span>⚠️</span>
-          <span><b>${a.ativo}</b> responde por <b>${a.pct.toFixed(0)}%</b> da sua ${a.categoria} (${fmtMoney(a.valorInvestido)} de ${fmtMoney(a.totalCategoria)}) — concentração alta num único ativo.</span>
+          <span><b>${a.ativo}</b> responde por <b>${a.pct.toFixed(0)}%</b> desta categoria (${fmtMoney(a.valorInvestido)} de ${fmtMoney(a.totalCategoria)}) — concentração alta num único ativo.</span>
         </div>`).join("")}
     </div>` : "";
 
@@ -3561,7 +3654,7 @@ function renderAtivosPanel(){
             const sinal = p.valorizacao >= 0 ? "+" : "";
             return `
             <tr style="border-top:1px solid var(--border);">
-              <td style="padding:6px 8px 6px 0;">${p.ativo}<div style="font-size:11px;color:var(--muted);">${p.categoria}</div></td>
+              <td style="padding:6px 8px 6px 0;">${p.ativo}</td>
               <td style="padding:6px 8px 6px 0;color:var(--muted);">${p.instituicao || "—"}</td>
               <td style="padding:6px 8px 6px 0;text-align:right;">${fmtMoney(p.valorInvestido)}</td>
               <td style="padding:6px 8px 6px 0;text-align:right;font-weight:700;">${fmtMoney(p.valorAtual)}</td>
@@ -3573,58 +3666,24 @@ function renderAtivosPanel(){
       </table>
     </div>` : `
     <p style="font-size:13px;color:var(--muted);margin:0;">
-      Registre suas compras e vendas por ativo (ação, FII, título específico...) pra acompanhar concentração, instituição e valorização por papel — camada opcional, separada dos 3 cards agregados acima.
+      Registre suas compras e vendas por ativo específico pra acompanhar concentração, instituição e valorização por papel — camada opcional, separada do card agregado acima.
     </p>`;
-
-  const donutTotals = calcularDonutAtivosPorModo(posicoes, state.ativosDonutModo || "instituicao");
-  const donutHtml = posicoes.length > 0 ? `
-    <div class="seg-toggle" id="ativosDonutToggle" style="margin-bottom:14px;">
-      <button class="seg-btn ${((state.ativosDonutModo||"instituicao")==="instituicao")?"active":""}" data-donutmodo="instituicao">Instituição</button>
-      <button class="seg-btn ${(state.ativosDonutModo==="categoria")?"active":""}" data-donutmodo="categoria">Categoria</button>
-      <button class="seg-btn ${(state.ativosDonutModo==="ativo")?"active":""}" data-donutmodo="ativo">Ativo</button>
-    </div>
-    <div style="display:flex;gap:20px;flex-wrap:wrap;align-items:center;margin-bottom:16px;" id="ativosDonutWrap">
-      ${buildDonutFromTotals(donutTotals, "ativosDonut", false, "valor atual")}
-    </div>` : "";
 
   el.innerHTML = `
     <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:10px;margin-bottom:6px;">
-      <h2 style="margin:0;">📦 Meus Ativos</h2>
-      <button class="connect-btn" onclick="abrirModalNovoAtivo()">+ Registrar operação</button>
+      <h2 style="margin:0;">📦 Ativos</h2>
+      <button class="connect-btn" onclick="abrirModalNovoAtivo('${categoria}')">+ Registrar operação</button>
     </div>
     ${posicoes.length > 0 ? `
     <div style="margin-bottom:16px;">
       <div style="font-size:22px;font-weight:700;">${fmtMoney(totalAtual)}</div>
       ${algumaAtualizacao ? `<div style="font-size:13px;color:${valorizacaoTotal>=0?"var(--green)":"var(--red)"};">${valorizacaoTotal>=0?"↑":"↓"} ${valorizacaoPctTotal>=0?"+":""}${valorizacaoPctTotal.toFixed(2)}% · ${fmtMoney(Math.abs(valorizacaoTotal))}</div>` : `<div style="font-size:12px;color:var(--muted);">Valorização aparece quando você atualizar o valor de algum ativo (botão 🔄 na tabela)</div>`}
     </div>` : ""}
-    ${donutHtml}
     ${alertasHtml}
     ${tabelaHtml}`;
-
-  setupAtivosDonutToggle();
 }
-// Monta o mapa {rótulo: valor} pro donut, conforme o modo escolhido (Instituição/Categoria/Ativo) --
-// sempre pelo valor ATUAL (não o custo), pra bater com o que a tela mostra em destaque no topo.
-function calcularDonutAtivosPorModo(posicoes, modo){
-  const totals = {};
-  posicoes.forEach(p => {
-    const chave = modo === "instituicao" ? (p.instituicao || "Sem instituição") : modo === "categoria" ? p.categoria : p.ativo;
-    totals[chave] = (totals[chave] || 0) + p.valorAtual;
-  });
-  return totals;
-}
-function setupAtivosDonutToggle(){
-  const toggle = document.getElementById("ativosDonutToggle");
-  if(!toggle) return;
-  toggle.querySelectorAll(".seg-btn").forEach(btn => {
-    btn.onclick = () => {
-      state.ativosDonutModo = btn.dataset.donutmodo;
-      renderAtivosPanel();
-    };
-  });
-}
-function abrirModalNovoAtivo(){
-  montarFormularioAtivo("Compra");
+function abrirModalNovoAtivo(categoriaPreset){
+  montarFormularioAtivo("Compra", null, categoriaPreset);
   document.getElementById("novoAtivoModal").classList.remove("hidden");
 }
 // Atalho a partir do botão 🔄 de uma linha da tabela -- já abre o modal com Operação = "Atualização de
@@ -3637,8 +3696,9 @@ function abrirModalAtualizarValor(nomeAtivo){
     if(campo){ campo.focus(); campo.select(); }
   }, 50);
 }
-function montarFormularioAtivo(operacaoInicial, nomeAtivoPreset){
+function montarFormularioAtivo(operacaoInicial, nomeAtivoPreset, categoriaPreset){
   const posicaoExistente = nomeAtivoPreset ? getPosicaoAtivos().find(p => p.ativo === nomeAtivoPreset) : null;
+  const categoriaSelecionada = (posicaoExistente && posicaoExistente.categoria) || categoriaPreset || "Renda Fixa";
   const conteudo = document.getElementById("novoAtivoModalContent");
   conteudo.innerHTML = `
     <div class="edit-form" style="margin-bottom:0;">
@@ -3647,9 +3707,9 @@ function montarFormularioAtivo(operacaoInicial, nomeAtivoPreset){
       <div><label>Instituição</label><input id="ativoInstituicao" placeholder="Ex: Bradesco, Ágora, XP" value="${posicaoExistente ? posicaoExistente.instituicao : ""}"></div>
       <div><label>Categoria</label>
         <select id="ativoCategoria">
-          <option value="Reserva de Emergência" ${posicaoExistente && posicaoExistente.categoria==="Reserva de Emergência"?"selected":""}>Reserva de Emergência</option>
-          <option value="Renda Fixa" ${!posicaoExistente || posicaoExistente.categoria==="Renda Fixa"?"selected":""}>Renda Fixa</option>
-          <option value="Renda Variável" ${posicaoExistente && posicaoExistente.categoria==="Renda Variável"?"selected":""}>Renda Variável</option>
+          <option value="Reserva de Emergência" ${categoriaSelecionada==="Reserva de Emergência"?"selected":""}>Reserva de Emergência</option>
+          <option value="Renda Fixa" ${categoriaSelecionada==="Renda Fixa"?"selected":""}>Renda Fixa</option>
+          <option value="Renda Variável" ${categoriaSelecionada==="Renda Variável"?"selected":""}>Renda Variável</option>
         </select>
       </div>
       <div><label>Operação</label>
