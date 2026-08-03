@@ -489,6 +489,7 @@
 
 
   <div id="view-resumo" class="view active">
+    <div style="text-align:right;margin-bottom:6px;"><button class="icon-btn" onclick="openManual('resumo')" title="Como essa aba funciona" style="font-size:12px;">📖 Como funciona</button></div>
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:10px;">
       <div>
         <h1 style="margin:0;">📈 Resumo Geral</h1>
@@ -648,6 +649,16 @@
     </div>
   </div>
 
+  <div id="manualModal" class="modal-overlay hidden">
+    <div class="modal-box">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
+        <h2 style="margin:0;" id="manualModalTitle">Como funciona</h2>
+        <button class="icon-btn" style="font-size:20px;" onclick="closeManual()">✕</button>
+      </div>
+      <div id="manualModalContent" style="font-size:14px;line-height:1.6;"></div>
+    </div>
+  </div>
+
   <div id="dividaEditModal" class="modal-overlay hidden">
     <div class="modal-box">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
@@ -797,14 +808,15 @@
   </div>
 
   <div id="view-investimentos" class="view">
+    <div style="text-align:right;margin-bottom:6px;"><button class="icon-btn" onclick="openManual('investimentos')" title="Como essa aba funciona" style="font-size:12px;">📖 Como funciona</button></div>
     <div class="cards" style="margin-bottom:16px;">
-      <div class="card"><div class="accent" style="background:var(--blue)"></div>
+      <div class="card panel-clickable" onclick="abrirEFocarFormSaldoReal('saldoRealReserva')"><div class="accent" style="background:var(--blue)"></div>
         <div class="body"><div class="label">Reserva</div>
           <div class="value" id="iReserva"><span class="skeleton" style="width:70%;"></span></div></div></div>
-      <div class="card"><div class="accent" style="background:var(--green)"></div>
+      <div class="card panel-clickable" onclick="abrirEFocarFormSaldoReal('saldoRealRF')"><div class="accent" style="background:var(--green)"></div>
         <div class="body"><div class="label">Renda Fixa</div>
           <div class="value" id="iRendaFixa"><span class="skeleton" style="width:70%;"></span></div></div></div>
-      <div class="card"><div class="accent" style="background:var(--purple)"></div>
+      <div class="card panel-clickable" onclick="abrirEFocarFormSaldoReal('saldoRealRV')"><div class="accent" style="background:var(--purple)"></div>
         <div class="body"><div class="label">Renda Variável</div>
           <div class="value" id="iRendaVariavel"><span class="skeleton" style="width:70%;"></span></div></div></div>
       <div class="card"><div class="accent" style="background:var(--gold)"></div>
@@ -821,6 +833,7 @@
   </div>
 
   <div id="view-lancamentos" class="view">
+    <div style="text-align:right;margin-bottom:6px;"><button class="icon-btn" onclick="openManual('debito')" title="Como essa aba funciona" style="font-size:12px;">📖 Como funciona</button></div>
     <div class="chart-panel">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:10px;">
         <h2 style="margin:0;">Lançamentos do mês</h2>
@@ -883,6 +896,7 @@
   </div>
 
   <div id="view-credito" class="view">
+    <div style="text-align:right;margin-bottom:6px;"><button class="icon-btn" onclick="openManual('credito')" title="Como essa aba funciona" style="font-size:12px;">📖 Como funciona</button></div>
     <div id="creditoEmptyState" class="chart-panel hidden" style="text-align:center;padding:32px 20px;">
       <p style="font-size:14px;margin:0 0 12px;">💳 Sem cartão de crédito cadastrado</p>
       <p style="font-size:13px;color:var(--muted);margin:0 0 16px;">Cadastre um cartão pra acompanhar faturas, parcelas e gastos por categoria.</p>
@@ -1016,6 +1030,7 @@
   </div>
 
   <div id="view-dividas" class="view">
+    <div style="text-align:right;margin-bottom:6px;"><button class="icon-btn" onclick="openManual('dividas')" title="Como essa aba funciona" style="font-size:12px;">📖 Como funciona</button></div>
     <div id="dividasCards" class="cards" style="margin-bottom:16px;"></div>
     <div class="chart-panel">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
@@ -1027,6 +1042,7 @@
   </div>
 
   <div id="view-planejamento" class="view">
+    <div style="text-align:right;margin-bottom:6px;"><button class="icon-btn" onclick="openManual('planejamento')" title="Como essa aba funciona" style="font-size:12px;">📖 Como funciona</button></div>
     <div class="chart-panel" style="margin-bottom:16px;">
       <h2>🧭 Independência Financeira</h2>
       <p style="font-size:13px;color:var(--muted);margin-top:-6px;margin-bottom:16px;">
@@ -1220,7 +1236,7 @@ const TEMPLATE_SPREADSHEET_ID = "1Kttayt0-msSOdKkZlUJ9l7wwBNWVLj2Fbz1tZndP-u0";
 // Começou em v0.1.0 em 02/08/2026, a pedido do Gabriel -- fica em v0.x enquanto o app estiver em
 // fase de beta fechado (só Gabriel + Felipe testando); v1.0.0 marca a primeira versão considerada
 // estável o suficiente pra abrir pra mais gente.
-const APP_BUILD_VERSION = "0.4.0";
+const APP_BUILD_VERSION = "0.5.0";
 
 const MONTHS = ["Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"];
 const MONTHS_FULL = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
@@ -2128,6 +2144,76 @@ function openCategoriaDonutModal(){
 }
 function closeCategoriaDonutModal(){
   document.getElementById("categoriaDonutModal").classList.add("hidden");
+}
+
+// Conteúdo do manual de cada aba — texto simples, direto, pra quem não é técnico. Atualize aqui
+// sempre que uma funcionalidade nova mudar o comportamento de uma aba; é a única fonte que precisa
+// mudar, o modal é sempre o mesmo.
+const MANUAL_CONTEUDO = {
+  resumo: {
+    titulo: "📈 Como funciona o Resumo",
+    corpo: `
+      <p>É a primeira tela que você vê — o retrato rápido de "como estou". Tem 4 modos, na barra de cima:</p>
+      <ul style="padding-left:18px;margin:8px 0;">
+        <li><b>Resumido:</b> só os números essenciais — receita, despesa, saldo, e os atalhos pras outras abas.</li>
+        <li><b>Detalhado:</b> insights do mês, o gráfico de Receita x Despesa, e a tabela mês a mês do ano inteiro.</li>
+        <li><b>Gastos:</b> pra onde seu dinheiro foi esse mês, categoria por categoria, e o comparativo orçado x real.</li>
+        <li><b>Relatório:</b> uma visão completa da carteira, pronta pra exportar em PDF.</li>
+      </ul>
+      <p>Sempre visível (menos no Relatório): <b>Próximos vencimentos</b> — o que precisa ser pago em breve.</p>
+      <p style="color:var(--muted);">Navegando os meses na régua do topo, todo o conteúdo dessa tela muda pra refletir aquele mês.</p>`
+  },
+  planejamento: {
+    titulo: "🧭 Como funciona o Planejamento Financeiro",
+    corpo: `
+      <p><b>Independência Financeira:</b> quanto de patrimônio você precisa pra viver só do rendimento, sem depender de trabalhar. É uma conta de perpetuidade — você diz quanto quer de renda mensal, e o app calcula o capital necessário usando a taxa real (acima da inflação) do seu perfil de investidor.</p>
+      <p><b>Reserva: evolução, meta e projeção:</b> o gráfico mostra sua reserva real (linha cheia) e duas projeções (linhas pontilhadas) — uma pelo ritmo médio histórico, outra pelo que já está lançado e previsto pros próximos meses, incluindo faturas de cartão ainda não pagas.</p>
+      <p><b>Orçamento por Natureza:</b> separa seu gasto do mês em Essencial (moradia, saúde), Discricionário (lazer, assinaturas) e Investimento — ajuda a ver o quanto do seu gasto é realmente flexível.</p>
+      <p style="color:var(--muted);">Os cards de Receita/Despesa estimada e o gráfico seguem o mês que você estiver navegando — clique num ponto do gráfico ou na régua do topo pra pular direto pra ele.</p>`
+  },
+  investimentos: {
+    titulo: "💰 Como funciona Investimentos",
+    corpo: `
+      <p>Os 3 cards (Reserva, Renda Fixa, Renda Variável) mostram, por padrão, <b>quanto você aportou</b> — a soma de tudo que você lançou como Investimento menos Resgate. Isso não é o mesmo que "quanto vale hoje": o app não tem acesso a cotação de mercado nenhuma.</p>
+      <p><b>Rendimento:</b> pra saber se sua carteira está rendendo de verdade, confirme de vez em quando o saldo real (o que você vê no extrato do banco/corretora) clicando em qualquer um dos 3 cards. A diferença entre o que você aportou e o que você confirmou É o rendimento — e aparece tanto acumulado quanto período a período, desde a última confirmação.</p>
+      <p><b>Rebalanceamento:</b> compara sua alocação atual com o alvo sugerido pro seu perfil de investidor (Conservador, Moderado, Dinâmico, Arrojado), e aponta se algo está desalinhado.</p>
+      <p style="color:var(--muted);">O app nunca move dinheiro sozinho — tudo aqui é leitura e sugestão, a decisão é sempre sua.</p>`
+  },
+  debito: {
+    titulo: "🧾 Como funciona Débito",
+    corpo: `
+      <p>Todo lançamento de receita ou despesa do mês que não seja compra no cartão de crédito mora aqui — salário, aluguel, parcela de dívida, contas do dia a dia.</p>
+      <p>Clique em qualquer linha pra editar. Use os checkboxes pra selecionar várias de uma vez e marcar como pago/pendente ou excluir em lote.</p>
+      <p><b>Status:</b> "Pago" conta como Despesa/Receita Real; "Pendente" só entra no cálculo Previsto (que também aparece nos gráficos, pra você ver o que está por vir mesmo antes de acontecer).</p>
+      <p style="color:var(--muted);">O botão "Importar extrato" (painel recolhível) lê um CSV do banco e cria os lançamentos automaticamente — hoje só reconhece o formato do Bradesco.</p>`
+  },
+  credito: {
+    titulo: "💳 Como funciona Crédito",
+    corpo: `
+      <p>Cada compra feita no cartão fica aqui, com sua própria categoria e, se for parcelada, uma linha por parcela.</p>
+      <p>A <b>fatura do mês</b> é a soma de todas as parcelas com vencimento naquele mês — quando você paga a fatura, o pagamento em si é lançado em Débito (categoria "Fatura do Cartão"), pra não contar a mesma despesa duas vezes.</p>
+      <p>Clique em qualquer compra pra editar. Checkboxes permitem seleção múltipla, igual em Débito.</p>
+      <p style="color:var(--muted);">O importador de fatura (CSV ou PDF) também está aqui, num painel recolhível — mesma limitação: só Bradesco por enquanto.</p>`
+  },
+  dividas: {
+    titulo: "📋 Como funciona Dívidas",
+    corpo: `
+      <p>Cada dívida cadastrada aqui gera automaticamente as parcelas futuras em Débito — você não precisa lançar mês a mês na mão.</p>
+      <p><b>Parcelas pagas:</b> atualiza sozinho conforme você marca as parcelas como pago em Débito (por valor + categoria, não precisa bater o texto da descrição). Se a dívida já tinha parcelas pagas antes de você começar a usar o app, informe isso no campo "Parcelas pagas antes do app" — sem isso, o app não tem como saber que elas já existiam.</p>
+      <p>Clique em qualquer linha pra editar. O botão 💡 simula quitação antecipada: quanto você economizaria de juros pagando tudo de uma vez.</p>
+      <p style="color:var(--muted);">"Saldo devedor" é calculado automaticamente a partir do valor inicial, parcelas pagas e taxa de juros — a menos que você prefira informar o saldo real direto.</p>`
+  },
+};
+
+function openManual(secao){
+  const conteudo = MANUAL_CONTEUDO[secao];
+  if(!conteudo) return;
+  document.getElementById("manualModalTitle").textContent = conteudo.titulo;
+  document.getElementById("manualModalContent").innerHTML = conteudo.corpo;
+  document.getElementById("manualModal").classList.remove("hidden");
+}
+function closeManual(){
+  document.getElementById("manualModal").classList.add("hidden");
 }
 function setupCategoriaDonutToggle(){
   const toggle = document.getElementById("categoriaDonutToggle");
@@ -3263,6 +3349,23 @@ function renderRendimentoPanel(fluxoCaixaAtual){
 function toggleFormSaldoReal(){
   const wrap = document.getElementById("formSaldoRealWrap");
   if(wrap) wrap.classList.toggle("hidden");
+}
+// Clique num dos 3 cards (Reserva/RF/RV) abre o formulário de confirmação de saldo real já
+// existente e foca no campo correspondente -- em vez de reativar o mecanismo antigo "Ajuste Saldo
+// Total" (que nunca teve botão nenhum e sobrescrevia o histórico de aporte sem deixar rastro do
+// rendimento). Editar aqui É reconciliar: o app sempre sabe tanto o que você aportou quanto o que
+// você confirmou ter de verdade.
+function abrirEFocarFormSaldoReal(campoId){
+  const wrap = document.getElementById("formSaldoRealWrap");
+  if(wrap) wrap.classList.remove("hidden");
+  setTimeout(() => {
+    const campo = document.getElementById(campoId);
+    if(campo){
+      campo.scrollIntoView({ behavior: "smooth", block: "center" });
+      campo.focus();
+      campo.select();
+    }
+  }, 50); // pequeno atraso pra garantir que o formulário já foi desescondido/desenhado antes de focar
 }
 async function salvarSaldoRealForm(){
   const reserva = parseFloat(document.getElementById("saldoRealReserva").value) || 0;
@@ -8946,6 +9049,7 @@ function setupModalOutsideClickClose(){
     detalhamentoModal: closeDetalhamentoModal,
     parcelasModal: closeParcelasModal,
     categoriaDonutModal: closeCategoriaDonutModal,
+    manualModal: closeManual,
     dividaEditModal: closeDividaEditForm,
     creditEditModal: closeCreditEditForm,
     pdfPreviewModal: closePdfPreviewModal,
