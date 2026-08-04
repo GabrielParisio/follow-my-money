@@ -867,16 +867,19 @@
     </div>
 
     <div id="investModoReservaWrap" class="hidden">
+      <div class="chart-panel" id="cardResumoReserva" style="margin-bottom:16px;"></div>
       <div class="chart-panel" id="ativosPanelReserva"></div>
       <div class="chart-panel" id="lancamentosPanelReserva" style="margin-top:16px;"></div>
     </div>
 
     <div id="investModoRendaFixaWrap" class="hidden">
+      <div class="chart-panel" id="cardResumoRendaFixa" style="margin-bottom:16px;"></div>
       <div class="chart-panel" id="ativosPanelRendaFixa"></div>
       <div class="chart-panel" id="lancamentosPanelRendaFixa" style="margin-top:16px;"></div>
     </div>
 
     <div id="investModoRendaVariavelWrap" class="hidden">
+      <div class="chart-panel" id="cardResumoRendaVariavel" style="margin-bottom:16px;"></div>
       <div class="chart-panel" id="ativosPanelRendaVariavel"></div>
       <div class="chart-panel" id="lancamentosPanelRendaVariavel" style="margin-top:16px;"></div>
     </div>
@@ -1290,7 +1293,7 @@ const TEMPLATE_SPREADSHEET_ID = "1Kttayt0-msSOdKkZlUJ9l7wwBNWVLj2Fbz1tZndP-u0";
 // Começou em v0.1.0 em 02/08/2026, a pedido do Gabriel -- fica em v0.x enquanto o app estiver em
 // fase de beta fechado (só Gabriel + Felipe testando); v1.0.0 marca a primeira versão considerada
 // estável o suficiente pra abrir pra mais gente.
-const APP_BUILD_VERSION = "0.10.0";
+const APP_BUILD_VERSION = "0.11.0";
 
 const MONTHS = ["Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"];
 const MONTHS_FULL = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
@@ -3290,6 +3293,9 @@ function renderInvestimentos(){
 
   renderRebalanceamentoPanel({ reserva, rendaFixa, rendaVariavel, total });
   renderRendimentoResumoCards({ reserva: reservaFluxo, rendaFixa: rendaFixaFluxo, rendaVariavel: rendaVariavelFluxo });
+  renderCardResumoCategoria("Reserva de Emergência", "cardResumoReserva", reservaFluxo);
+  renderCardResumoCategoria("Renda Fixa", "cardResumoRendaFixa", rendaFixaFluxo);
+  renderCardResumoCategoria("Renda Variável", "cardResumoRendaVariavel", rendaVariavelFluxo);
   renderAtivosPanelCategoria("Reserva de Emergência", "ativosPanelReserva");
   renderAtivosPanelCategoria("Renda Fixa", "ativosPanelRendaFixa");
   renderAtivosPanelCategoria("Renda Variável", "ativosPanelRendaVariavel");
@@ -3619,6 +3625,34 @@ function renderHistoricoRendimentoChart(){
 // só vendo os ativos daquela categoria. O donut de agrupamento (Instituição/Categoria/Ativo) saiu:
 // não faz sentido "agrupar por categoria" numa tela que já É uma categoria só -- e o resto (tabela,
 // alertas de concentração) já funciona igual, só filtrado.
+// Card-resumo de UMA categoria (Reserva/RF/RV) -- mesmo princípio dos 4 cards do topo (prefere o
+// saldo REAL confirmado quando existir, cai pro fluxo de caixa quando não), só que escopado e
+// mostrado dentro da própria aba da categoria, sem precisar rolar até o topo pra ver o número.
+// Tudo puxado automaticamente das mesmas funções já usadas em outros lugares -- nada digitado aqui.
+function renderCardResumoCategoria(categoria, elId, fluxo){
+  const el = document.getElementById(elId);
+  if(!el) return;
+  const rend = getRendimentoAcumulado();
+  const infoCategoria = rend ? rend.porCategoria[categoria] : null;
+  const valor = infoCategoria ? infoCategoria.real : fluxo;
+
+  const seloHtml = infoCategoria
+    ? `<span style="color:var(--green);">✓ saldo confirmado</span> em ${MONTHS_FULL[+rend.mesChave.split("-")[1]-1]}/${rend.mesChave.split("-")[0]}`
+    : `<span style="color:var(--muted);">estimado por fluxo de caixa</span> — <a href="#" onclick="event.preventDefault(); abrirModalSaldoReal('saldoReal${categoria==="Reserva de Emergência"?"Reserva":categoria==="Renda Fixa"?"RF":"RV"}');" style="color:var(--gold);">confirmar saldo real →</a>`;
+
+  const rendimentoHtml = infoCategoria ? `
+    <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border);">
+      <span style="font-size:12px;color:var(--muted);">Rendimento nesta categoria: </span>
+      <span style="font-size:13px;font-weight:700;color:${infoCategoria.rendimento>=0?"var(--green)":"var(--red)"};">${infoCategoria.rendimento>=0?"+":""}${fmtMoney(infoCategoria.rendimento)}</span>
+    </div>` : "";
+
+  el.innerHTML = `
+    <div style="font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.03em;">${categoria}</div>
+    <div style="font-size:24px;font-weight:700;margin-top:2px;">${fmtMoney(valor)}</div>
+    <div style="font-size:12px;margin-top:4px;">${seloHtml}</div>
+    ${rendimentoHtml}`;
+}
+
 function renderAtivosPanelCategoria(categoria, elId){
   const el = document.getElementById(elId);
   if(!el) return;
@@ -4684,9 +4718,15 @@ function reservaHistoricaAno(ano){
 
 function categoriaOptions(selected){
   const cats = (raw.cadastro || []).map(r => r[0]).filter(Boolean);
-  const semCategoria = !selected || !cats.includes(selected);
+  const semCategoria = !selected;
   const blank = semCategoria ? `<option value="" selected>— Selecionar —</option>` : "";
-  return blank + cats.map(c => `<option value="${c}" ${c===selected?"selected":""}>${c}</option>`).join("");
+  // Se a categoria atual do lançamento não está na lista normal de categorias de orçamento (ex:
+  // "Reserva de Emergência"/"Renda Fixa"/"Renda Variável", que são categorias especiais de
+  // investimento, nunca fizeram parte da lista de categorias de gasto do Cadastro) ela ainda
+  // precisa aparecer como opção selecionada -- senão o dropdown mostra em branco e, se a pessoa
+  // salvar sem mexer nesse campo, a categoria do lançamento é apagada sem querer.
+  const extra = (selected && !cats.includes(selected)) ? `<option value="${selected}" selected>${selected}</option>` : "";
+  return blank + extra + cats.map(c => `<option value="${c}" ${c===selected?"selected":""}>${c}</option>`).join("");
 }
 
 let lancSelectedRows = new Set();
