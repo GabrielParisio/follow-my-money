@@ -1290,7 +1290,7 @@ const TEMPLATE_SPREADSHEET_ID = "1Kttayt0-msSOdKkZlUJ9l7wwBNWVLj2Fbz1tZndP-u0";
 // Começou em v0.1.0 em 02/08/2026, a pedido do Gabriel -- fica em v0.x enquanto o app estiver em
 // fase de beta fechado (só Gabriel + Felipe testando); v1.0.0 marca a primeira versão considerada
 // estável o suficiente pra abrir pra mais gente.
-const APP_BUILD_VERSION = "0.9.0";
+const APP_BUILD_VERSION = "0.10.0";
 
 const MONTHS = ["Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"];
 const MONTHS_FULL = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
@@ -3659,7 +3659,10 @@ function renderAtivosPanelCategoria(categoria, elId){
               <td style="padding:6px 8px 6px 0;text-align:right;">${fmtMoney(p.valorInvestido)}</td>
               <td style="padding:6px 8px 6px 0;text-align:right;font-weight:700;">${fmtMoney(p.valorAtual)}</td>
               <td style="padding:6px 8px 6px 0;text-align:right;color:${cor};">${p.temAtualizacao ? `${sinal}${fmtMoney(p.valorizacao)} (${sinal}${p.valorizacaoPct.toFixed(1)}%)` : `<span style="color:var(--muted);">—</span>`}</td>
-              <td style="padding:6px 0 6px 0;text-align:right;"><button class="icon-btn" title="Atualizar valor atual" onclick="abrirModalAtualizarValor('${p.ativo.replace(/'/g,"\\'")}')">🔄</button></td>
+              <td style="padding:6px 0 6px 0;text-align:right;white-space:nowrap;">
+                <button class="icon-btn" title="Atualizar valor atual" onclick="abrirModalAtualizarValor('${p.ativo.replace(/'/g,"\\'")}')">🔄</button>
+                <button class="icon-btn" title="Excluir ativo" onclick="excluirAtivo('${p.ativo.replace(/'/g,"\\'")}', [${p.linhas.join(",")}])">🗑️</button>
+              </td>
             </tr>`;
           }).join("")}
         </tbody>
@@ -3688,6 +3691,21 @@ function abrirModalNovoAtivo(categoriaPreset){
 }
 // Atalho a partir do botão 🔄 de uma linha da tabela -- já abre o modal com Operação = "Atualização de
 // valor" e o nome do ativo preenchido, focando só no campo que falta (o valor atual).
+// Exclui um ativo por completo -- limpa TODAS as linhas da aba Ativos que contribuem pra essa
+// posição (pode ser mais de uma: cada compra/venda/atualização é uma linha separada). Mesmo padrão
+// de "limpar o intervalo" já usado em deleteLancamento (Débito) -- não deleta a linha estruturalmente
+// (isso re-numeraria todo mundo depois dela), só apaga o conteúdo.
+async function excluirAtivo(nomeAtivo, linhas){
+  const msg = linhas.length > 1
+    ? `Excluir "${nomeAtivo}"? Isso vai apagar ${linhas.length} lançamentos (compras/vendas/atualizações) dessa posição. Essa ação não pode ser desfeita.`
+    : `Excluir "${nomeAtivo}"? Essa ação não pode ser desfeita.`;
+  if(!confirm(msg)) return;
+  await salvarEAtualizar(
+    () => writeCellsBatch(linhas.flatMap(row => ["B","C","D","E","F","G","H"].map(col => ({ range: `Ativos!${col}${row}`, value: "" })))),
+    [renderInvestimentos],
+    `"${nomeAtivo}" excluído`
+  );
+}
 function abrirModalAtualizarValor(nomeAtivo){
   montarFormularioAtivo("Atualização de valor", nomeAtivo);
   document.getElementById("novoAtivoModal").classList.remove("hidden");
@@ -4587,8 +4605,9 @@ function getPosicaoAtivos(){
   const rows = getAtivosRows().slice().sort((a,b) => (a.data||0) - (b.data||0));
   const porAtivo = {};
   rows.forEach(r => {
-    if(!porAtivo[r.ativo]) porAtivo[r.ativo] = { ativo: r.ativo, categoria: r.categoria, instituicao: r.instituicao, quantidade: 0, custoTotal: 0, valorAtualInformado: null, dataAtualizacao: null };
+    if(!porAtivo[r.ativo]) porAtivo[r.ativo] = { ativo: r.ativo, categoria: r.categoria, instituicao: r.instituicao, quantidade: 0, custoTotal: 0, valorAtualInformado: null, dataAtualizacao: null, linhas: [] };
     const pos = porAtivo[r.ativo];
+    pos.linhas.push(r.row); // guarda toda linha da planilha que contribui pra essa posição -- necessário pra poder excluir depois
     if(/atualiza/i.test(r.operacao)){
       pos.valorAtualInformado = r.precoUnitario;
       pos.dataAtualizacao = r.data;
